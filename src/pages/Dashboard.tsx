@@ -11,10 +11,11 @@ export default function DashboardPage() {
       try {
         const response = await fetch('https://fit4surebackend-production.up.railway.app/api/admin/task-management-test/test-data')
         const data = await response.json()
+        console.log('Dashboard data fetched:', data)
         setDashboardData(data)
+        setLoading(false)
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error)
-      } finally {
         setLoading(false)
       }
     }
@@ -26,8 +27,8 @@ export default function DashboardPage() {
   const displayMenus = dashboardData?.menus || []
   const displayOrders = dashboardData?.orders || []
 
-  if (loading || !dashboardData) {
-    return <div className="p-8 text-center">Loading dashboard... {!dashboardData && 'Fetching data...'}</div>
+  if (!dashboardData) {
+    return <div className="p-8 text-center text-lg">Loading dashboard data...</div>
   }
 
   // KPI data with trend charts
