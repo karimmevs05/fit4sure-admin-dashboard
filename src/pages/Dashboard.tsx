@@ -21,14 +21,14 @@ export default function DashboardPage() {
     fetchData()
   }, [])
 
-  if (loading) {
-    return <div className="p-8 text-center">Loading dashboard...</div>
-  }
-
   // Display customer, menu, and order counts from API
   const displayCustomers = dashboardData?.customers || []
   const displayMenus = dashboardData?.menus || []
   const displayOrders = dashboardData?.orders || []
+
+  if (loading || !dashboardData) {
+    return <div className="p-8 text-center">Loading dashboard... {!dashboardData && 'Fetching data...'}</div>
+  }
 
   // KPI data with trend charts
   const kpis = [
