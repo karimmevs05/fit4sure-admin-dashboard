@@ -1,8 +1,35 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { TrendingUp, TrendingDown, AlertCircle } from 'lucide-react'
 import { LineChart, Line, ResponsiveContainer } from 'recharts'
 
 export default function DashboardPage() {
+  const [dashboardData, setDashboardData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await fetch('https://fit4surebackend-production.up.railway.app/api/admin/task-management-test/test-data')
+        const data = await response.json()
+        setDashboardData(data)
+      } catch (error) {
+        console.error('Failed to fetch dashboard data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
+
+  if (loading) {
+    return <div className="p-8 text-center">Loading dashboard...</div>
+  }
+
+  // Display customer, menu, and order counts from API
+  const displayCustomers = dashboardData?.customers || []
+  const displayMenus = dashboardData?.menus || []
+  const displayOrders = dashboardData?.orders || []
+
   // KPI data with trend charts
   const kpis = [
     {
@@ -46,28 +73,28 @@ export default function DashboardPage() {
     },
     {
       label: 'Active Menu Components',
-      value: '18',
-      change: '+1 vs last week',
+      value: displayMenus.length.toString(),
+      change: `${displayMenus.length} menus available`,
       changePositive: true,
       trendData: [
         { week: 'W29', val: 16 },
         { week: 'W30', val: 16 },
         { week: 'W31', val: 17 },
         { week: 'W32', val: 17 },
-        { week: 'W33', val: 18 }
+        { week: 'W33', val: displayMenus.length }
       ]
     },
     {
-      label: 'Ingredient Overlap',
-      value: '61%',
-      change: 'Target 60%+',
+      label: 'Total Customers',
+      value: displayCustomers.length.toString(),
+      change: `${displayCustomers.length} active customers`,
       changePositive: true,
       trendData: [
-        { week: 'W29', val: 58 },
-        { week: 'W30', val: 59 },
-        { week: 'W31', val: 59.5 },
-        { week: 'W32', val: 60 },
-        { week: 'W33', val: 61 }
+        { week: 'W29', val: 5 },
+        { week: 'W30', val: 6 },
+        { week: 'W31', val: 7 },
+        { week: 'W32', val: 7 },
+        { week: 'W33', val: displayCustomers.length }
       ]
     }
   ]
