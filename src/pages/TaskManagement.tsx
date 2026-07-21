@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Loader, AlertCircle, Clock, ShoppingCart, Users } from 'lucide-react'
 
-const API_BASE = 'http://localhost:3000/api'
+const API_BASE = `${import.meta.env.VITE_API_BASE_URL}/api`
 
 const WEEKS = [
   '1.18', '1.25', '2.1', '2.8', '2.15', '2.22', '3.1', '3.8', '3.22', '3.29',
