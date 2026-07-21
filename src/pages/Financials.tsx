@@ -160,7 +160,7 @@ function FinancialsPage() {
   const [screenshotVendor, setScreenshotVendor] = useState('')
   const [showScreenshotForm, setShowScreenshotForm] = useState(false)
   const [syncInProgress, setSyncInProgress] = useState(false)
-  const [syncResult, setSyncResult] = useState<{ processed: number; failed: number } | null>(null)
+  const [syncResult, setSyncResult] = useState<{ processed: number; failed: number; errors?: { filename: string; error: string }[] } | null>(null)
   const [manualItems, setManualItems] = useState<ReceiptItem[]>([
     { description: '', amount: 0, category: 'food_cogs', confidence: 1, productName: '', unit: 'count', quantity: undefined }
   ])
@@ -655,7 +655,11 @@ function FinancialsPage() {
 
       const data = await response.json()
       setSyncResult(data.data)
-      alert(`✓ Sync complete: ${data.data.processed} processed, ${data.data.failed} failed`)
+      if (data.data.failed > 0) {
+        alert(`Sync complete: ${data.data.processed} processed, ${data.data.failed} failed. See "Why these failed" below for details.`)
+      } else {
+        alert(`✓ Sync complete: ${data.data.processed} processed, ${data.data.failed} failed`)
+      }
     } catch (error) {
       console.error('Sync error:', error)
       alert(`Sync error: ${error instanceof Error ? error.message : 'Failed to sync'}`)
@@ -1179,9 +1183,23 @@ function FinancialsPage() {
                   <strong>Status:</strong> {syncInProgress ? 'Syncing...' : 'Ready. Syncs automatically every 5 minutes.'}
                 </p>
                 {syncResult && (
-                  <p className="text-sm text-[#4B2B1D] mb-3">
-                    <strong>Last sync:</strong> {syncResult.processed} processed, {syncResult.failed} failed
-                  </p>
+                  <>
+                    <p className="text-sm text-[#4B2B1D] mb-3">
+                      <strong>Last sync:</strong> {syncResult.processed} processed, {syncResult.failed} failed
+                    </p>
+                    {syncResult.errors && syncResult.errors.length > 0 && (
+                      <div className="mt-2 rounded-lg bg-[#FFF4F5] border border-[#E8B4B9] p-3">
+                        <p className="text-xs font-bold text-[#D62F3D] mb-2">Why these failed:</p>
+                        <ul className="space-y-1">
+                          {syncResult.errors.map((e, idx) => (
+                            <li key={idx} className="text-xs text-[#755B4C]">
+                              <span className="font-semibold text-[#4B2B1D]">{e.filename}:</span> {e.error}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
