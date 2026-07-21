@@ -23,7 +23,7 @@ type RecipeIngredient = {
   inventory_id: number;
   name: string;
   quantity_g: number;
-  price_per_pound?: number;
+  unit_price_cents?: number;
   ingredient_cost_cents?: number;
 };
 
@@ -553,11 +553,16 @@ function AddRecipeDrawer({
 }) {
   type RecipeFormIngredient = {
     id: string;
+    inventory_id: number;
     name: string;
-    amount: string;
-    unit: string;
-    weight_g: number;
-    price: string;
+    quantity_g: number;
+    unit_price_cents: number | null;
+  };
+
+  type InventoryOption = {
+    id: number;
+    name: string;
+    unit_price_cents: number | null;
   };
 
   const [form, setForm] = useState({
@@ -574,14 +579,9 @@ function AddRecipeDrawer({
   });
 
   const [ingredients, setIngredients] = useState<RecipeFormIngredient[]>([]);
-  const [newIngredient, setNewIngredient] = useState<RecipeFormIngredient>({
-    id: "",
-    name: "",
-    amount: "",
-    unit: "g",
-    weight_g: 0,
-    price: "",
-  });
+  const [inventoryOptions, setInventoryOptions] = useState<InventoryOption[]>([]);
+  const [selectedInventoryId, setSelectedInventoryId] = useState<string>("");
+  const [newQuantityG, setNewQuantityG] = useState<string>("");
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -589,22 +589,64 @@ function AddRecipeDrawer({
   const token = localStorage.getItem("token");
   const apiUrl = import.meta.env.VITE_API_BASE_URL;
 
+  useEffect(() => {
+    if (!open) return;
+    (async () => {
+      try {
+        const response = await axios.get(`${apiUrl}/api/inventory`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setInventoryOptions(
+          (response.data.data || []).map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            unit_price_cents: item.unit_price_cents,
+          }))
+        );
+      } catch (err) {
+        console.error("Error fetching inventory options:", err);
+      }
+    })();
+  }, [open]);
+
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((current) => ({ ...current, [key]: value }));
     setSubmitError(null);
   }
 
   const addIngredient = () => {
-    if (!newIngredient.name.trim() || !newIngredient.amount) {
-      alert("Please fill in ingredient name and amount");
+    const inventoryId = parseInt(selectedInventoryId, 10);
+    const quantityG = parseFloat(newQuantityG);
+
+    if (!inventoryId || !quantityG || quantityG <= 0) {
+      alert("Please select an ingredient and enter a quantity in grams");
       return;
     }
-    setIngredients([...ingredients, { ...newIngredient, id: Date.now().toString() }]);
-    setNewIngredient({ id: "", name: "", amount: "", unit: "g", weight_g: 0, price: "" });
+
+    const option = inventoryOptions.find((o) => o.id === inventoryId);
+    if (!option) return;
+
+    setIngredients([
+      ...ingredients,
+      {
+        id: Date.now().toString(),
+        inventory_id: option.id,
+        name: option.name,
+        quantity_g: quantityG,
+        unit_price_cents: option.unit_price_cents,
+      },
+    ]);
+    setSelectedInventoryId("");
+    setNewQuantityG("");
   };
 
   const removeIngredient = (id: string) => {
     setIngredients(ingredients.filter((ing) => ing.id !== id));
+  };
+
+  const estimatedCostCents = (unitPriceCents: number | null, quantityG: number) => {
+    if (!unitPriceCents) return null;
+    return Math.round((unitPriceCents / 453.592) * quantityG);
   };
 
   async function submit(event: React.FormEvent) {
@@ -641,6 +683,10 @@ function AddRecipeDrawer({
             fat_g: form.fat_g,
             instructions: form.instructions || null,
             image: form.image || null,
+            ingredients: ingredients.map((ing) => ({
+              inventory_id: ing.inventory_id,
+              quantity_g: ing.quantity_g,
+            })),
           },
           {
             headers: { Authorization: `Bearer ${token}` },
@@ -805,84 +851,75 @@ function AddRecipeDrawer({
                 {/* Add Ingredient Form */}
                 <div className="space-y-2 pb-3 border-b border-[#D8CDBE]">
                   <div>
-                    <label className="block text-xs font-bold text-[#4B2B1D] mb-1">Name</label>
-                    <input
-                      type="text"
-                      value={newIngredient.name}
-                      onChange={(e) => setNewIngredient({ ...newIngredient, name: e.target.value })}
-                      placeholder="e.g., Chicken Breast"
+                    <label className="block text-xs font-bold text-[#4B2B1D] mb-1">Ingredient</label>
+                    <select
+                      value={selectedInventoryId}
+                      onChange={(e) => setSelectedInventoryId(e.target.value)}
                       className="h-9 w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2 text-xs font-medium text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-2 focus:ring-[#3E6594]/10"
-                    />
+                    >
+                      <option value="">
+                        {inventoryOptions.length === 0 ? "No inventory items yet" : "Select an ingredient..."}
+                      </option>
+                      {inventoryOptions.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.name}
+                          {opt.unit_price_cents != null ? ` — $${(opt.unit_price_cents / 100).toFixed(2)}/lb` : " — no price set"}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <div className="grid grid-cols-3 gap-1">
+                  <div className="grid grid-cols-2 gap-1">
                     <div>
-                      <label className="block text-xs font-bold text-[#4B2B1D] mb-1">Amount</label>
+                      <label className="block text-xs font-bold text-[#4B2B1D] mb-1">Quantity (g)</label>
                       <input
                         type="number"
-                        step="0.1"
-                        value={newIngredient.amount}
-                        onChange={(e) => setNewIngredient({ ...newIngredient, amount: e.target.value })}
-                        placeholder="2"
+                        step="1"
+                        value={newQuantityG}
+                        onChange={(e) => setNewQuantityG(e.target.value)}
+                        placeholder="200"
                         className="h-9 w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2 text-xs font-medium text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-2 focus:ring-[#3E6594]/10"
                       />
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold text-[#4B2B1D] mb-1">Unit</label>
-                      <select
-                        value={newIngredient.unit}
-                        onChange={(e) => setNewIngredient({ ...newIngredient, unit: e.target.value })}
-                        className="h-9 w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2 text-xs font-medium text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-2 focus:ring-[#3E6594]/10"
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        onClick={addIngredient}
+                        className="w-full h-9 bg-[#2E527F] text-white text-xs font-bold rounded-lg hover:bg-[#24466E] transition"
                       >
-                        <option value="g">g</option>
-                        <option value="kg">kg</option>
-                        <option value="oz">oz</option>
-                        <option value="lb">lb</option>
-                        <option value="cup">cup</option>
-                        <option value="tbsp">tbsp</option>
-                        <option value="tsp">tsp</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-[#4B2B1D] mb-1">Price</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={newIngredient.price}
-                        onChange={(e) => setNewIngredient({ ...newIngredient, price: e.target.value })}
-                        placeholder="0.00"
-                        className="h-9 w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2 text-xs font-medium text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-2 focus:ring-[#3E6594]/10"
-                      />
+                        + Add
+                      </button>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={addIngredient}
-                    className="w-full h-8 bg-[#2E527F] text-white text-xs font-bold rounded-lg hover:bg-[#24466E] transition"
-                  >
-                    + Add Ingredient
-                  </button>
+                  {inventoryOptions.length === 0 && (
+                    <p className="text-[10px] text-[#9A7E6F]">
+                      Add ingredients on the Inventory page first, then they'll show up here.
+                    </p>
+                  )}
                 </div>
 
                 {/* Ingredients List */}
                 {ingredients.length > 0 && (
                   <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {ingredients.map((ing) => (
-                      <div key={ing.id} className="flex justify-between items-center bg-[#FBF7F0] p-2 rounded-lg border border-[#E4D8C9]">
-                        <div className="flex-1">
-                          <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
-                          <p className="text-[10px] text-[#755B4C]">
-                            {ing.amount} {ing.unit} {ing.price && `• $${ing.price}`}
-                          </p>
+                    {ingredients.map((ing) => {
+                      const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
+                      return (
+                        <div key={ing.id} className="flex justify-between items-center bg-[#FBF7F0] p-2 rounded-lg border border-[#E4D8C9]">
+                          <div className="flex-1">
+                            <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
+                            <p className="text-[10px] text-[#755B4C]">
+                              {ing.quantity_g}g{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeIngredient(ing.id)}
+                            className="ml-2 text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition"
+                          >
+                            ✕
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => removeIngredient(ing.id)}
-                          className="ml-2 text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -985,11 +1022,16 @@ function EditRecipeDrawer({
 }) {
   type RecipeFormIngredient = {
     id: string;
+    inventory_id: number;
     name: string;
-    amount: string;
-    unit: string;
-    weight_g: number;
-    price: string;
+    quantity_g: number;
+    unit_price_cents: number | null;
+  };
+
+  type InventoryOption = {
+    id: number;
+    name: string;
+    unit_price_cents: number | null;
   };
 
   const [form, setForm] = useState({
@@ -1008,27 +1050,40 @@ function EditRecipeDrawer({
   const [ingredients, setIngredients] = useState<RecipeFormIngredient[]>(
     recipe.ingredients?.map((ing) => ({
       id: ing.id?.toString() || Date.now().toString(),
+      inventory_id: ing.inventory_id,
       name: ing.name || "",
-      amount: "",
-      unit: "g",
-      weight_g: ing.quantity_g || 0,
-      price: ing.price_per_pound?.toString() || "",
+      quantity_g: ing.quantity_g || 0,
+      unit_price_cents: ing.unit_price_cents ?? null,
     })) || []
   );
 
-  const [newIngredient, setNewIngredient] = useState<RecipeFormIngredient>({
-    id: "",
-    name: "",
-    amount: "",
-    unit: "g",
-    weight_g: 0,
-    price: "",
-  });
+  const [inventoryOptions, setInventoryOptions] = useState<InventoryOption[]>([]);
+  const [selectedInventoryId, setSelectedInventoryId] = useState<string>("");
+  const [newQuantityG, setNewQuantityG] = useState<string>("");
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const token = localStorage.getItem("token");
   const apiUrl = import.meta.env.VITE_API_BASE_URL;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const response = await axios.get(`${apiUrl}/api/inventory`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setInventoryOptions(
+          (response.data.data || []).map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            unit_price_cents: item.unit_price_cents,
+          }))
+        );
+      } catch (err) {
+        console.error("Error fetching inventory options:", err);
+      }
+    })();
+  }, []);
 
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -1036,21 +1091,43 @@ function EditRecipeDrawer({
   }
 
   const addIngredient = () => {
-    if (!newIngredient.name.trim() || !newIngredient.weight_g) {
-      alert("Please fill in ingredient name and weight");
+    const inventoryId = parseInt(selectedInventoryId, 10);
+    const quantityG = parseFloat(newQuantityG);
+
+    if (!inventoryId || !quantityG || quantityG <= 0) {
+      alert("Please select an ingredient and enter a quantity in grams");
       return;
     }
-    setIngredients([...ingredients, { ...newIngredient, id: Date.now().toString() }]);
-    setNewIngredient({ id: "", name: "", amount: "", unit: "g", weight_g: 0, price: "" });
+
+    const option = inventoryOptions.find((o) => o.id === inventoryId);
+    if (!option) return;
+
+    setIngredients([
+      ...ingredients,
+      {
+        id: Date.now().toString(),
+        inventory_id: option.id,
+        name: option.name,
+        quantity_g: quantityG,
+        unit_price_cents: option.unit_price_cents,
+      },
+    ]);
+    setSelectedInventoryId("");
+    setNewQuantityG("");
   };
 
   const removeIngredient = (id: string) => {
     setIngredients(ingredients.filter((ing) => ing.id !== id));
   };
 
-  const updateIngredient = (id: string, updates: Partial<RecipeFormIngredient>) => {
+  const estimatedCostCents = (unitPriceCents: number | null, quantityG: number) => {
+    if (!unitPriceCents) return null;
+    return Math.round((unitPriceCents / 453.592) * quantityG);
+  };
+
+  const updateIngredientQuantity = (id: string, quantityG: number) => {
     setIngredients(
-      ingredients.map((ing) => (ing.id === id ? { ...ing, ...updates } : ing))
+      ingredients.map((ing) => (ing.id === id ? { ...ing, quantity_g: quantityG } : ing))
     );
   };
 
@@ -1075,6 +1152,10 @@ function EditRecipeDrawer({
           fat_g: form.fat_g,
           instructions: form.instructions || null,
           image: form.image || null,
+          ingredients: ingredients.map((ing) => ({
+            inventory_id: ing.inventory_id,
+            quantity_g: ing.quantity_g,
+          })),
         },
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -1242,50 +1323,59 @@ function EditRecipeDrawer({
                 {/* Existing Ingredients */}
                 {ingredients.length > 0 && (
                   <div className="space-y-1 max-h-40 overflow-y-auto pb-2 border-b border-[#D8CDBE]">
-                    {ingredients.map((ing) => (
-                      <div key={ing.id} className="flex justify-between items-center bg-[#FBF7F0] p-2 rounded-lg border border-[#E4D8C9]">
-                        <div className="flex-1">
-                          <input
-                            type="text"
-                            value={ing.name}
-                            onChange={(e) => updateIngredient(ing.id, { name: e.target.value })}
-                            className="w-full text-xs font-bold text-[#4B2B1D] bg-transparent outline-none"
-                            placeholder="Ingredient name"
-                          />
-                          <input
-                            type="number"
-                            value={ing.weight_g}
-                            onChange={(e) => updateIngredient(ing.id, { weight_g: Number(e.target.value) })}
-                            className="w-full text-[10px] text-[#755B4C] bg-transparent outline-none mt-0.5"
-                            placeholder="Weight in g"
-                          />
+                    {ingredients.map((ing) => {
+                      const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
+                      return (
+                        <div key={ing.id} className="flex justify-between items-center bg-[#FBF7F0] p-2 rounded-lg border border-[#E4D8C9]">
+                          <div className="flex-1">
+                            <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <input
+                                type="number"
+                                value={ing.quantity_g}
+                                onChange={(e) => updateIngredientQuantity(ing.id, Number(e.target.value))}
+                                className="w-16 text-[10px] text-[#755B4C] bg-white border border-[#D8CDBE] rounded px-1 outline-none"
+                              />
+                              <span className="text-[10px] text-[#755B4C]">
+                                g{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeIngredient(ing.id)}
+                            className="ml-2 text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition"
+                          >
+                            ✕
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => removeIngredient(ing.id)}
-                          className="ml-2 text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
                 {/* Add New Ingredient */}
                 <div className="space-y-2">
-                  <input
-                    type="text"
-                    value={newIngredient.name}
-                    onChange={(e) => setNewIngredient({ ...newIngredient, name: e.target.value })}
-                    placeholder="Add ingredient name"
+                  <select
+                    value={selectedInventoryId}
+                    onChange={(e) => setSelectedInventoryId(e.target.value)}
                     className="h-8 w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2 text-xs font-medium text-[#4B2B1D] outline-none focus:border-[#3E6594]"
-                  />
+                  >
+                    <option value="">
+                      {inventoryOptions.length === 0 ? "No inventory items yet" : "Select an ingredient..."}
+                    </option>
+                    {inventoryOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
+                        {opt.unit_price_cents != null ? ` — $${(opt.unit_price_cents / 100).toFixed(2)}/lb` : " — no price set"}
+                      </option>
+                    ))}
+                  </select>
                   <input
                     type="number"
-                    value={newIngredient.weight_g}
-                    onChange={(e) => setNewIngredient({ ...newIngredient, weight_g: Number(e.target.value) })}
-                    placeholder="Weight (g)"
+                    value={newQuantityG}
+                    onChange={(e) => setNewQuantityG(e.target.value)}
+                    placeholder="Quantity (g)"
                     className="h-8 w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2 text-xs font-medium text-[#4B2B1D] outline-none focus:border-[#3E6594]"
                   />
                   <button
@@ -1466,9 +1556,9 @@ function RecipeDetailsDrawer({
                           <p className="text-sm font-extrabold text-[#16813D]">
                             ${(ing.ingredient_cost_cents / 100).toFixed(2)}
                           </p>
-                          {ing.price_per_pound && typeof ing.price_per_pound === 'number' && (
+                          {ing.unit_price_cents && typeof ing.unit_price_cents === 'number' && (
                             <p className="text-xs text-[#755B4C]">
-                              ${ing.price_per_pound.toFixed(2)}/lb
+                              ${(ing.unit_price_cents / 100).toFixed(2)}/lb
                             </p>
                           )}
                         </>
