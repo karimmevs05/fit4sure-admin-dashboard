@@ -254,9 +254,10 @@ export default function Fit4SureRecipesPage() {
         />
       )}
 
-      {editingRecipe && (
+     {editingRecipe && (
         <EditRecipeDrawer
           recipe={editingRecipe}
+          onClose={() => setEditingRecipe(null)}
           onSave={() => {
             fetchRecipes();
           }}
@@ -264,10 +265,6 @@ export default function Fit4SureRecipesPage() {
           saveDrafts={saveDrafts}
         />
       )}
-    </main>
-  );
-}
-
 function Header({
   search,
   setSearch,
