@@ -401,7 +401,7 @@ function FinancialsPage() {
           const base64Image = imageDataUrl.split(',')[1]
 
           // Call GoHighLevel receipt parser endpoint
-          const response = await fetch('http://localhost:3000/api/admin/task-management-test/parse-receipt', {
+          const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/task-management-test/parse-receipt`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -463,7 +463,7 @@ function FinancialsPage() {
 
     try {
       const token = localStorage.getItem('token')
-      const apiUrl = 'http://localhost:3000'
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
 
       // Call backend to save products and expenses
       const response = await fetch(`${apiUrl}/api/admin/expenses/save-receipt-items`, {
@@ -518,7 +518,7 @@ function FinancialsPage() {
       setProcessingStatus('Loading receipts from Google Drive...')
 
       const token = localStorage.getItem('token')
-      const apiUrl = 'http://localhost:3000'
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
 
       const response = await fetch(`${apiUrl}/api/admin/receipt-read/pending`, {
         method: 'GET',
@@ -590,7 +590,7 @@ function FinancialsPage() {
       }
 
       const token = localStorage.getItem('token')
-      const apiUrl = 'http://localhost:3000'
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
 
       const validItems = manualItems.filter(item => item.productName && item.amount > 0)
 
@@ -638,7 +638,7 @@ function FinancialsPage() {
     try {
       setSyncInProgress(true)
       const token = localStorage.getItem('token')
-      const apiUrl = 'http://localhost:3000'
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
 
       const response = await fetch(`${apiUrl}/api/admin/receipt-sync/process`, {
         method: 'POST',
@@ -737,7 +737,7 @@ function FinancialsPage() {
 
     try {
       const token = localStorage.getItem('token')
-      const apiUrl = 'http://localhost:3000'
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
 
       // Filter out empty items
       const validItems = screenshotItems.filter(item => item.productName && item.amount > 0)
