@@ -18,15 +18,9 @@ type InventoryItem = {
   category: string
   store: string | null
   grade: string | null
-  net_weight_g: number | null
-  price_per_pound: number | null
+  unit_price_cents: number | null
   serving_size_g: number | string
-  servings_per_container: number | null
-  price_total_cents: number
-  price_per_serving_cents: number
-  date_purchased: string | null
-  unit_price_cents?: number
-  current_stock_g?: number
+  current_stock_g: number | null
   protein_per_100g?: number | null
   carbs_per_100g?: number | null
   fat_per_100g?: number | null
@@ -162,22 +156,13 @@ export default function InventoryPage() {
                       Grade
                     </th>
                     <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">
-                      Net Weight
-                    </th>
-                    <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">
                       Price/lb
                     </th>
                     <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">
                       Serving Size
                     </th>
                     <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">
-                      Price/Serving
-                    </th>
-                    <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">
-                      Total Price
-                    </th>
-                    <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">
-                      Last Purchased
+                      Current Stock
                     </th>
                     <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">
                       Protein (g)
@@ -217,17 +202,8 @@ export default function InventoryPage() {
                         {item.grade || '-'}
                       </td>
                       <td className="px-4 py-3 text-right text-[#755B4C]">
-                        {item.net_weight_g
-                          ? typeof item.net_weight_g === 'string'
-                            ? `${parseFloat(item.net_weight_g).toFixed(1)}g`
-                            : `${item.net_weight_g.toFixed(1)}g`
-                          : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-right text-[#755B4C]">
-                        {item.price_per_pound
-                          ? typeof item.price_per_pound === 'string'
-                            ? `$${parseFloat(item.price_per_pound).toFixed(2)}`
-                            : `$${item.price_per_pound.toFixed(2)}`
+                        {item.unit_price_cents != null
+                          ? `$${(item.unit_price_cents / 100).toFixed(2)}`
                           : '-'}
                       </td>
                       <td className="px-4 py-3 text-right text-[#755B4C]">
@@ -235,14 +211,10 @@ export default function InventoryPage() {
                           ? `${(parseFloat(String(item.serving_size_g)) / 28.3495).toFixed(1)}oz`
                           : `${parseFloat(String(item.serving_size_g)).toFixed(1)}g`}
                       </td>
-                      <td className="px-4 py-3 text-right font-extrabold text-[#16813D]">
-                        ${(item.price_per_serving_cents / 100).toFixed(2)}
-                      </td>
                       <td className="px-4 py-3 text-right text-[#755B4C]">
-                        ${(item.price_total_cents / 100).toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-[#755B4C] text-xs">
-                        {formatDate(item.date_purchased)}
+                        {item.current_stock_g != null
+                          ? `${parseFloat(String(item.current_stock_g)).toFixed(0)}g`
+                          : '-'}
                       </td>
                       <td className="px-4 py-3 text-center text-[#755B4C] text-sm">
                         {item.protein_per_100g ? parseFloat(String(item.protein_per_100g)).toFixed(1) : '-'}
@@ -288,7 +260,7 @@ export default function InventoryPage() {
 
       <AddIngredientDrawer
         open={drawerOpen}
-        editingId={editingId}
+        editingItem={items.find((i) => i.id === editingId) || null}
         onClose={() => {
           setDrawerOpen(false)
           setEditingId(null)
@@ -390,30 +362,56 @@ function Header({
 
 function AddIngredientDrawer({
   open,
-  editingId,
+  editingItem,
   onClose,
 }: {
   open: boolean
-  editingId: number | null
+  editingItem: InventoryItem | null
   onClose: () => void
 }) {
-  const [formData, setFormData] = useState({
+  const editingId = editingItem?.id ?? null
+
+  const blankForm = {
     name: '',
     category: 'Protein',
     store: '',
     grade: '',
-    net_weight_g: '',
     price_per_pound: '',
     serving_size_g: '',
-    servings_per_container: '',
-    price_total_cents: '',
-    price_per_serving_cents: '',
-    date_purchased: '',
+    current_stock_g: '',
     protein_per_100g: null as number | null,
     carbs_per_100g: null as number | null,
     fat_per_100g: null as number | null,
     calories_per_100g: null as number | null,
-  })
+  }
+
+  const [formData, setFormData] = useState(blankForm)
+
+  // Pre-fill the form when opening for an existing item; reset to blank for a new one
+  useEffect(() => {
+    if (editingItem) {
+      setFormData({
+        name: editingItem.name || '',
+        category: editingItem.category || 'Protein',
+        store: editingItem.store || '',
+        grade: editingItem.grade || '',
+        price_per_pound:
+          editingItem.unit_price_cents != null
+            ? (editingItem.unit_price_cents / 100).toFixed(2)
+            : '',
+        serving_size_g: editingItem.serving_size_g?.toString() || '',
+        current_stock_g: editingItem.current_stock_g?.toString() || '',
+        protein_per_100g: editingItem.protein_per_100g ?? null,
+        carbs_per_100g: editingItem.carbs_per_100g ?? null,
+        fat_per_100g: editingItem.fat_per_100g ?? null,
+        calories_per_100g: editingItem.calories_per_100g ?? null,
+      })
+    } else if (open) {
+      setFormData(blankForm)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingItem, open])
+
   const [loading, setLoading] = useState(false)
 
   const token = localStorage.getItem('token')
@@ -424,68 +422,32 @@ function AddIngredientDrawer({
     setLoading(true)
 
     try {
-      if (editingId) {
-        await axios.put(
-          `${apiUrl}/api/inventory/${editingId}`,
-          {
-            name: formData.name,
-            category: formData.category,
-            store: formData.store || null,
-            grade: formData.grade || null,
-            net_weight_g: formData.net_weight_g ? parseFloat(formData.net_weight_g) : null,
-            price_per_pound: formData.price_per_pound ? parseFloat(formData.price_per_pound) : null,
-            serving_size_g: parseFloat(formData.serving_size_g) || 0,
-            servings_per_container: formData.servings_per_container ? parseFloat(formData.servings_per_container) : null,
-            price_total_cents: parseInt(formData.price_total_cents) || 0,
-            price_per_serving_cents: parseInt(formData.price_per_serving_cents) || 0,
-            date_purchased: formData.date_purchased || null,
-            protein_per_100g: formData.protein_per_100g,
-            carbs_per_100g: formData.carbs_per_100g,
-            fat_per_100g: formData.fat_per_100g,
-            calories_per_100g: formData.calories_per_100g,
-          },
-          { headers: { Authorization: `Bearer ${token}` } }
-        )
-      } else {
-        await axios.post(
-          `${apiUrl}/api/inventory`,
-          {
-            name: formData.name,
-            category: formData.category,
-            store: formData.store || null,
-            grade: formData.grade || null,
-            net_weight_g: formData.net_weight_g ? parseFloat(formData.net_weight_g) : null,
-            price_per_pound: formData.price_per_pound ? parseFloat(formData.price_per_pound) : null,
-            serving_size_g: parseFloat(formData.serving_size_g) || 0,
-            servings_per_container: formData.servings_per_container ? parseFloat(formData.servings_per_container) : null,
-            price_total_cents: parseInt(formData.price_total_cents) || 0,
-            price_per_serving_cents: parseInt(formData.price_per_serving_cents) || 0,
-            date_purchased: formData.date_purchased || null,
-            protein_per_100g: formData.protein_per_100g,
-            carbs_per_100g: formData.carbs_per_100g,
-            fat_per_100g: formData.fat_per_100g,
-            calories_per_100g: formData.calories_per_100g,
-          },
-          { headers: { Authorization: `Bearer ${token}` } }
-        )
+      const payload = {
+        name: formData.name,
+        category: formData.category,
+        store: formData.store || null,
+        grade: formData.grade || null,
+        unit_price_cents: formData.price_per_pound
+          ? Math.round(parseFloat(formData.price_per_pound) * 100)
+          : undefined,
+        serving_size_g: parseFloat(formData.serving_size_g) || 0,
+        current_stock_g: formData.current_stock_g ? parseFloat(formData.current_stock_g) : 0,
+        protein_per_100g: formData.protein_per_100g,
+        carbs_per_100g: formData.carbs_per_100g,
+        fat_per_100g: formData.fat_per_100g,
+        calories_per_100g: formData.calories_per_100g,
       }
-      setFormData({
-        name: '',
-        category: 'Protein',
-        store: '',
-        grade: '',
-        net_weight_g: '',
-        price_per_pound: '',
-        serving_size_g: '',
-        servings_per_container: '',
-        price_total_cents: '',
-        price_per_serving_cents: '',
-        date_purchased: '',
-        protein_per_100g: null,
-        carbs_per_100g: null,
-        fat_per_100g: null,
-        calories_per_100g: null,
-      })
+
+      if (editingId) {
+        await axios.put(`${apiUrl}/api/inventory/${editingId}`, payload, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      } else {
+        await axios.post(`${apiUrl}/api/inventory`, payload, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      }
+      setFormData(blankForm)
       onClose()
     } catch (err: any) {
       console.error('Error:', err)
@@ -590,22 +552,6 @@ function AddIngredientDrawer({
 
           <div>
             <label className="block text-sm font-bold text-[#4B2B1D] mb-2">
-              Net Weight (g)
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={formData.net_weight_g}
-              onChange={(e) =>
-                setFormData({ ...formData, net_weight_g: e.target.value })
-              }
-              placeholder="454"
-              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#9A8774] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-bold text-[#4B2B1D] mb-2">
               Price per Pound ($)
             </label>
             <input
@@ -639,74 +585,17 @@ function AddIngredientDrawer({
 
           <div>
             <label className="block text-sm font-bold text-[#4B2B1D] mb-2">
-              Servings per Container
+              Current Stock (g)
             </label>
             <input
               type="number"
               step="0.1"
-              value={formData.servings_per_container}
+              value={formData.current_stock_g}
               onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  servings_per_container: e.target.value,
-                })
+                setFormData({ ...formData, current_stock_g: e.target.value })
               }
-              placeholder="3.2"
+              placeholder="0"
               className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#9A8774] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-bold text-[#4B2B1D] mb-2">
-              Total Price ($) *
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={formData.price_total_cents}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  price_total_cents: (parseFloat(e.target.value) * 100).toString(),
-                })
-              }
-              placeholder="5.98"
-              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#9A8774] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-bold text-[#4B2B1D] mb-2">
-              Price per Serving ($) *
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={formData.price_per_serving_cents}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  price_per_serving_cents: (parseFloat(e.target.value) * 100).toString(),
-                })
-              }
-              placeholder="2.43"
-              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#9A8774] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-bold text-[#4B2B1D] mb-2">
-              Last Purchased
-            </label>
-            <input
-              type="date"
-              value={formData.date_purchased}
-              onChange={(e) =>
-                setFormData({ ...formData, date_purchased: e.target.value })
-              }
-              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
             />
           </div>
 
