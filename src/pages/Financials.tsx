@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { DollarSign, TrendingUp, Activity, ChevronDown, ChevronUp, Plus, Trash2, Edit2, Check, X, Upload, Loader } from 'lucide-react'
 // Removed Tesseract - using GoHighLevel API instead
 
@@ -126,12 +126,8 @@ function FinancialsPage() {
     receiptScanner: false,
   })
 
-  const [expenses, setExpenses] = useState<Expense[]>([
-    { id: '1', date: '2026-07-05', vendor: 'Local Produce Co', category: 'food_cogs', description: 'Weekly vegetables and proteins', amount: 245.50, status: 'reconciled' },
-    { id: '2', date: '2026-07-06', vendor: 'Packaging Plus', category: 'packaging', description: 'Food containers (500 units)', amount: 125.00, status: 'reconciled' },
-    { id: '3', date: '2026-07-08', vendor: 'Delivery Partner', category: 'delivery', description: 'Tuesday delivery service', amount: 85.50, status: 'approved' },
-    { id: '4', date: '2026-07-12', vendor: 'Farmers Market', category: 'food_cogs', description: 'Weekly ingredients', amount: 198.75, status: 'pending' },
-  ])
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [expensesLoading, setExpensesLoading] = useState(true)
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState<Partial<Expense>>({
@@ -168,6 +164,37 @@ function FinancialsPage() {
   const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const screenshotInputRef = useRef<HTMLInputElement>(null)
+
+  const fetchExpenses = async () => {
+    try {
+      setExpensesLoading(true)
+      const token = localStorage.getItem('token')
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
+      const response = await fetch(`${apiUrl}/api/admin/expenses`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (!response.ok) throw new Error('Failed to fetch expenses')
+      const data = await response.json()
+      const rows: Expense[] = (data.data || []).map((row: any) => ({
+        id: String(row.id),
+        date: row.date,
+        vendor: row.vendor,
+        category: row.category,
+        description: row.description,
+        amount: parseFloat(row.amount),
+        status: row.status,
+      }))
+      setExpenses(rows)
+    } catch (err) {
+      console.error('Error fetching expenses:', err)
+    } finally {
+      setExpensesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchExpenses()
+  }, [])
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => ({
@@ -487,24 +514,12 @@ function FinancialsPage() {
       console.log('Saved products:', result.data.productsAdded)
       console.log('Created expenses:', result.data.expensesCreated)
 
-      // Also add to local state for immediate display
-      const newExpenses = scannedReceipt.items.map((item, idx) => ({
-        id: `receipt-${Date.now()}-${idx}`,
-        date: new Date().toISOString().split('T')[0],
-        vendor: scannedReceipt.vendor,
-        category: item.category,
-        description: item.productName || item.description,
-        amount: item.amount,
-        status: 'pending' as const,
-        receiptId: `receipt-${Date.now()}`,
-      }))
-
-      setExpenses([...expenses, ...newExpenses])
+      await fetchExpenses()
       setScannedReceipt(null)
       setExpandedSections(prev => ({ ...prev, receiptScanner: false }))
 
       // Show success message
-      alert(`✓ Added ${scannedReceipt.items.length} products to database and created ${newExpenses.length} expenses`)
+      alert(`✓ Added ${result.data.productsAdded} products to database and created ${result.data.expensesCreated} expenses`)
     } catch (error) {
       console.error('Error saving receipt:', error)
       alert(`Error: ${error instanceof Error ? error.message : 'Failed to save receipt'}`)
@@ -655,6 +670,9 @@ function FinancialsPage() {
 
       const data = await response.json()
       setSyncResult(data.data)
+      if (data.data.processed > 0) {
+        await fetchExpenses()
+      }
       if (data.data.failed > 0) {
         alert(`Sync complete: ${data.data.processed} processed, ${data.data.failed} failed. See "Why these failed" below for details.`)
       } else {
@@ -771,18 +789,7 @@ function FinancialsPage() {
 
       const result = await response.json()
 
-      // Add to local expenses
-      const newExpenses = validItems.map((item, idx) => ({
-        id: `screenshot-${Date.now()}-${idx}`,
-        date: new Date().toISOString().split('T')[0],
-        vendor: screenshotVendor,
-        category: item.category,
-        description: item.productName,
-        amount: item.amount,
-        status: 'pending' as const,
-      }))
-
-      setExpenses([...expenses, ...newExpenses])
+      await fetchExpenses()
       setShowScreenshotForm(false)
       setScreenshotItems([])
       setScreenshotVendor('')
@@ -795,38 +802,83 @@ function FinancialsPage() {
     }
   }
 
-  const addExpense = () => {
+  const addExpense = async () => {
     if (!formData.vendor || !formData.amount) return
 
-    const newExpense: Expense = {
-      id: Date.now().toString(),
-      date: formData.date || new Date().toISOString().split('T')[0],
-      vendor: formData.vendor || '',
-      category: formData.category || 'food_cogs',
-      description: formData.description || '',
-      amount: formData.amount || 0,
-      status: formData.status || 'pending',
+    try {
+      const token = localStorage.getItem('token')
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
+      const response = await fetch(`${apiUrl}/api/admin/expenses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          date: formData.date || new Date().toISOString().split('T')[0],
+          vendor: formData.vendor,
+          category: formData.category || 'food_cogs',
+          description: formData.description || '',
+          amount: formData.amount,
+          status: formData.status || 'pending',
+        })
+      })
+      if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.error || 'Failed to add expense')
+      }
+      await fetchExpenses()
+      setFormData({
+        date: new Date().toISOString().split('T')[0],
+        vendor: '',
+        category: 'food_cogs',
+        description: '',
+        amount: 0,
+        status: 'pending',
+      })
+      setExpandedSections(prev => ({ ...prev, expenseForm: false }))
+    } catch (err) {
+      console.error('Error adding expense:', err)
+      alert(`Error: ${err instanceof Error ? err.message : 'Failed to add expense'}`)
     }
-
-    setExpenses([...expenses, newExpense])
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      vendor: '',
-      category: 'food_cogs',
-      description: '',
-      amount: 0,
-      status: 'pending',
-    })
-    setExpandedSections(prev => ({ ...prev, expenseForm: false }))
   }
 
-  const updateExpense = (id: string, updates: Partial<Expense>) => {
-    setExpenses(expenses.map(e => e.id === id ? { ...e, ...updates } : e))
-    setEditingId(null)
+  const updateExpense = async (id: string, updates: Partial<Expense>) => {
+    try {
+      const token = localStorage.getItem('token')
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
+      const response = await fetch(`${apiUrl}/api/admin/expenses/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(updates)
+      })
+      if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.error || 'Failed to update expense')
+      }
+      await fetchExpenses()
+      setEditingId(null)
+    } catch (err) {
+      console.error('Error updating expense:', err)
+      alert(`Error: ${err instanceof Error ? err.message : 'Failed to update expense'}`)
+    }
   }
 
-  const deleteExpense = (id: string) => {
-    setExpenses(expenses.filter(e => e.id !== id))
+  const deleteExpense = async (id: string) => {
+    if (!confirm('Delete this expense?')) return
+    try {
+      const token = localStorage.getItem('token')
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
+      const response = await fetch(`${apiUrl}/api/admin/expenses/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.error || 'Failed to delete expense')
+      }
+      await fetchExpenses()
+    } catch (err) {
+      console.error('Error deleting expense:', err)
+      alert(`Error: ${err instanceof Error ? err.message : 'Failed to delete expense'}`)
+    }
   }
 
   const expensesByCategory = expenses.reduce((acc, exp) => {
