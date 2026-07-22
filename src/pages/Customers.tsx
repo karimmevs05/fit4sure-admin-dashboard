@@ -98,8 +98,8 @@ export default function CustomersPage() {
       // Only never-ordered prospects
       result = result.filter(c => c.sales_pipeline_stage === 'prospect')
     } else if (activeTab === 'at_risk') {
-      // Active customers showing signs of churning
-      result = result.filter(c => c.sales_pipeline_stage === 'at_risk')
+      // Labeled "Lost Prospects" in the UI -- past customers who stopped ordering
+      result = result.filter(c => c.sales_pipeline_stage === 'churned')
     }
 
     if (searchTerm) {
@@ -485,7 +485,7 @@ export default function CustomersPage() {
                 <div>
                   <p className="text-xs text-[#755B4C]">Lost Prospects</p>
                   <p className="text-3xl font-extrabold text-[#C97C34] mt-2">
-                    {customers.filter(c => c.sales_pipeline_stage === 'prospect_lost').length}
+                    {customers.filter(c => c.sales_pipeline_stage === 'churned').length}
                   </p>
                 </div>
                 <div className="h-12 w-12 rounded-full bg-[#FFE9E0] flex items-center justify-center text-xl">🟡</div>
