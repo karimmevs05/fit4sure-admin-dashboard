@@ -372,7 +372,7 @@ function ThisWeekTab({
               <div key={customer.id} className="flex items-center justify-between rounded-lg bg-white p-3 border border-[#E4D8C9]">
                 <div>
                   <p className="font-semibold text-[#4B2B1D] text-sm">{customer.name}</p>
-                  {customer.lastOrder.length > 0 ? (
+                  {(customer.lastOrder?.length ?? 0) > 0 ? (
                     <p className="text-xs text-[#755B4C] mt-0.5">
                       Last time: {customer.lastOrder.map((l) => `${l.menu_name} (${l.quantity})`).join(', ')}
                     </p>
@@ -765,7 +765,7 @@ function AddOrderModal({
 }) {
   const [customerName, setCustomerName] = useState(prefillCustomer?.name || '')
   const [items, setItems] = useState<Array<{ mealName: string; category: string; quantity: string; dayOfWeek: string }>>(
-    prefillCustomer && prefillCustomer.lastOrder.length > 0
+    prefillCustomer && (prefillCustomer.lastOrder?.length ?? 0) > 0
       ? prefillCustomer.lastOrder.map((l) => ({
           mealName: l.menu_name,
           category: l.category || 'Regular',
