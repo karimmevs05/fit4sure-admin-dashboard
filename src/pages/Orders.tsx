@@ -117,10 +117,10 @@ export default function OrdersPage() {
 
   const currentWeekLabel = useMemo(() => {
     const now = new Date()
-    const day = now.getDay()
-    const monday = new Date(now)
-    monday.setDate(now.getDate() - ((day + 6) % 7))
-    return `Week of ${monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+    const day = now.getDay() // 0 = Sunday
+    const sunday = new Date(now)
+    sunday.setDate(now.getDate() - day)
+    return `Week of ${sunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
   }, [])
 
   const deleteLine = async (line: OrderLine) => {
@@ -675,7 +675,7 @@ function HistoryTab({ history }: { history: HistoryData }) {
             {history.map((week, idx) => (
               <tr key={idx} className="border-b border-[#E4D8C9] hover:bg-[#F8F2E8] transition">
                 <td className="px-4 py-3 font-medium text-[#4B2B1D]">
-                  {new Date(week.week).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  {new Date(week.week).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
                 </td>
                 <td className="px-4 py-3 text-center font-bold text-[#2E527F]">{week.totalMeals}</td>
                 <td className="px-4 py-3 text-center text-[#755B4C]">{week.customers}</td>
@@ -723,7 +723,7 @@ function InsightsTab({ insights }: { insights: InsightsData }) {
               <p className="text-xs text-[#755B4C]">Peak Week</p>
               <p className="text-2xl font-extrabold text-[#2E527F]">{metrics.peakWeekMeals} meals</p>
               <p className="text-xs text-[#755B4C]">
-                {metrics.peakWeek ? new Date(metrics.peakWeek).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}
+                {metrics.peakWeek ? new Date(metrics.peakWeek).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : 'N/A'}
               </p>
             </div>
             <BarChart3 className="h-8 w-8 text-[#D97706]" />
