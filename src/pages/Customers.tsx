@@ -280,7 +280,7 @@ export default function CustomersPage() {
                   }}
                   className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4 hover:shadow-md transition cursor-pointer"
                 >
-                  <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-start">
+                  <div className="grid grid-cols-1 md:grid-cols-8 gap-4 items-start">
                     {/* Name & Stage */}
                     <div className="md:col-span-2">
                       <h3 className="font-extrabold text-[#4B2B1D] text-lg">{customer.name}</h3>
@@ -308,6 +308,18 @@ export default function CustomersPage() {
                           <span className="text-xs">{customer.phone}</span>
                         </div>
                       )}
+                    </div>
+
+                    {/* Total Meals */}
+                    <div className="rounded-lg bg-white p-2 text-center">
+                      <p className="text-[#755B4C] text-xs font-bold">Total Meals</p>
+                      <p className="text-lg font-extrabold text-[#2E527F] mt-1">{customer.total_meals_ordered || 0}</p>
+                    </div>
+
+                    {/* Lifetime Value */}
+                    <div className="rounded-lg bg-white p-2 text-center">
+                      <p className="text-[#755B4C] text-xs font-bold">Lifetime Value</p>
+                      <p className="text-lg font-extrabold text-[#16813D] mt-1">${getLifetimeValue(customer.lifetime_value_cents || 0)}</p>
                     </div>
 
                     {/* Engagement */}
