@@ -70,7 +70,7 @@ type InsightsData = {
   topCustomers: Array<{ id: number; name: string; weeks_active: number; total_meals_ordered: number }>
 }
 
-type Tab = 'this-week' | 'history' | 'insights'
+type Tab = 'this-week' | 'packing-sheet' | 'history' | 'insights'
 
 export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState<Tab>('this-week')
@@ -179,6 +179,14 @@ export default function OrdersPage() {
             This Week's Orders
           </button>
           <button
+            onClick={() => setActiveTab('packing-sheet')}
+            className={`px-4 py-3 text-sm font-extrabold transition ${
+              activeTab === 'packing-sheet' ? 'border-b-2 border-[#2E527F] text-[#2E527F]' : 'text-[#755B4C] hover:text-[#4B2B1D]'
+            }`}
+          >
+            Packing Sheet
+          </button>
+          <button
             onClick={() => setActiveTab('history')}
             className={`px-4 py-3 text-sm font-extrabold transition ${
               activeTab === 'history' ? 'border-b-2 border-[#2E527F] text-[#2E527F]' : 'text-[#755B4C] hover:text-[#4B2B1D]'
@@ -215,6 +223,7 @@ export default function OrdersPage() {
                 onDeleteLine={deleteLine}
               />
             )}
+            {activeTab === 'packing-sheet' && thisWeekData && <PackingSheetTab orders={thisWeekData.orders} />}
             {activeTab === 'history' && <HistoryTab history={historyData} />}
             {activeTab === 'insights' && insightsData && <InsightsTab insights={insightsData} />}
           </>
@@ -461,6 +470,152 @@ function ThisWeekTab({
                       {c.lines[0]?.source === 'form' ? 'Form' : 'Manual'}
                     </span>
                   </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PackingSheetTab({ orders }: { orders: OrderLine[] }) {
+  const CATEGORY_ORDER = ['Regular', 'Large', 'Breakfast', 'By The LB']
+
+  // Unique dishes, grouped by category in a consistent order
+  const dishes = useMemo(() => {
+    const seen = new Map<string, { menu_id: number; name: string; category: string }>()
+    for (const o of orders) {
+      const key = `${o.menu_id}`
+      if (!seen.has(key)) seen.set(key, { menu_id: o.menu_id, name: o.menu_name, category: o.category || 'Other' })
+    }
+    return Array.from(seen.values()).sort((a, b) => {
+      const catDiff = CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
+      if (catDiff !== 0) return catDiff
+      return a.name.localeCompare(b.name)
+    })
+  }, [orders])
+
+  // Unique clients, alphabetical
+  const clients = useMemo(() => {
+    const seen = new Map<number, string>()
+    for (const o of orders) seen.set(o.customer_id, o.customer_name)
+    return Array.from(seen.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [orders])
+
+  // quantity lookup: customer_id -> menu_id -> qty
+  const grid = useMemo(() => {
+    const map = new Map<number, Map<number, number>>()
+    for (const o of orders) {
+      if (!map.has(o.customer_id)) map.set(o.customer_id, new Map())
+      const row = map.get(o.customer_id)!
+      row.set(o.menu_id, (row.get(o.menu_id) || 0) + o.quantity)
+    }
+    return map
+  }, [orders])
+
+  // Column totals
+  const columnTotals = useMemo(() => {
+    const totals = new Map<number, number>()
+    for (const o of orders) totals.set(o.menu_id, (totals.get(o.menu_id) || 0) + o.quantity)
+    return totals
+  }, [orders])
+
+  // Delivery split by day x category
+  const deliverySplit = useMemo(() => {
+    const split: Record<string, Record<string, number>> = { monday: {}, thursday: {} }
+    for (const day of ['monday', 'thursday']) {
+      for (const cat of CATEGORY_ORDER) split[day][cat] = 0
+    }
+    for (const o of orders) {
+      const day = (o.day_of_week || '').toLowerCase()
+      const cat = o.category || 'Other'
+      if (split[day] && cat in split[day]) split[day][cat] += o.quantity
+    }
+    return split
+  }, [orders])
+
+  if (orders.length === 0) {
+    return (
+      <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-8 text-center">
+        <p className="text-[#755B4C]">No orders yet this week.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
+        <table className="text-xs border-collapse">
+          <thead>
+            <tr>
+              <th className="sticky left-0 bg-[#2E527F] text-white px-3 py-2 text-left font-extrabold z-10">Client</th>
+              {dishes.map((d) => (
+                <th key={d.menu_id} className="px-2 py-2 text-center font-bold text-white bg-[#2E527F] border-l border-[#3E6594] min-w-[90px]">
+                  <div className="truncate max-w-[100px]" title={d.name}>{d.name}</div>
+                  <div className="text-[9px] font-normal opacity-80">{d.category}</div>
+                </th>
+              ))}
+              <th className="px-3 py-2 text-center font-extrabold text-white bg-[#16813D] border-l border-[#3E6594]">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {clients.map((c, idx) => {
+              const row = grid.get(c.id)
+              const rowTotal = row ? Array.from(row.values()).reduce((a, b) => a + b, 0) : 0
+              return (
+                <tr key={c.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-[#F8F2E8]'}>
+                  <td className="sticky left-0 bg-inherit px-3 py-2 font-semibold text-[#4B2B1D] border-b border-[#E4D8C9]">
+                    {c.name}
+                  </td>
+                  {dishes.map((d) => (
+                    <td key={d.menu_id} className="px-2 py-2 text-center text-[#4B2B1D] border-b border-l border-[#E4D8C9]">
+                      {row?.get(d.menu_id) || 0}
+                    </td>
+                  ))}
+                  <td className="px-3 py-2 text-center font-extrabold text-[#16813D] bg-[#EAF5EC] border-b border-l border-[#E4D8C9]">
+                    {rowTotal}
+                  </td>
+                </tr>
+              )
+            })}
+            <tr className="bg-[#E4D8C9]">
+              <td className="sticky left-0 bg-[#E4D8C9] px-3 py-2 font-extrabold text-[#4B2B1D]">Total</td>
+              {dishes.map((d) => (
+                <td key={d.menu_id} className="px-2 py-2 text-center font-extrabold text-[#4B2B1D] border-l border-[#D8CDBE]">
+                  {columnTotals.get(d.menu_id) || 0}
+                </td>
+              ))}
+              <td className="px-3 py-2 text-center font-extrabold text-white bg-[#16813D] border-l border-[#D8CDBE]">
+                {Array.from(columnTotals.values()).reduce((a, b) => a + b, 0)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <h3 className="mb-2 font-bold text-[#4B2B1D]">Delivery Split By Category</h3>
+        <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[#E4D8C9]">
+                <th className="px-4 py-3 text-left font-extrabold text-[#4B2B1D]">Delivery Day</th>
+                {CATEGORY_ORDER.map((cat) => (
+                  <th key={cat} className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">{cat}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {['monday', 'thursday'].map((day) => (
+                <tr key={day} className="border-b border-[#E4D8C9]">
+                  <td className="px-4 py-3 font-semibold text-[#4B2B1D] capitalize">{day}</td>
+                  {CATEGORY_ORDER.map((cat) => (
+                    <td key={cat} className="px-4 py-3 text-center text-[#755B4C]">{deliverySplit[day][cat]}</td>
+                  ))}
                 </tr>
               ))}
             </tbody>
