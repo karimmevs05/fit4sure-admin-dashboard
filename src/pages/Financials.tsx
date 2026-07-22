@@ -116,6 +116,41 @@ interface ReceiptItem {
   productName?: string // User-assigned product name for database
 }
 
+function Section({
+  id,
+  title,
+  expandedSections,
+  toggleSection,
+  children,
+}: {
+  id: string
+  title: React.ReactNode
+  expandedSections: Record<string, boolean>
+  toggleSection: (id: string) => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-2xl border border-[#E8DCC8] bg-white overflow-hidden">
+      <button
+        onClick={() => toggleSection(id)}
+        className="w-full flex items-center justify-between p-6 hover:bg-[#FDFBF7] transition"
+      >
+        <h2 className="text-lg font-extrabold text-[#4B2B1D]">{title}</h2>
+        {expandedSections[id] ? (
+          <ChevronUp className="h-5 w-5 text-[#8B6F47]" />
+        ) : (
+          <ChevronDown className="h-5 w-5 text-[#8B6F47]" />
+        )}
+      </button>
+      {expandedSections[id] && (
+        <div className="border-t border-[#E8DCC8] p-6 space-y-4">
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function FinancialsPage() {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     weekly: true,
@@ -916,27 +951,6 @@ function FinancialsPage() {
   const totalMeals = week1.regularMeals + week1.largeMeals + week1.breakfastMeals + week2.regularMeals + week2.largeMeals + week2.breakfastMeals
   const netOperatingProfit = netRevenue - totalExpenses
 
-  const Section = ({ id, title, children }: any) => (
-    <div className="rounded-2xl border border-[#E8DCC8] bg-white overflow-hidden">
-      <button
-        onClick={() => toggleSection(id)}
-        className="w-full flex items-center justify-between p-6 hover:bg-[#FDFBF7] transition"
-      >
-        <h2 className="text-lg font-extrabold text-[#4B2B1D]">{title}</h2>
-        {expandedSections[id] ? (
-          <ChevronUp className="h-5 w-5 text-[#8B6F47]" />
-        ) : (
-          <ChevronDown className="h-5 w-5 text-[#8B6F47]" />
-        )}
-      </button>
-      {expandedSections[id] && (
-        <div className="border-t border-[#E8DCC8] p-6 space-y-4">
-          {children}
-        </div>
-      )}
-    </div>
-  )
-
   return (
     <main className="space-y-6 bg-[#FDFBF7] p-8">
       <div>
@@ -1002,7 +1016,7 @@ function FinancialsPage() {
       {/* Collapsible Sections */}
       <div className="space-y-4">
         {/* Receipt Scanner */}
-        <Section id="receiptScanner" title="📸 Log Receipts (Physical, Online & Google Drive)">
+        <Section id="receiptScanner" title="📸 Log Receipts (Physical, Online & Google Drive)" expandedSections={expandedSections} toggleSection={toggleSection}>
           {/* Tab Buttons */}
           <div className="flex gap-2 mb-4 border-b border-[#E8DCC8] flex-wrap">
             <button
@@ -1695,7 +1709,7 @@ function FinancialsPage() {
         </Section>
 
         {/* Expense Management */}
-        <Section id="expenses" title={`Expense Management (${expenses.length} expenses)`}>
+        <Section id="expenses" title={`Expense Management (${expenses.length} expenses)`} expandedSections={expandedSections} toggleSection={toggleSection}>
           <div className="space-y-4">
             {/* Summary by Category */}
             <div className="bg-[#FDFBF7] p-4 rounded-lg border border-[#E8DCC8]">
@@ -1721,7 +1735,7 @@ function FinancialsPage() {
             </div>
 
             {/* Add Expense Form */}
-            <Section id="expenseForm" title="Add New Expense">
+            <Section id="expenseForm" title="Add New Expense" expandedSections={expandedSections} toggleSection={toggleSection}>
               <div className="space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <input
@@ -1856,7 +1870,7 @@ function FinancialsPage() {
         </Section>
 
         {/* Weekly Breakdown */}
-        <Section id="weekly" title="Weekly Breakdown">
+        <Section id="weekly" title="Weekly Breakdown" expandedSections={expandedSections} toggleSection={toggleSection}>
           <div className="overflow-x-auto">
             <div className="space-y-3 min-w-min">
               {[week1, week2].map((week, idx) => (
@@ -1888,7 +1902,7 @@ function FinancialsPage() {
         </Section>
 
         {/* Meal Breakdown */}
-        <Section id="meals" title="Meal Breakdown by Type">
+        <Section id="meals" title="Meal Breakdown by Type" expandedSections={expandedSections} toggleSection={toggleSection}>
           <div className="overflow-x-auto">
             <div className="space-y-3 min-w-min">
               {[week1, week2].map((week, idx) => (
