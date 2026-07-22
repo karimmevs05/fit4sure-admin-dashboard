@@ -98,8 +98,8 @@ export default function CustomersPage() {
       // Only never-ordered prospects
       result = result.filter(c => c.sales_pipeline_stage === 'prospect')
     } else if (activeTab === 'at_risk') {
-      // Prospect_lost (past customers who haven't ordered recently)
-      result = result.filter(c => c.sales_pipeline_stage === 'prospect_lost')
+      // Active customers showing signs of churning
+      result = result.filter(c => c.sales_pipeline_stage === 'at_risk')
     }
 
     if (searchTerm) {
@@ -115,7 +115,15 @@ export default function CustomersPage() {
 
   const handleDeleteCustomer = async (customerId: number) => {
     if (!confirm('Are you sure you want to delete this customer?')) return
-    console.log('Delete customer:', customerId)
+    try {
+      await axios.delete(`${apiUrl}/api/admin/customers/${customerId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      await fetchCustomers()
+    } catch (error) {
+      console.error('Error deleting customer:', error)
+      alert('Failed to delete customer')
+    }
   }
 
   const handleSaveCustomer = async () => {
@@ -126,14 +134,15 @@ export default function CustomersPage() {
 
     try {
       if (editingCustomer?.id) {
-        // Update existing customer
-        console.log('Updating customer:', editingCustomer.id, formData)
-        // TODO: Implement API call to update customer
+        await axios.put(`${apiUrl}/api/admin/customers/${editingCustomer.id}`, formData, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
       } else {
-        // Create new customer
-        console.log('Creating new customer:', formData)
-        // TODO: Implement API call to create customer
+        await axios.post(`${apiUrl}/api/admin/customers`, formData, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
       }
+      await fetchCustomers()
       setEditingCustomer(null)
       setShowAddCustomer(false)
       setFormData({
