@@ -207,9 +207,11 @@ export default function InventoryPage() {
                           : '-'}
                       </td>
                       <td className="px-4 py-3 text-right text-[#755B4C]">
-                        {item.category === 'Protein'
-                          ? `${(parseFloat(String(item.serving_size_g)) / 28.3495).toFixed(1)}oz`
-                          : `${parseFloat(String(item.serving_size_g)).toFixed(1)}g`}
+                        {item.serving_size_g != null && item.serving_size_g !== '' && !isNaN(parseFloat(String(item.serving_size_g)))
+                          ? item.category === 'Protein'
+                            ? `${(parseFloat(String(item.serving_size_g)) / 28.3495).toFixed(1)}oz`
+                            : `${parseFloat(String(item.serving_size_g)).toFixed(1)}g`
+                          : '-'}
                       </td>
                       <td className="px-4 py-3 text-right text-[#755B4C]">
                         {item.current_stock_g != null
