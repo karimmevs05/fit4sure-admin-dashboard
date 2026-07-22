@@ -8,6 +8,7 @@ import {
   UtensilsCrossed,
   Search,
   Upload,
+  RefreshCw,
   Plus,
   X,
   Phone,
@@ -84,6 +85,7 @@ export default function OrdersPage() {
   const [showAddOrderModal, setShowAddOrderModal] = useState(false)
   const [prefillCustomer, setPrefillCustomer] = useState<NonResponder | null>(null)
   const [editingLine, setEditingLine] = useState<OrderLine | null>(null)
+  const [syncing, setSyncing] = useState(false)
 
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
@@ -133,6 +135,28 @@ export default function OrdersPage() {
     }
   }
 
+  const syncNow = async () => {
+    setSyncing(true)
+    try {
+      const response = await axios.post(
+        `${apiUrl}/api/admin/orders/sync-google-sheets`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      const { imported, duplicates, skipped } = response.data
+      alert(
+        `Sync complete: ${imported} new order lines` +
+        (duplicates ? `, ${duplicates} already up to date` : '') +
+        (skipped ? `, ${skipped} rows skipped (missing data)` : '')
+      )
+      fetchOrdersData()
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to sync Google Sheets')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   if (showPrepPage) {
     return <WeeklyPrepPage week={currentWeekLabel} onBack={() => setShowPrepPage(false)} />
   }
@@ -150,11 +174,19 @@ export default function OrdersPage() {
           View Weekly Prep
         </button>
         <button
+          onClick={syncNow}
+          disabled={syncing}
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#2E527F] px-6 text-sm font-bold text-white shadow-[0_8px_18px_rgba(46,82,127,0.18)] transition hover:bg-[#24466E] active:scale-[0.98] disabled:opacity-50"
+        >
+          <RefreshCw className={`h-5 w-5 ${syncing ? 'animate-spin' : ''}`} />
+          {syncing ? 'Syncing...' : 'Sync Now'}
+        </button>
+        <button
           onClick={() => setShowImportModal(true)}
           className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[#B9A88F] bg-[#FBF7F0] px-6 text-sm font-bold text-[#2E527F] transition hover:bg-[#EDF2F7]"
         >
           <Upload className="h-5 w-5" />
-          Import Form Responses
+          Paste Import (fallback)
         </button>
         <button
           onClick={() => {
@@ -754,9 +786,16 @@ function ImportModal({
     for (const line of lines) {
       const cols = line.split('\t')
       if (cols.length < 5) continue
-      const [, client, category, mealName, qty, notes] = cols
+      const [timestamp, client, category, mealName, qty, notes] = cols
       if (!client || !mealName || !qty) continue
-      rows.push({ client: client.trim(), category: category?.trim(), mealName: mealName.trim(), qty: qty.trim(), notes: notes?.trim() })
+      rows.push({
+        timestamp: timestamp?.trim(),
+        client: client.trim(),
+        category: category?.trim(),
+        mealName: mealName.trim(),
+        qty: qty.trim(),
+        notes: notes?.trim(),
+      })
     }
 
     if (rows.length === 0) {
@@ -771,7 +810,11 @@ function ImportModal({
         { rows },
         { headers: { Authorization: `Bearer ${token}` } }
       )
-      alert(`Imported ${response.data.imported} order lines`)
+      alert(
+        `Imported ${response.data.imported} new order lines` +
+        (response.data.duplicates ? ` (${response.data.duplicates} already imported, skipped)` : '') +
+        (response.data.skipped ? ` (${response.data.skipped} rows missing data)` : '')
+      )
       onImported()
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to import')
