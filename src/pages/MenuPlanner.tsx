@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
-import { Plus, Trash2, X } from 'lucide-react'
+import { Plus, Trash2, X, AlertTriangle } from 'lucide-react'
 
 type Recipe = {
   recipe_id: number
@@ -22,7 +22,11 @@ type PlanRecipe = {
   carbs_g: number
   fat_g: number
   cost_cents: number
+  raw_weight_g: number
+  cooked_weight_g: number
 }
+
+type LowStockWarning = { name: string; have_g: number; need_g: number }
 
 type Plate = {
   id: number
@@ -32,13 +36,41 @@ type Plate = {
   large_variant_of: number | null
   price: number
   recipes: PlanRecipe[]
-  totals: { calories: number; protein_g: number; carbs_g: number; fat_g: number; cost_cents: number }
+  totals: {
+    calories: number
+    protein_g: number
+    carbs_g: number
+    fat_g: number
+    cost_cents: number
+    raw_weight_g: number
+    cooked_weight_g: number
+  }
+  allergens: string[]
+  lowStockWarnings: LowStockWarning[]
+  profit: {
+    price_cents: number
+    cost_cents: number
+    profit_cents: number
+    margin_pct: number
+  }
 }
 
 type LastWeekMenu = { monday: string[]; thursday: string[] }
 
 // A recipe being added to the plate builder, with an editable servings qty
 type BuilderRecipe = { recipe: Recipe; servings: number }
+
+const ALLERGEN_LABELS: Record<string, string> = {
+  dairy: 'Dairy',
+  gluten: 'Gluten',
+  soy: 'Soy',
+  egg: 'Egg',
+  shellfish: 'Shellfish',
+  fish: 'Fish',
+  tree_nuts: 'Tree Nuts',
+  peanuts: 'Peanuts',
+  sesame: 'Sesame',
+}
 
 export default function MenuPlannerPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([])
@@ -168,7 +200,10 @@ export default function MenuPlannerPage() {
 
   // Live preview totals for the builder, computed from each recipe's real
   // per-serving macros/cost (already returned by /api/admin/recipes)
-  // scaled by the servings entered.
+  // scaled by the servings entered. Raw-basis only — real cooked weight
+  // and yield-corrected macros are computed server-side once the plate is
+  // saved, since that calc depends on cooking-method assignments per
+  // ingredient which aren't available to this lightweight preview.
   const builderTotals = useMemo(() => {
     return builderRecipes.reduce(
       (acc, br) => ({
@@ -187,6 +222,9 @@ export default function MenuPlannerPage() {
 
   const dayTotal = (day: 'monday' | 'thursday') =>
     platesByDay(day).reduce((sum, p) => sum + p.totals.cost_cents, 0)
+
+  const dayLowStockCount = (day: 'monday' | 'thursday') =>
+    platesByDay(day).reduce((sum, p) => sum + p.lowStockWarnings.length, 0)
 
   if (loading) {
     return (
@@ -408,7 +446,7 @@ export default function MenuPlannerPage() {
 
               {builderRecipes.length > 0 && (
                 <div className="bg-gradient-to-br from-[#F0FDF4] to-[#FFFBEB] border-2 border-[#8B6F47] rounded-xl p-4">
-                  <h3 className="font-extrabold text-[#4B2B1D] text-center mb-3">Plate Totals</h3>
+                  <h3 className="font-extrabold text-[#4B2B1D] text-center mb-3">Plate Totals (raw-basis preview)</h3>
                   <div className="grid grid-cols-4 gap-2">
                     <div className="text-center bg-white rounded-lg p-3 border border-[#E4D8C9]">
                       <p className="font-extrabold text-[#4B2B1D] text-xl">{Math.round(builderTotals.calories)}</p>
@@ -427,6 +465,9 @@ export default function MenuPlannerPage() {
                       <p className="text-xs text-[#755B4C] font-semibold mt-1">FAT</p>
                     </div>
                   </div>
+                  <p className="text-xs text-[#9A7E6F] text-center mt-2">
+                    Real cooked-weight totals and margin appear on the plate card once saved.
+                  </p>
                 </div>
               )}
 
@@ -468,6 +509,11 @@ export default function MenuPlannerPage() {
         <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
           <p className="text-xs text-[#755B4C]">Monday Plates</p>
           <p className="text-2xl font-extrabold text-[#16A34A]">{platesByDay('monday').length}</p>
+          {dayLowStockCount('monday') > 0 && (
+            <p className="text-xs font-bold text-[#D62F3D] mt-1 flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" /> {dayLowStockCount('monday')} low-stock flag{dayLowStockCount('monday') > 1 ? 's' : ''}
+            </p>
+          )}
         </div>
         <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
           <p className="text-xs text-[#755B4C]">Monday Cost</p>
@@ -476,6 +522,11 @@ export default function MenuPlannerPage() {
         <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
           <p className="text-xs text-[#755B4C]">Thursday Plates</p>
           <p className="text-2xl font-extrabold text-[#D97706]">{platesByDay('thursday').length}</p>
+          {dayLowStockCount('thursday') > 0 && (
+            <p className="text-xs font-bold text-[#D62F3D] mt-1 flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" /> {dayLowStockCount('thursday')} low-stock flag{dayLowStockCount('thursday') > 1 ? 's' : ''}
+            </p>
+          )}
         </div>
         <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
           <p className="text-xs text-[#755B4C]">Thursday Cost</p>
@@ -524,6 +575,7 @@ function DeliveryColumn({
         ) : (
           plates.map((plate) => {
             const large = largeTwinFor(plate.id)
+            const marginColor = plate.profit.margin_pct >= 60 ? '#16A34A' : plate.profit.margin_pct >= 40 ? '#D97706' : '#D62F3D'
             return (
               <div key={plate.id} className="rounded-lg border bg-white p-4" style={{ borderColor: color }}>
                 <div className="flex items-start justify-between mb-2">
@@ -532,6 +584,33 @@ function DeliveryColumn({
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
+
+                {/* Low stock warning banner */}
+                {plate.lowStockWarnings.length > 0 && (
+                  <div className="mb-2 rounded-lg bg-[#FFF4F4] border border-[#F5B5B5] p-2 flex items-start gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 text-[#D62F3D] flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-[#D62F3D]">Low stock</p>
+                      {plate.lowStockWarnings.map((w, i) => (
+                        <p key={i} className="text-xs text-[#9A3B3B]">
+                          {w.name}: have {Math.round(w.have_g)}g, need {Math.round(w.need_g)}g
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Allergen tags */}
+                {plate.allergens.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {plate.allergens.map(a => (
+                      <span key={a} className="text-xs font-bold px-1.5 py-0.5 rounded bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]">
+                        {ALLERGEN_LABELS[a] || a}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
                   {plate.recipes.map((recipe, idx) => (
                     <div key={idx} className="bg-[#F9F5F0] rounded p-2">
@@ -539,12 +618,44 @@ function DeliveryColumn({
                     </div>
                   ))}
                 </div>
-                <div className="mt-3 pt-3 border-t border-[#E4D8C9] flex justify-between items-center">
-                  <p className="text-xs font-bold text-[#755B4C]">
-                    {plate.totals.calories} cal / {plate.totals.protein_g.toFixed(0)}g protein
+
+                {/* Real nutrition label - cooked weight + cooked-basis macros */}
+                <div className="mt-3 pt-3 border-t border-[#E4D8C9]">
+                  <p className="text-xs font-bold text-[#755B4C] mb-1.5">
+                    Cooked weight: {Math.round(plate.totals.cooked_weight_g)}g
                   </p>
-                  <p className="text-sm font-extrabold" style={{ color }}>${(plate.totals.cost_cents / 100).toFixed(2)}</p>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    <div className="text-center bg-[#F9F5F0] rounded p-1.5">
+                      <p className="font-bold text-[#4B2B1D] text-xs">{Math.round(plate.totals.calories)}</p>
+                      <p className="text-[10px] text-[#9A7E6F]">CAL</p>
+                    </div>
+                    <div className="text-center bg-[#F9F5F0] rounded p-1.5">
+                      <p className="font-bold text-[#4B2B1D] text-xs">{plate.totals.protein_g.toFixed(0)}g</p>
+                      <p className="text-[10px] text-[#9A7E6F]">PRO</p>
+                    </div>
+                    <div className="text-center bg-[#F9F5F0] rounded p-1.5">
+                      <p className="font-bold text-[#4B2B1D] text-xs">{plate.totals.carbs_g.toFixed(0)}g</p>
+                      <p className="text-[10px] text-[#9A7E6F]">CARB</p>
+                    </div>
+                    <div className="text-center bg-[#F9F5F0] rounded p-1.5">
+                      <p className="font-bold text-[#4B2B1D] text-xs">{plate.totals.fat_g.toFixed(0)}g</p>
+                      <p className="text-[10px] text-[#9A7E6F]">FAT</p>
+                    </div>
+                  </div>
                 </div>
+
+                {/* Profit margin */}
+                <div className="mt-3 pt-3 border-t border-[#E4D8C9] flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-[#755B4C]">
+                      Cost ${(plate.totals.cost_cents / 100).toFixed(2)} → Price ${(plate.profit.price_cents / 100).toFixed(2)}
+                    </p>
+                    <p className="text-xs font-extrabold" style={{ color: marginColor }}>
+                      +${(plate.profit.profit_cents / 100).toFixed(2)} profit ({plate.profit.margin_pct}% margin)
+                    </p>
+                  </div>
+                </div>
+
                 {large && (
                   <div className="mt-3 pt-3 border-t border-dashed border-[#E4D8C9]">
                     <div className="flex items-center justify-between">
