@@ -268,7 +268,11 @@ export default function TaskManagementPage() {
 
   const dateForDay = (day: string): Date | null => {
     if (!planData?.summary.week_start) return null
-    const base = new Date(planData.summary.week_start + 'T00:00:00Z')
+    // week_start may come back as a plain date or a full ISO timestamp
+    // depending on how pg serializes it -- strip to just the date part first
+    const datePart = String(planData.summary.week_start).split('T')[0]
+    const base = new Date(datePart + 'T00:00:00Z')
+    if (isNaN(base.getTime())) return null
     base.setUTCDate(base.getUTCDate() + dayMeta[day].offset)
     return base
   }
