@@ -72,6 +72,70 @@ const ALLERGEN_LABELS: Record<string, string> = {
   sesame: 'Sesame',
 }
 
+// Reference Daily Values (FDA, 2000-calorie diet) used to compute %DV.
+// Protein has no established %DV for general labeling purposes, so it's
+// left blank like on a real label.
+const DV_FAT_G = 78
+const DV_CARB_G = 275
+
+// A real FDA-style "Nutrition Facts" label: black border, thick divider
+// rules, %DV column. Renders from whatever macro numbers are passed in —
+// used both for the raw-basis live preview while building a plate, and
+// for the real cooked-basis totals on a saved plate.
+function NutritionFactsLabel({
+  title, weightG, calories, proteinG, carbsG, fatG, isEstimate,
+}: {
+  title: string
+  weightG?: number
+  calories: number
+  proteinG: number
+  carbsG: number
+  fatG: number
+  isEstimate?: boolean
+}) {
+  const fatDV = Math.round((fatG / DV_FAT_G) * 100)
+  const carbDV = Math.round((carbsG / DV_CARB_G) * 100)
+
+  return (
+    <div className="bg-white border-2 border-black p-3 font-sans max-w-xs">
+      <h3 className="text-xl font-black leading-none mb-1">Nutrition Facts</h3>
+      {isEstimate && (
+        <p className="text-[10px] italic text-[#755B4C] mb-1">Preview estimate — raw-basis, before cooking loss</p>
+      )}
+      <div className="border-b-8 border-black mb-1"></div>
+      <p className="text-xs mb-0.5">{title}</p>
+      {weightG != null && (
+        <p className="text-xs font-bold mb-1">Serving size: {Math.round(weightG)}g (cooked)</p>
+      )}
+      <div className="border-b-4 border-black mb-1"></div>
+
+      <div className="flex items-baseline justify-between">
+        <p className="text-lg font-black">Calories</p>
+        <p className="text-3xl font-black">{Math.round(calories)}</p>
+      </div>
+      <div className="border-b-8 border-black mb-1"></div>
+
+      <div className="text-right text-[10px] font-bold border-b border-black pb-0.5 mb-0.5">% Daily Value*</div>
+
+      <div className="flex justify-between border-b border-[#999] py-0.5 text-xs">
+        <p><span className="font-bold">Total Fat</span> {fatG.toFixed(1)}g</p>
+        <p className="font-bold">{fatDV}%</p>
+      </div>
+      <div className="flex justify-between border-b border-[#999] py-0.5 text-xs">
+        <p><span className="font-bold">Total Carbohydrate</span> {carbsG.toFixed(1)}g</p>
+        <p className="font-bold">{carbDV}%</p>
+      </div>
+      <div className="flex justify-between border-b-8 border-black py-0.5 text-xs">
+        <p><span className="font-bold">Protein</span> {proteinG.toFixed(1)}g</p>
+      </div>
+
+      <p className="text-[9px] mt-1.5 leading-tight text-[#4B2B1D]">
+        *% Daily Value tells you how much a nutrient contributes to a daily diet. 2,000 calories a day is used for general nutrition advice.
+      </p>
+    </div>
+  )
+}
+
 export default function MenuPlannerPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [plates, setPlates] = useState<Plate[]>([])
@@ -445,28 +509,17 @@ export default function MenuPlannerPage() {
               )}
 
               {builderRecipes.length > 0 && (
-                <div className="bg-gradient-to-br from-[#F0FDF4] to-[#FFFBEB] border-2 border-[#8B6F47] rounded-xl p-4">
-                  <h3 className="font-extrabold text-[#4B2B1D] text-center mb-3">Plate Totals (raw-basis preview)</h3>
-                  <div className="grid grid-cols-4 gap-2">
-                    <div className="text-center bg-white rounded-lg p-3 border border-[#E4D8C9]">
-                      <p className="font-extrabold text-[#4B2B1D] text-xl">{Math.round(builderTotals.calories)}</p>
-                      <p className="text-xs text-[#755B4C] font-semibold mt-1">CAL</p>
-                    </div>
-                    <div className="text-center bg-white rounded-lg p-3 border border-[#E4D8C9]">
-                      <p className="font-extrabold text-[#4B2B1D] text-xl">{builderTotals.protein_g.toFixed(1)}g</p>
-                      <p className="text-xs text-[#755B4C] font-semibold mt-1">PRO</p>
-                    </div>
-                    <div className="text-center bg-white rounded-lg p-3 border border-[#E4D8C9]">
-                      <p className="font-extrabold text-[#4B2B1D] text-xl">{builderTotals.carbs_g.toFixed(1)}g</p>
-                      <p className="text-xs text-[#755B4C] font-semibold mt-1">CARB</p>
-                    </div>
-                    <div className="text-center bg-white rounded-lg p-3 border border-[#E4D8C9]">
-                      <p className="font-extrabold text-[#4B2B1D] text-xl">{builderTotals.fat_g.toFixed(1)}g</p>
-                      <p className="text-xs text-[#755B4C] font-semibold mt-1">FAT</p>
-                    </div>
-                  </div>
-                  <p className="text-xs text-[#9A7E6F] text-center mt-2">
-                    Real cooked-weight totals and margin appear on the plate card once saved.
+                <div className="flex flex-col items-center gap-2">
+                  <NutritionFactsLabel
+                    title={plateName.trim() || 'New plate'}
+                    calories={builderTotals.calories}
+                    proteinG={builderTotals.protein_g}
+                    carbsG={builderTotals.carbs_g}
+                    fatG={builderTotals.fat_g}
+                    isEstimate
+                  />
+                  <p className="text-xs text-[#9A7E6F] text-center">
+                    Real cooked-weight label and profit margin appear on the plate card once saved.
                   </p>
                 </div>
               )}
@@ -619,29 +672,16 @@ function DeliveryColumn({
                   ))}
                 </div>
 
-                {/* Real nutrition label - cooked weight + cooked-basis macros */}
-                <div className="mt-3 pt-3 border-t border-[#E4D8C9]">
-                  <p className="text-xs font-bold text-[#755B4C] mb-1.5">
-                    Cooked weight: {Math.round(plate.totals.cooked_weight_g)}g
-                  </p>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    <div className="text-center bg-[#F9F5F0] rounded p-1.5">
-                      <p className="font-bold text-[#4B2B1D] text-xs">{Math.round(plate.totals.calories)}</p>
-                      <p className="text-[10px] text-[#9A7E6F]">CAL</p>
-                    </div>
-                    <div className="text-center bg-[#F9F5F0] rounded p-1.5">
-                      <p className="font-bold text-[#4B2B1D] text-xs">{plate.totals.protein_g.toFixed(0)}g</p>
-                      <p className="text-[10px] text-[#9A7E6F]">PRO</p>
-                    </div>
-                    <div className="text-center bg-[#F9F5F0] rounded p-1.5">
-                      <p className="font-bold text-[#4B2B1D] text-xs">{plate.totals.carbs_g.toFixed(0)}g</p>
-                      <p className="text-[10px] text-[#9A7E6F]">CARB</p>
-                    </div>
-                    <div className="text-center bg-[#F9F5F0] rounded p-1.5">
-                      <p className="font-bold text-[#4B2B1D] text-xs">{plate.totals.fat_g.toFixed(0)}g</p>
-                      <p className="text-[10px] text-[#9A7E6F]">FAT</p>
-                    </div>
-                  </div>
+                {/* Real FDA-style nutrition label - cooked weight + cooked-basis macros */}
+                <div className="mt-3 pt-3 border-t border-[#E4D8C9] flex justify-center">
+                  <NutritionFactsLabel
+                    title={plate.name}
+                    weightG={plate.totals.cooked_weight_g}
+                    calories={plate.totals.calories}
+                    proteinG={plate.totals.protein_g}
+                    carbsG={plate.totals.carbs_g}
+                    fatG={plate.totals.fat_g}
+                  />
                 </div>
 
                 {/* Profit margin */}
