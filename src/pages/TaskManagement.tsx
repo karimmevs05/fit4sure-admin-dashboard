@@ -14,6 +14,33 @@ type PlateItem = {
   quantity_is_estimate: boolean
   task: string
   recipes: RecipeBreakdown[]
+  station: string
+  critical: boolean
+  completed: boolean
+  completed_at: string | null
+  actual_quantity: number | null
+  notes: string
+}
+
+type Issue = {
+  id: number
+  day: string
+  plate_id: number | null
+  plate_name: string | null
+  issue_type: string
+  reason: string
+  proposed_solution: string | null
+  status: 'open' | 'resolved'
+  created_at: string
+}
+
+type Suggestion = { type: string; severity: 'warning' | 'info'; message: string }
+
+type Comparison = {
+  prior_week: string
+  total_tasks: number
+  completed_tasks: number
+  completion_rate: number | null
 }
 
 type Schedule = Record<string, PlateItem[]>
@@ -37,6 +64,14 @@ export default function TaskManagementPage() {
   const [planData, setPlanData] = useState<PlanData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const [issues, setIssues] = useState<Issue[]>([])
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
+  const [comparison, setComparison] = useState<Comparison | null>(null)
+  const [issueFormFor, setIssueFormFor] = useState<number | null>(null) // plate_id
+  const [issueType, setIssueType] = useState('missing_ingredient')
+  const [issueReason, setIssueReason] = useState('')
+  const [issueSolution, setIssueSolution] = useState('')
+  const [savingTask, setSavingTask] = useState<number | null>(null)
 
   useEffect(() => {
     fetchWeeks()
@@ -70,10 +105,105 @@ export default function TaskManagementPage() {
       if (!response.ok) throw new Error('Failed to generate plan')
       const data = await response.json()
       setPlanData(data)
+
+      const weekStart = data.summary?.week_start
+      if (weekStart) {
+        fetchIssues(weekStart)
+        fetchSuggestions(weekStart)
+        fetchComparison(weekStart)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchIssues = async (weekStart: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/admin/task-management-auto/issues?week_start=${weekStart}`)
+      const data = await response.json()
+      setIssues(data.data || [])
+    } catch (err) {
+      console.error('Error fetching issues:', err)
+    }
+  }
+
+  const fetchSuggestions = async (weekStart: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/admin/task-management-auto/suggestions?week_start=${weekStart}`)
+      const data = await response.json()
+      setSuggestions(data.data || [])
+    } catch (err) {
+      console.error('Error fetching suggestions:', err)
+    }
+  }
+
+  const fetchComparison = async (weekStart: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/admin/task-management-auto/comparison?week_start=${weekStart}`)
+      const data = await response.json()
+      setComparison(data.data || null)
+    } catch (err) {
+      console.error('Error fetching comparison:', err)
+    }
+  }
+
+  const saveTaskStatus = async (day: string, plateId: number, completed: boolean, actualQuantity: string, notes: string) => {
+    if (!planData?.summary.week_start) return
+    setSavingTask(plateId)
+    try {
+      await fetch(`${API_BASE}/admin/task-management-auto/task-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          week_start: planData.summary.week_start,
+          day,
+          plate_id: plateId,
+          completed,
+          actual_quantity: actualQuantity ? parseFloat(actualQuantity) : null,
+          notes: notes || null,
+        }),
+      })
+      await generatePlan()
+    } catch (err) {
+      console.error('Error saving task status:', err)
+    } finally {
+      setSavingTask(null)
+    }
+  }
+
+  const submitIssue = async (day: string, plateId: number | null) => {
+    if (!planData?.summary.week_start || !issueReason.trim()) return
+    try {
+      await fetch(`${API_BASE}/admin/task-management-auto/issues`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          week_start: planData.summary.week_start,
+          day,
+          plate_id: plateId,
+          issue_type: issueType,
+          reason: issueReason.trim(),
+          proposed_solution: issueSolution.trim() || null,
+        }),
+      })
+      setIssueFormFor(null)
+      setIssueReason('')
+      setIssueSolution('')
+      fetchIssues(planData.summary.week_start)
+    } catch (err) {
+      console.error('Error submitting issue:', err)
+    }
+  }
+
+  const resolveIssue = async (id: number) => {
+    if (!planData?.summary.week_start) return
+    try {
+      await fetch(`${API_BASE}/admin/task-management-auto/issues/${id}/resolve`, { method: 'PUT' })
+      fetchIssues(planData.summary.week_start)
+    } catch (err) {
+      console.error('Error resolving issue:', err)
     }
   }
 
@@ -171,6 +301,34 @@ export default function TaskManagementPage() {
         <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
           <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
           <p className="text-blue-900">{message}</p>
+        </div>
+      )}
+
+      {/* Suggestions */}
+      {suggestions.length > 0 && (
+        <div className="mb-6 space-y-2">
+          {suggestions.map((s, idx) => (
+            <div
+              key={idx}
+              className={`rounded-lg p-3 flex items-start gap-3 border ${
+                s.severity === 'warning' ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'
+              }`}
+            >
+              <AlertCircle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${s.severity === 'warning' ? 'text-red-600' : 'text-amber-600'}`} />
+              <p className={s.severity === 'warning' ? 'text-red-900' : 'text-amber-900'}>{s.message}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Last week comparison */}
+      {comparison && comparison.total_tasks > 0 && (
+        <div className="mb-6 bg-white rounded-lg border border-slate-200 p-4 flex items-center justify-between">
+          <p className="text-slate-700">
+            <span className="font-bold">Last week (starting {new Date(comparison.prior_week).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}):</span>{' '}
+            {comparison.completed_tasks} of {comparison.total_tasks} tasks completed
+          </p>
+          <p className="text-2xl font-bold text-slate-900">{comparison.completion_rate}%</p>
         </div>
       )}
 
@@ -305,42 +463,101 @@ export default function TaskManagementPage() {
 
               <div className="max-w-5xl mx-auto p-8 space-y-6">
                 {(schedule[selectedDay] || []).map((item, idx) => (
-                  <div key={idx} className="bg-white rounded-lg border-2 border-slate-200 shadow-sm overflow-hidden">
-                    <div className="bg-slate-50 p-5 flex items-center justify-between border-b border-slate-200">
-                      <div>
-                        <p className="font-bold text-slate-900 text-xl">{item.plate_name}</p>
-                        <p className="text-sm text-slate-600">{item.task} • {item.category}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold text-slate-900 text-2xl">
-                          {item.quantity != null ? item.quantity : 'TBD'}
-                        </p>
-                        <p className="text-xs text-slate-500">plates needed</p>
-                        {item.quantity_is_estimate && <p className="text-xs text-orange-600 font-bold">no orders yet</p>}
-                      </div>
-                    </div>
+                  <PlateTaskCard
+                    key={idx}
+                    item={item}
+                    day={selectedDay}
+                    saving={savingTask === item.plate_id}
+                    onSave={saveTaskStatus}
+                    onReportIssue={() => {
+                      setIssueFormFor(item.plate_id)
+                      setIssueType('missing_ingredient')
+                      setIssueReason('')
+                      setIssueSolution('')
+                    }}
+                  />
+                ))}
 
-                    <div className="p-5 space-y-4">
-                      {item.recipes.map((recipe, rIdx) => (
-                        <div key={rIdx}>
-                          <p className="font-bold text-slate-800 mb-2">{recipe.recipe_name}</p>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {recipe.ingredients.map((ing, iIdx) => (
-                              <div key={iIdx} className="bg-slate-50 rounded p-2 text-sm">
-                                <p className="font-medium text-slate-800 truncate">{ing.name}</p>
-                                <p className="text-slate-500 text-xs">
-                                  {ing.pounds_needed} lbs
-                                  {ing.cost != null && ` • $${ing.cost.toFixed(2)}`}
-                                  {ing.store && ` • ${ing.store}`}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
+                {/* Issue report form */}
+                {issueFormFor !== null && (
+                  <div className="bg-red-50 border-2 border-red-200 rounded-lg p-5">
+                    <h4 className="font-bold text-red-900 mb-3">Report an Issue</h4>
+                    <select
+                      value={issueType}
+                      onChange={(e) => setIssueType(e.target.value)}
+                      className="w-full mb-3 px-3 py-2 border border-red-300 rounded-lg bg-white"
+                    >
+                      <option value="missing_ingredient">Missing ingredient</option>
+                      <option value="equipment">Equipment issue</option>
+                      <option value="schedule_change">Schedule change needed</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <textarea
+                      value={issueReason}
+                      onChange={(e) => setIssueReason(e.target.value)}
+                      placeholder="What's the problem?"
+                      rows={2}
+                      className="w-full mb-3 px-3 py-2 border border-red-300 rounded-lg"
+                    />
+                    <textarea
+                      value={issueSolution}
+                      onChange={(e) => setIssueSolution(e.target.value)}
+                      placeholder="Proposed solution (optional)"
+                      rows={2}
+                      className="w-full mb-3 px-3 py-2 border border-red-300 rounded-lg"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setIssueFormFor(null)}
+                        className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 font-bold"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => submitIssue(selectedDay, issueFormFor)}
+                        disabled={!issueReason.trim()}
+                        className="px-4 py-2 rounded-lg bg-red-600 text-white font-bold disabled:opacity-50"
+                      >
+                        Submit
+                      </button>
                     </div>
                   </div>
-                ))}
+                )}
+
+                {/* Issues logged for this day */}
+                {issues.filter((iss) => iss.day === selectedDay).length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="font-bold text-slate-800">Issues for {selectedDay}</h4>
+                    {issues
+                      .filter((iss) => iss.day === selectedDay)
+                      .map((iss) => (
+                        <div
+                          key={iss.id}
+                          className={`rounded-lg p-4 border flex items-start justify-between gap-3 ${
+                            iss.status === 'open' ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'
+                          }`}
+                        >
+                          <div>
+                            <p className="text-xs font-bold uppercase text-slate-500">
+                              {iss.issue_type.replace('_', ' ')} {iss.plate_name && `• ${iss.plate_name}`}
+                            </p>
+                            <p className="text-slate-800 mt-1">{iss.reason}</p>
+                            {iss.proposed_solution && <p className="text-slate-600 text-sm mt-1">Proposed: {iss.proposed_solution}</p>}
+                          </div>
+                          {iss.status === 'open' ? (
+                            <button
+                              onClick={() => resolveIssue(iss.id)}
+                              className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-bold flex-shrink-0"
+                            >
+                              Resolve
+                            </button>
+                          ) : (
+                            <span className="text-xs font-bold text-green-700 flex-shrink-0">Resolved</span>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -390,5 +607,112 @@ export default function TaskManagementPage() {
         </div>
       )}
     </main>
+  )
+}
+
+function PlateTaskCard({
+  item,
+  day,
+  saving,
+  onSave,
+  onReportIssue,
+}: {
+  item: PlateItem
+  day: string
+  saving: boolean
+  onSave: (day: string, plateId: number, completed: boolean, actualQuantity: string, notes: string) => void
+  onReportIssue: () => void
+}) {
+  const [completed, setCompleted] = useState(item.completed)
+  const [actualQuantity, setActualQuantity] = useState(item.actual_quantity != null ? String(item.actual_quantity) : '')
+  const [notes, setNotes] = useState(item.notes || '')
+
+  const dirty = completed !== item.completed || actualQuantity !== (item.actual_quantity != null ? String(item.actual_quantity) : '') || notes !== (item.notes || '')
+
+  return (
+    <div className={`bg-white rounded-lg border-2 shadow-sm overflow-hidden ${item.critical ? 'border-red-300' : 'border-slate-200'}`}>
+      <div className="bg-slate-50 p-5 flex items-center justify-between border-b border-slate-200">
+        <div className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={completed}
+            onChange={(e) => setCompleted(e.target.checked)}
+            className="w-6 h-6 mt-1 flex-shrink-0"
+          />
+          <div>
+            <p className={`font-bold text-xl ${completed ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{item.plate_name}</p>
+            <p className="text-sm text-slate-600">{item.task} • {item.category}</p>
+            <div className="flex gap-2 mt-1">
+              <span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-700">{item.station}</span>
+              {item.critical && <span className="text-xs font-bold px-2 py-0.5 rounded bg-red-100 text-red-700">CRITICAL</span>}
+            </div>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="font-bold text-slate-900 text-2xl">{item.quantity != null ? item.quantity : 'TBD'}</p>
+          <p className="text-xs text-slate-500">plates needed</p>
+          {item.quantity_is_estimate && <p className="text-xs text-orange-600 font-bold">no orders yet</p>}
+        </div>
+      </div>
+
+      <div className="p-5 space-y-4">
+        {item.recipes.map((recipe, rIdx) => (
+          <div key={rIdx}>
+            <p className="font-bold text-slate-800 mb-2">{recipe.recipe_name}</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {recipe.ingredients.map((ing, iIdx) => (
+                <div key={iIdx} className="bg-slate-50 rounded p-2 text-sm">
+                  <p className="font-medium text-slate-800 truncate">{ing.name}</p>
+                  <p className="text-slate-500 text-xs">
+                    {ing.pounds_needed} lbs
+                    {ing.cost != null && ` • $${ing.cost.toFixed(2)}`}
+                    {ing.store && ` • ${ing.store}`}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+          <div>
+            <label className="text-xs font-bold text-slate-600">Actual quantity (if different)</label>
+            <input
+              type="number"
+              value={actualQuantity}
+              onChange={(e) => setActualQuantity(e.target.value)}
+              placeholder={item.quantity != null ? String(item.quantity) : 'TBD'}
+              className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-600">Notes</label>
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Any notes for this task..."
+              className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => onSave(day, item.plate_id, completed, actualQuantity, notes)}
+            disabled={!dirty || saving}
+            className="px-4 py-2 rounded-lg bg-blue-600 text-white font-bold text-sm disabled:opacity-40"
+          >
+            {saving ? 'Saving...' : dirty ? 'Save Changes' : 'Saved'}
+          </button>
+          <button
+            onClick={onReportIssue}
+            className="px-4 py-2 rounded-lg border-2 border-red-300 text-red-700 font-bold text-sm hover:bg-red-50"
+          >
+            🚩 Report Issue
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
