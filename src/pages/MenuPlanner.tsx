@@ -603,6 +603,8 @@ function DeliveryColumn({
   onDeletePlate: (plate: Plate) => void
   getCategoryColor: (category: string) => string
 }) {
+  const [nutritionModalPlate, setNutritionModalPlate] = useState<Plate | null>(null)
+
   return (
     <div className="rounded-2xl border-2 p-6 min-h-[700px]" style={{ borderColor: color, backgroundColor: bg }}>
       <div className="flex items-center justify-between mb-4">
@@ -630,10 +632,18 @@ function DeliveryColumn({
             const large = largeTwinFor(plate.id)
             const marginColor = plate.profit.margin_pct >= 60 ? '#16A34A' : plate.profit.margin_pct >= 40 ? '#D97706' : '#D62F3D'
             return (
-              <div key={plate.id} className="rounded-lg border bg-white p-4" style={{ borderColor: color }}>
+              <div
+                key={plate.id}
+                onClick={() => setNutritionModalPlate(plate)}
+                className="rounded-lg border bg-white p-4 cursor-pointer hover:shadow-md transition"
+                style={{ borderColor: color }}
+              >
                 <div className="flex items-start justify-between mb-2">
                   <p className="font-extrabold text-[#4B2B1D]">{plate.name}</p>
-                  <button onClick={() => onDeletePlate(plate)} className="text-[#D62F3D] hover:bg-[#FFF4F4] p-1 rounded transition">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDeletePlate(plate) }}
+                    className="text-[#D62F3D] hover:bg-[#FFF4F4] p-1 rounded transition"
+                  >
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
@@ -672,20 +682,16 @@ function DeliveryColumn({
                   ))}
                 </div>
 
-                {/* Real FDA-style nutrition label - cooked weight + cooked-basis macros */}
-                <div className="mt-3 pt-3 border-t border-[#E4D8C9] flex justify-center">
-                  <NutritionFactsLabel
-                    title={plate.name}
-                    weightG={plate.totals.cooked_weight_g}
-                    calories={plate.totals.calories}
-                    proteinG={plate.totals.protein_g}
-                    carbsG={plate.totals.carbs_g}
-                    fatG={plate.totals.fat_g}
-                  />
+                {/* Compact nutrition + margin summary, click card for full FDA label */}
+                <div className="mt-3 pt-3 border-t border-[#E4D8C9] flex items-center justify-between">
+                  <p className="text-xs font-bold text-[#755B4C]">
+                    {Math.round(plate.totals.calories)} cal · {plate.totals.protein_g.toFixed(0)}g protein
+                  </p>
+                  <p className="text-xs font-bold text-[#2E527F] underline underline-offset-2">Nutrition Facts</p>
                 </div>
 
                 {/* Profit margin */}
-                <div className="mt-3 pt-3 border-t border-[#E4D8C9] flex items-center justify-between">
+                <div className="mt-2 flex items-center justify-between">
                   <div>
                     <p className="text-xs font-bold text-[#755B4C]">
                       Cost ${(plate.totals.cost_cents / 100).toFixed(2)} → Price ${(plate.profit.price_cents / 100).toFixed(2)}
@@ -709,6 +715,31 @@ function DeliveryColumn({
           })
         )}
       </div>
+
+      {/* Nutrition Facts popup */}
+      {nutritionModalPlate && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+          onClick={() => setNutritionModalPlate(null)}
+        >
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setNutritionModalPlate(null)}
+              className="absolute -top-3 -right-3 bg-white rounded-full border-2 border-black p-1 hover:bg-[#F8F2E8] transition"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <NutritionFactsLabel
+              title={nutritionModalPlate.name}
+              weightG={nutritionModalPlate.totals.cooked_weight_g}
+              calories={nutritionModalPlate.totals.calories}
+              proteinG={nutritionModalPlate.totals.protein_g}
+              carbsG={nutritionModalPlate.totals.carbs_g}
+              fatG={nutritionModalPlate.totals.fat_g}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
