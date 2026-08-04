@@ -98,8 +98,8 @@ export default function CustomersPage() {
       // Only never-ordered prospects
       result = result.filter(c => c.sales_pipeline_stage === 'prospect')
     } else if (activeTab === 'at_risk') {
-      // Prospect_lost (past customers who haven't ordered recently)
-      result = result.filter(c => c.sales_pipeline_stage === 'prospect_lost')
+      // Labeled "Lost Prospects" in the UI -- past customers who stopped ordering
+      result = result.filter(c => c.sales_pipeline_stage === 'churned')
     }
 
     if (searchTerm) {
@@ -115,7 +115,15 @@ export default function CustomersPage() {
 
   const handleDeleteCustomer = async (customerId: number) => {
     if (!confirm('Are you sure you want to delete this customer?')) return
-    console.log('Delete customer:', customerId)
+    try {
+      await axios.delete(`${apiUrl}/api/admin/customers/${customerId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      await fetchCustomers()
+    } catch (error) {
+      console.error('Error deleting customer:', error)
+      alert('Failed to delete customer')
+    }
   }
 
   const handleSaveCustomer = async () => {
@@ -126,14 +134,15 @@ export default function CustomersPage() {
 
     try {
       if (editingCustomer?.id) {
-        // Update existing customer
-        console.log('Updating customer:', editingCustomer.id, formData)
-        // TODO: Implement API call to update customer
+        await axios.put(`${apiUrl}/api/admin/customers/${editingCustomer.id}`, formData, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
       } else {
-        // Create new customer
-        console.log('Creating new customer:', formData)
-        // TODO: Implement API call to create customer
+        await axios.post(`${apiUrl}/api/admin/customers`, formData, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
       }
+      await fetchCustomers()
       setEditingCustomer(null)
       setShowAddCustomer(false)
       setFormData({
@@ -271,7 +280,7 @@ export default function CustomersPage() {
                   }}
                   className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4 hover:shadow-md transition cursor-pointer"
                 >
-                  <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-start">
+                  <div className="grid grid-cols-1 md:grid-cols-8 gap-4 items-start">
                     {/* Name & Stage */}
                     <div className="md:col-span-2">
                       <h3 className="font-extrabold text-[#4B2B1D] text-lg">{customer.name}</h3>
@@ -299,6 +308,18 @@ export default function CustomersPage() {
                           <span className="text-xs">{customer.phone}</span>
                         </div>
                       )}
+                    </div>
+
+                    {/* Total Meals */}
+                    <div className="rounded-lg bg-white p-2 text-center">
+                      <p className="text-[#755B4C] text-xs font-bold">Total Meals</p>
+                      <p className="text-lg font-extrabold text-[#2E527F] mt-1">{customer.total_meals_ordered || 0}</p>
+                    </div>
+
+                    {/* Lifetime Value */}
+                    <div className="rounded-lg bg-white p-2 text-center">
+                      <p className="text-[#755B4C] text-xs font-bold">Lifetime Value</p>
+                      <p className="text-lg font-extrabold text-[#16813D] mt-1">${getLifetimeValue(customer.lifetime_value_cents || 0)}</p>
                     </div>
 
                     {/* Engagement */}
@@ -476,7 +497,7 @@ export default function CustomersPage() {
                 <div>
                   <p className="text-xs text-[#755B4C]">Lost Prospects</p>
                   <p className="text-3xl font-extrabold text-[#C97C34] mt-2">
-                    {customers.filter(c => c.sales_pipeline_stage === 'prospect_lost').length}
+                    {customers.filter(c => c.sales_pipeline_stage === 'churned').length}
                   </p>
                 </div>
                 <div className="h-12 w-12 rounded-full bg-[#FFE9E0] flex items-center justify-center text-xl">🟡</div>

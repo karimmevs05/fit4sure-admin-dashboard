@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { DollarSign, TrendingUp, Activity, ChevronDown, ChevronUp, Plus, Trash2, Edit2, Check, X, Upload, Loader } from 'lucide-react'
 // Removed Tesseract - using GoHighLevel API instead
 
@@ -116,6 +116,41 @@ interface ReceiptItem {
   productName?: string // User-assigned product name for database
 }
 
+function Section({
+  id,
+  title,
+  expandedSections,
+  toggleSection,
+  children,
+}: {
+  id: string
+  title: React.ReactNode
+  expandedSections: Record<string, boolean>
+  toggleSection: (id: string) => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-2xl border border-[#E8DCC8] bg-white overflow-hidden">
+      <button
+        onClick={() => toggleSection(id)}
+        className="w-full flex items-center justify-between p-6 hover:bg-[#FDFBF7] transition"
+      >
+        <h2 className="text-lg font-extrabold text-[#4B2B1D]">{title}</h2>
+        {expandedSections[id] ? (
+          <ChevronUp className="h-5 w-5 text-[#8B6F47]" />
+        ) : (
+          <ChevronDown className="h-5 w-5 text-[#8B6F47]" />
+        )}
+      </button>
+      {expandedSections[id] && (
+        <div className="border-t border-[#E8DCC8] p-6 space-y-4">
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function FinancialsPage() {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     weekly: true,
@@ -126,12 +161,8 @@ function FinancialsPage() {
     receiptScanner: false,
   })
 
-  const [expenses, setExpenses] = useState<Expense[]>([
-    { id: '1', date: '2026-07-05', vendor: 'Local Produce Co', category: 'food_cogs', description: 'Weekly vegetables and proteins', amount: 245.50, status: 'reconciled' },
-    { id: '2', date: '2026-07-06', vendor: 'Packaging Plus', category: 'packaging', description: 'Food containers (500 units)', amount: 125.00, status: 'reconciled' },
-    { id: '3', date: '2026-07-08', vendor: 'Delivery Partner', category: 'delivery', description: 'Tuesday delivery service', amount: 85.50, status: 'approved' },
-    { id: '4', date: '2026-07-12', vendor: 'Farmers Market', category: 'food_cogs', description: 'Weekly ingredients', amount: 198.75, status: 'pending' },
-  ])
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [expensesLoading, setExpensesLoading] = useState(true)
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState<Partial<Expense>>({
@@ -160,7 +191,7 @@ function FinancialsPage() {
   const [screenshotVendor, setScreenshotVendor] = useState('')
   const [showScreenshotForm, setShowScreenshotForm] = useState(false)
   const [syncInProgress, setSyncInProgress] = useState(false)
-  const [syncResult, setSyncResult] = useState<{ processed: number; failed: number } | null>(null)
+  const [syncResult, setSyncResult] = useState<{ processed: number; failed: number; errors?: { filename: string; error: string }[] } | null>(null)
   const [manualItems, setManualItems] = useState<ReceiptItem[]>([
     { description: '', amount: 0, category: 'food_cogs', confidence: 1, productName: '', unit: 'count', quantity: undefined }
   ])
@@ -168,6 +199,37 @@ function FinancialsPage() {
   const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const screenshotInputRef = useRef<HTMLInputElement>(null)
+
+  const fetchExpenses = async () => {
+    try {
+      setExpensesLoading(true)
+      const token = localStorage.getItem('token')
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
+      const response = await fetch(`${apiUrl}/api/admin/expenses`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (!response.ok) throw new Error('Failed to fetch expenses')
+      const data = await response.json()
+      const rows: Expense[] = (data.data || []).map((row: any) => ({
+        id: String(row.id),
+        date: row.date,
+        vendor: row.vendor,
+        category: row.category,
+        description: row.description,
+        amount: parseFloat(row.amount),
+        status: row.status,
+      }))
+      setExpenses(rows)
+    } catch (err) {
+      console.error('Error fetching expenses:', err)
+    } finally {
+      setExpensesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchExpenses()
+  }, [])
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => ({
@@ -401,7 +463,7 @@ function FinancialsPage() {
           const base64Image = imageDataUrl.split(',')[1]
 
           // Call GoHighLevel receipt parser endpoint
-          const response = await fetch('http://localhost:3000/api/admin/task-management-test/parse-receipt', {
+          const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/task-management-test/parse-receipt`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -463,7 +525,7 @@ function FinancialsPage() {
 
     try {
       const token = localStorage.getItem('token')
-      const apiUrl = 'http://localhost:3000'
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
 
       // Call backend to save products and expenses
       const response = await fetch(`${apiUrl}/api/admin/expenses/save-receipt-items`, {
@@ -487,24 +549,12 @@ function FinancialsPage() {
       console.log('Saved products:', result.data.productsAdded)
       console.log('Created expenses:', result.data.expensesCreated)
 
-      // Also add to local state for immediate display
-      const newExpenses = scannedReceipt.items.map((item, idx) => ({
-        id: `receipt-${Date.now()}-${idx}`,
-        date: new Date().toISOString().split('T')[0],
-        vendor: scannedReceipt.vendor,
-        category: item.category,
-        description: item.productName || item.description,
-        amount: item.amount,
-        status: 'pending' as const,
-        receiptId: `receipt-${Date.now()}`,
-      }))
-
-      setExpenses([...expenses, ...newExpenses])
+      await fetchExpenses()
       setScannedReceipt(null)
       setExpandedSections(prev => ({ ...prev, receiptScanner: false }))
 
       // Show success message
-      alert(`✓ Added ${scannedReceipt.items.length} products to database and created ${newExpenses.length} expenses`)
+      alert(`✓ Added ${result.data.productsAdded} products to database and created ${result.data.expensesCreated} expenses`)
     } catch (error) {
       console.error('Error saving receipt:', error)
       alert(`Error: ${error instanceof Error ? error.message : 'Failed to save receipt'}`)
@@ -518,7 +568,7 @@ function FinancialsPage() {
       setProcessingStatus('Loading receipts from Google Drive...')
 
       const token = localStorage.getItem('token')
-      const apiUrl = 'http://localhost:3000'
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
 
       const response = await fetch(`${apiUrl}/api/admin/receipt-read/pending`, {
         method: 'GET',
@@ -590,7 +640,7 @@ function FinancialsPage() {
       }
 
       const token = localStorage.getItem('token')
-      const apiUrl = 'http://localhost:3000'
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
 
       const validItems = manualItems.filter(item => item.productName && item.amount > 0)
 
@@ -638,7 +688,7 @@ function FinancialsPage() {
     try {
       setSyncInProgress(true)
       const token = localStorage.getItem('token')
-      const apiUrl = 'http://localhost:3000'
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
 
       const response = await fetch(`${apiUrl}/api/admin/receipt-sync/process`, {
         method: 'POST',
@@ -655,7 +705,14 @@ function FinancialsPage() {
 
       const data = await response.json()
       setSyncResult(data.data)
-      alert(`✓ Sync complete: ${data.data.processed} processed, ${data.data.failed} failed`)
+      if (data.data.processed > 0) {
+        await fetchExpenses()
+      }
+      if (data.data.failed > 0) {
+        alert(`Sync complete: ${data.data.processed} processed, ${data.data.failed} failed. See "Why these failed" below for details.`)
+      } else {
+        alert(`✓ Sync complete: ${data.data.processed} processed, ${data.data.failed} failed`)
+      }
     } catch (error) {
       console.error('Sync error:', error)
       alert(`Sync error: ${error instanceof Error ? error.message : 'Failed to sync'}`)
@@ -737,7 +794,7 @@ function FinancialsPage() {
 
     try {
       const token = localStorage.getItem('token')
-      const apiUrl = 'http://localhost:3000'
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
 
       // Filter out empty items
       const validItems = screenshotItems.filter(item => item.productName && item.amount > 0)
@@ -767,18 +824,7 @@ function FinancialsPage() {
 
       const result = await response.json()
 
-      // Add to local expenses
-      const newExpenses = validItems.map((item, idx) => ({
-        id: `screenshot-${Date.now()}-${idx}`,
-        date: new Date().toISOString().split('T')[0],
-        vendor: screenshotVendor,
-        category: item.category,
-        description: item.productName,
-        amount: item.amount,
-        status: 'pending' as const,
-      }))
-
-      setExpenses([...expenses, ...newExpenses])
+      await fetchExpenses()
       setShowScreenshotForm(false)
       setScreenshotItems([])
       setScreenshotVendor('')
@@ -791,38 +837,83 @@ function FinancialsPage() {
     }
   }
 
-  const addExpense = () => {
+  const addExpense = async () => {
     if (!formData.vendor || !formData.amount) return
 
-    const newExpense: Expense = {
-      id: Date.now().toString(),
-      date: formData.date || new Date().toISOString().split('T')[0],
-      vendor: formData.vendor || '',
-      category: formData.category || 'food_cogs',
-      description: formData.description || '',
-      amount: formData.amount || 0,
-      status: formData.status || 'pending',
+    try {
+      const token = localStorage.getItem('token')
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
+      const response = await fetch(`${apiUrl}/api/admin/expenses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          date: formData.date || new Date().toISOString().split('T')[0],
+          vendor: formData.vendor,
+          category: formData.category || 'food_cogs',
+          description: formData.description || '',
+          amount: formData.amount,
+          status: formData.status || 'pending',
+        })
+      })
+      if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.error || 'Failed to add expense')
+      }
+      await fetchExpenses()
+      setFormData({
+        date: new Date().toISOString().split('T')[0],
+        vendor: '',
+        category: 'food_cogs',
+        description: '',
+        amount: 0,
+        status: 'pending',
+      })
+      setExpandedSections(prev => ({ ...prev, expenseForm: false }))
+    } catch (err) {
+      console.error('Error adding expense:', err)
+      alert(`Error: ${err instanceof Error ? err.message : 'Failed to add expense'}`)
     }
-
-    setExpenses([...expenses, newExpense])
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      vendor: '',
-      category: 'food_cogs',
-      description: '',
-      amount: 0,
-      status: 'pending',
-    })
-    setExpandedSections(prev => ({ ...prev, expenseForm: false }))
   }
 
-  const updateExpense = (id: string, updates: Partial<Expense>) => {
-    setExpenses(expenses.map(e => e.id === id ? { ...e, ...updates } : e))
-    setEditingId(null)
+  const updateExpense = async (id: string, updates: Partial<Expense>) => {
+    try {
+      const token = localStorage.getItem('token')
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
+      const response = await fetch(`${apiUrl}/api/admin/expenses/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(updates)
+      })
+      if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.error || 'Failed to update expense')
+      }
+      await fetchExpenses()
+      setEditingId(null)
+    } catch (err) {
+      console.error('Error updating expense:', err)
+      alert(`Error: ${err instanceof Error ? err.message : 'Failed to update expense'}`)
+    }
   }
 
-  const deleteExpense = (id: string) => {
-    setExpenses(expenses.filter(e => e.id !== id))
+  const deleteExpense = async (id: string) => {
+    if (!confirm('Delete this expense?')) return
+    try {
+      const token = localStorage.getItem('token')
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
+      const response = await fetch(`${apiUrl}/api/admin/expenses/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.error || 'Failed to delete expense')
+      }
+      await fetchExpenses()
+    } catch (err) {
+      console.error('Error deleting expense:', err)
+      alert(`Error: ${err instanceof Error ? err.message : 'Failed to delete expense'}`)
+    }
   }
 
   const expensesByCategory = expenses.reduce((acc, exp) => {
@@ -859,27 +950,6 @@ function FinancialsPage() {
 
   const totalMeals = week1.regularMeals + week1.largeMeals + week1.breakfastMeals + week2.regularMeals + week2.largeMeals + week2.breakfastMeals
   const netOperatingProfit = netRevenue - totalExpenses
-
-  const Section = ({ id, title, children }: any) => (
-    <div className="rounded-2xl border border-[#E8DCC8] bg-white overflow-hidden">
-      <button
-        onClick={() => toggleSection(id)}
-        className="w-full flex items-center justify-between p-6 hover:bg-[#FDFBF7] transition"
-      >
-        <h2 className="text-lg font-extrabold text-[#4B2B1D]">{title}</h2>
-        {expandedSections[id] ? (
-          <ChevronUp className="h-5 w-5 text-[#8B6F47]" />
-        ) : (
-          <ChevronDown className="h-5 w-5 text-[#8B6F47]" />
-        )}
-      </button>
-      {expandedSections[id] && (
-        <div className="border-t border-[#E8DCC8] p-6 space-y-4">
-          {children}
-        </div>
-      )}
-    </div>
-  )
 
   return (
     <main className="space-y-6 bg-[#FDFBF7] p-8">
@@ -946,7 +1016,7 @@ function FinancialsPage() {
       {/* Collapsible Sections */}
       <div className="space-y-4">
         {/* Receipt Scanner */}
-        <Section id="receiptScanner" title="📸 Log Receipts (Physical, Online & Google Drive)">
+        <Section id="receiptScanner" title="📸 Log Receipts (Physical, Online & Google Drive)" expandedSections={expandedSections} toggleSection={toggleSection}>
           {/* Tab Buttons */}
           <div className="flex gap-2 mb-4 border-b border-[#E8DCC8] flex-wrap">
             <button
@@ -1179,9 +1249,23 @@ function FinancialsPage() {
                   <strong>Status:</strong> {syncInProgress ? 'Syncing...' : 'Ready. Syncs automatically every 5 minutes.'}
                 </p>
                 {syncResult && (
-                  <p className="text-sm text-[#4B2B1D] mb-3">
-                    <strong>Last sync:</strong> {syncResult.processed} processed, {syncResult.failed} failed
-                  </p>
+                  <>
+                    <p className="text-sm text-[#4B2B1D] mb-3">
+                      <strong>Last sync:</strong> {syncResult.processed} processed, {syncResult.failed} failed
+                    </p>
+                    {syncResult.errors && syncResult.errors.length > 0 && (
+                      <div className="mt-2 rounded-lg bg-[#FFF4F5] border border-[#E8B4B9] p-3">
+                        <p className="text-xs font-bold text-[#D62F3D] mb-2">Why these failed:</p>
+                        <ul className="space-y-1">
+                          {syncResult.errors.map((e, idx) => (
+                            <li key={idx} className="text-xs text-[#755B4C]">
+                              <span className="font-semibold text-[#4B2B1D]">{e.filename}:</span> {e.error}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -1625,7 +1709,7 @@ function FinancialsPage() {
         </Section>
 
         {/* Expense Management */}
-        <Section id="expenses" title={`Expense Management (${expenses.length} expenses)`}>
+        <Section id="expenses" title={`Expense Management (${expenses.length} expenses)`} expandedSections={expandedSections} toggleSection={toggleSection}>
           <div className="space-y-4">
             {/* Summary by Category */}
             <div className="bg-[#FDFBF7] p-4 rounded-lg border border-[#E8DCC8]">
@@ -1651,7 +1735,7 @@ function FinancialsPage() {
             </div>
 
             {/* Add Expense Form */}
-            <Section id="expenseForm" title="Add New Expense">
+            <Section id="expenseForm" title="Add New Expense" expandedSections={expandedSections} toggleSection={toggleSection}>
               <div className="space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <input
@@ -1786,7 +1870,7 @@ function FinancialsPage() {
         </Section>
 
         {/* Weekly Breakdown */}
-        <Section id="weekly" title="Weekly Breakdown">
+        <Section id="weekly" title="Weekly Breakdown" expandedSections={expandedSections} toggleSection={toggleSection}>
           <div className="overflow-x-auto">
             <div className="space-y-3 min-w-min">
               {[week1, week2].map((week, idx) => (
@@ -1818,7 +1902,7 @@ function FinancialsPage() {
         </Section>
 
         {/* Meal Breakdown */}
-        <Section id="meals" title="Meal Breakdown by Type">
+        <Section id="meals" title="Meal Breakdown by Type" expandedSections={expandedSections} toggleSection={toggleSection}>
           <div className="overflow-x-auto">
             <div className="space-y-3 min-w-min">
               {[week1, week2].map((week, idx) => (
