@@ -12,7 +12,8 @@ import {
   ListTodo,
   FileText,
   Settings,
-  LogOut
+  LogOut,
+  LayoutGrid
 } from 'lucide-react'
 
 export function Navigation() {
@@ -21,6 +22,7 @@ export function Navigation() {
   const tabs = [
     { path: '/operational-optimization', label: 'Operational Optimization', icon: BarChart3 },
     { path: '/dashboard', label: 'Dashboard', icon: PieChart },
+    { path: '/operations-hub', label: 'Operations Hub', icon: LayoutGrid },
     { path: '/task-management', label: 'Task Management', icon: ListTodo },
     { path: '/orders', label: 'Orders', icon: ShoppingCart },
     { path: '/customers', label: 'Customers', icon: Users },
