@@ -3,7 +3,6 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import LoginPage from './pages/Login'
 import DashboardPage from './pages/Dashboard.tsx'
 import OperationalOptimizationPage from './pages/OperationalOptimization.tsx'
-import TaskManagementPage from './pages/TaskManagement.tsx'
 import Fit4SureRecipesPage from './pages/Recipes.tsx'
 import InventoryPage from './pages/Inventory.tsx'
 import OrdersPage from './pages/Orders.tsx'
@@ -37,8 +36,8 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={token ? <Navigate to="/dashboard" /> : <Navigate to="/login" />} />
           <Route path="/operational-optimization" element={token ? <OperationalOptimizationPage /> : <Navigate to="/login" />} />
-          <Route path="/task-management" element={token ? <TaskManagementPage /> : <Navigate to="/login" />} />
           <Route path="/operations-hub" element={token ? <OperationsHubPage /> : <Navigate to="/login" />} />
+          <Route path="/task-management" element={<Navigate to="/operations-hub" />} />
           <Route path="/dashboard" element={token ? <DashboardPage /> : <Navigate to="/login" />} />
           <Route path="/orders" element={token ? <OrdersPage /> : <Navigate to="/login" />} />
           <Route path="/customers" element={token ? <CustomersPage /> : <Navigate to="/login" />} />
