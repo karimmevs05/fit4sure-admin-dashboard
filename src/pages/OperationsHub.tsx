@@ -95,6 +95,7 @@ type TaskFormState = {
   due_date: string
   operational_day: OperationalDay
   estimated_minutes: string
+  is_recurring: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -253,6 +254,7 @@ function emptyForm(day: OperationalDay): TaskFormState {
     due_date: '',
     operational_day: day,
     estimated_minutes: '',
+    is_recurring: false,
   }
 }
 
@@ -267,6 +269,7 @@ function taskToForm(task: Task): TaskFormState {
     due_date: task.due_date || '',
     operational_day: task.operational_day || 'monday',
     estimated_minutes: task.estimated_minutes != null ? String(task.estimated_minutes) : '',
+    is_recurring: false,
   }
 }
 
@@ -317,6 +320,10 @@ export default function OperationsHubPage() {
   const fetchWeek = async () => {
     try {
       setLoadingWeek(true)
+      // Insert-if-not-exists per template per week -- safe to call every
+      // time a week is viewed, so recurring tasks just show up without a
+      // scheduled job.
+      await axios.post(`${apiUrl}/api/admin/tasks/templates/generate-week/${weekStart}`, {}, authConfig)
       const response = await axios.get(`${apiUrl}/api/admin/tasks/week/${weekStart}`, authConfig)
       setWeekTasks({ ...emptyWeekTasks(), ...(response.data.data?.days || {}) })
     } catch (error) {
@@ -454,6 +461,8 @@ export default function OperationsHubPage() {
 
       if (editingTask) {
         await axios.patch(`${apiUrl}/api/admin/tasks/${editingTask.id}`, payload, authConfig)
+      } else if (formState.is_recurring) {
+        await axios.post(`${apiUrl}/api/admin/tasks/recurring`, payload, authConfig)
       } else {
         await axios.post(`${apiUrl}/api/admin/tasks`, payload, authConfig)
       }
@@ -1036,6 +1045,20 @@ export default function OperationsHubPage() {
                   />
                 </div>
               </div>
+
+              {!editingTask && (
+                <label className="flex items-center gap-2 pt-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formState.is_recurring}
+                    onChange={(e) => setFormState((f) => ({ ...f, is_recurring: e.target.checked }))}
+                    className="h-4 w-4 rounded border-[#CDBDA8]"
+                  />
+                  <span className="text-xs font-bold text-[#4B2B1D]">
+                    Repeat weekly on {DAY_LABELS[formState.operational_day]}
+                  </span>
+                </label>
+              )}
             </div>
 
             <div className="mt-6 flex justify-end gap-2">
