@@ -220,10 +220,29 @@ export default function Fit4SureRecipesPage() {
                           fetchRecipeDetails(r.recipe_id);
                         }
                       }}
-                      onEdit={(r) => {
-                        console.log("Edit clicked for recipe:", r.name);
+                      onEdit={async (r) => {
                         setSelectedRecipe(null); // Close details drawer
-                        setEditingRecipe(r);
+
+                        // Drafts already carry their full ingredient list
+                        // locally. Real recipes don't -- the list endpoint
+                        // this card's data came from omits `ingredients`
+                        // entirely, so opening the edit drawer with it
+                        // directly would show an empty ingredient list even
+                        // though the recipe has saved ones. Fetch the full
+                        // recipe (with ingredients) first.
+                        if (draftRecipes.some((d) => d.recipe_id === r.recipe_id)) {
+                          setEditingRecipe(r);
+                          return;
+                        }
+                        try {
+                          const response = await axios.get(`${apiUrl}/api/admin/recipes/${r.recipe_id}`, {
+                            headers: { Authorization: `Bearer ${token}` },
+                          });
+                          setEditingRecipe(response.data.data);
+                        } catch (err) {
+                          console.error("Error fetching recipe for edit:", err);
+                          setEditingRecipe(r);
+                        }
                       }}
                     />
                   ))}
