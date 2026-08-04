@@ -57,8 +57,12 @@ type Plate = {
 
 type LastWeekMenu = { monday: string[]; thursday: string[] }
 
-// A recipe being added to the plate builder, with an editable servings qty
-type BuilderRecipe = { recipe: Recipe; servings: number }
+// A recipe being added to the plate builder. `servings` is what actually
+// gets sent to the backend (it's the scale factor computeYieldCorrectedRecipe
+// expects), but the user edits `servingSizeG` -- the real cooked-weight
+// portion size -- and servings is derived from it via gramsPerServing (the
+// recipe's own cooked weight for exactly 1 base serving).
+type BuilderRecipe = { recipe: Recipe; servings: number; gramsPerServing: number | null; servingSizeG: string }
 
 const ALLERGEN_LABELS: Record<string, string> = {
   dairy: 'Dairy',
@@ -201,14 +205,22 @@ export default function MenuPlannerPage() {
     setMakeLarge(!!largeTwinFor(plate.id))
     setCategoryFilter('ALL')
     setBuilderRecipes(
-      plate.recipes.map((pr) => ({
-        recipe: recipes.find((r) => r.recipe_id === pr.recipe_id) || {
-          recipe_id: pr.recipe_id,
-          name: pr.name,
-          category: '',
-        },
-        servings: pr.servings,
-      }))
+      plate.recipes.map((pr) => {
+        // pr.cooked_weight_g is already this recipe's cooked weight at its
+        // current servings, so the per-serving rate falls right out of it --
+        // no extra API call needed like a freshly-added recipe requires.
+        const gramsPerServing = pr.servings > 0 ? pr.cooked_weight_g / pr.servings : null
+        return {
+          recipe: recipes.find((r) => r.recipe_id === pr.recipe_id) || {
+            recipe_id: pr.recipe_id,
+            name: pr.name,
+            category: '',
+          },
+          servings: pr.servings,
+          gramsPerServing,
+          servingSizeG: String(Math.round(pr.cooked_weight_g)),
+        }
+      })
     )
   }
 
@@ -217,13 +229,36 @@ export default function MenuPlannerPage() {
     setEditingPlateId(null)
   }
 
-  const addRecipeToBuilder = (recipe: Recipe) => {
+  const addRecipeToBuilder = async (recipe: Recipe) => {
     if (builderRecipes.some(br => br.recipe.recipe_id === recipe.recipe_id)) return
-    setBuilderRecipes([...builderRecipes, { recipe, servings: 1 }])
+    // Look up this recipe's cooked weight for exactly 1 base serving, so
+    // the serving-size-in-grams input has a real conversion rate to work
+    // with. Defaults to 1 serving's worth until that resolves.
+    setBuilderRecipes([...builderRecipes, { recipe, servings: 1, gramsPerServing: null, servingSizeG: '' }])
+    try {
+      const response = await axios.get(`${apiUrl}/api/admin/recipes/${recipe.recipe_id}/yield-corrected`, {
+        params: { servings: 1 },
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const gramsPerServing = response.data.data?.cooked_weight_g ?? null
+      setBuilderRecipes((current) =>
+        current.map((br) =>
+          br.recipe.recipe_id === recipe.recipe_id
+            ? { ...br, gramsPerServing, servingSizeG: gramsPerServing ? String(Math.round(gramsPerServing)) : '' }
+            : br
+        )
+      )
+    } catch (err) {
+      console.error('Error fetching serving size for recipe:', err)
+    }
   }
 
-  const updateBuilderServings = (recipeId: number, servings: number) => {
-    setBuilderRecipes(builderRecipes.map(br => br.recipe.recipe_id === recipeId ? { ...br, servings } : br))
+  const updateBuilderServingSize = (recipeId: number, grams: number) => {
+    setBuilderRecipes(builderRecipes.map(br => {
+      if (br.recipe.recipe_id !== recipeId) return br
+      const servings = br.gramsPerServing ? grams / br.gramsPerServing : grams
+      return { ...br, servingSizeG: String(grams), servings }
+    }))
   }
 
   const removeBuilderRecipe = (recipeId: number) => {
@@ -510,7 +545,7 @@ export default function MenuPlannerPage() {
               {builderRecipes.length > 0 && (
                 <div>
                   <label className="block text-xs font-extrabold text-[#4B2B1D] mb-3">
-                    Recipes in Plate ({builderRecipes.length}) -- set the amount used
+                    Recipes in Plate ({builderRecipes.length}) -- set the serving size
                   </label>
                   <div className="space-y-2 border border-[#16A34A] rounded-lg p-3 bg-[#F0FDF4]">
                     {builderRecipes.map((br) => (
@@ -519,13 +554,14 @@ export default function MenuPlannerPage() {
                         <div className="flex items-center gap-1">
                           <input
                             type="number"
-                            min="0.1"
-                            step="0.1"
-                            value={br.servings}
-                            onChange={(e) => updateBuilderServings(br.recipe.recipe_id, parseFloat(e.target.value) || 0)}
+                            min="1"
+                            step="1"
+                            value={br.servingSizeG}
+                            placeholder={br.gramsPerServing == null ? '...' : undefined}
+                            onChange={(e) => updateBuilderServingSize(br.recipe.recipe_id, parseFloat(e.target.value) || 0)}
                             className="w-16 h-8 rounded border border-[#B9A88F] bg-white px-2 text-xs text-center outline-none"
                           />
-                          <span className="text-xs text-[#9A7E6F]">servings</span>
+                          <span className="text-xs text-[#9A7E6F]">g cooked</span>
                         </div>
                         <button
                           onClick={() => removeBuilderRecipe(br.recipe.recipe_id)}
@@ -723,7 +759,7 @@ function DeliveryColumn({
                 <div className="space-y-1.5">
                   {plate.recipes.map((recipe, idx) => (
                     <div key={idx} className="bg-[#F9F5F0] rounded p-2">
-                      <p className="text-xs font-semibold text-[#4B2B1D]">{recipe.name} × {recipe.servings}</p>
+                      <p className="text-xs font-semibold text-[#4B2B1D]">{recipe.name} — {Math.round(recipe.cooked_weight_g)}g</p>
                     </div>
                   ))}
                 </div>
