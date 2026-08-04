@@ -211,7 +211,15 @@ export default function Fit4SureRecipesPage() {
                       key={recipe.recipe_id}
                       recipe={recipe}
                       onDelete={deleteRecipe}
-                      onSelect={(r) => fetchRecipeDetails(r.recipe_id)}
+                      onSelect={(r) => {
+                        // Drafts only exist in localStorage -- the fake
+                        // Date.now() id was never a real backend recipe.
+                        if (draftRecipes.some((d) => d.recipe_id === r.recipe_id)) {
+                          setSelectedRecipe(r);
+                        } else {
+                          fetchRecipeDetails(r.recipe_id);
+                        }
+                      }}
                       onEdit={(r) => {
                         console.log("Edit clicked for recipe:", r.name);
                         setSelectedRecipe(null); // Close details drawer
@@ -710,6 +718,13 @@ function AddRecipeDrawer({
           carbs_g: form.carbs_g.toString(),
           fat_g: form.fat_g.toString(),
           cost_per_serving_cents: 0,
+          ingredients: ingredients.map((ing) => ({
+            id: Number(ing.id) || 0,
+            inventory_id: ing.inventory_id,
+            name: ing.name,
+            quantity_g: ing.quantity_g,
+            unit_price_cents: ing.unit_price_cents ?? undefined,
+          })),
         };
         onDraftSave([...draftRecipes, newDraft]);
       } else {
@@ -1014,6 +1029,13 @@ function AddRecipeDrawer({
                       carbs_g: form.carbs_g.toString(),
                       fat_g: form.fat_g.toString(),
                       cost_per_serving_cents: 0,
+                      ingredients: ingredients.map((ing) => ({
+                        id: Number(ing.id) || 0,
+                        inventory_id: ing.inventory_id,
+                        name: ing.name,
+                        quantity_g: ing.quantity_g,
+                        unit_price_cents: ing.unit_price_cents ?? undefined,
+                      })),
                     };
                     onDraftSave([...draftRecipes, newDraft]);
                     onClose();
@@ -1211,40 +1233,46 @@ function EditRecipeDrawer({
     setSubmitting(true);
     setSubmitError(null);
 
-    try {
-      await axios.put(
-        `${apiUrl}/api/admin/recipes/${recipe.recipe_id}`,
-        {
-          name: form.name.trim(),
-          category: form.category,
-          servings: form.servings,
-          prep_time_minutes: form.prep_time_minutes,
-          calories: form.calories,
-          protein_g: form.protein_g,
-          carbs_g: form.carbs_g,
-          fat_g: form.fat_g,
-          instructions: form.instructions || null,
-          image: form.image || null,
-          ingredients: ingredients.map((ing) => ({
-            inventory_id: ing.inventory_id,
-            quantity_g: ing.quantity_g,
-          })),
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+    // Drafts only ever exist in localStorage with a fake Date.now()-based
+    // id -- saving one has to POST (create) a real row, never PUT (update)
+    // against an id the database has never seen.
+    const isDraftRecipe = draftRecipes?.some((r) => r.recipe_id === recipe.recipe_id) ?? false;
 
-      // If recipe was prepared_meal (draft) and now has a real category, remove from drafts
-      if (recipe.category === 'prepared_meal' && form.category !== 'prepared_meal' && draftRecipes && saveDrafts) {
-        const updated = draftRecipes.filter(r => r.recipe_id !== recipe.recipe_id);
-        saveDrafts(updated);
+    const payload = {
+      name: form.name.trim(),
+      category: form.category,
+      servings: form.servings,
+      prep_time_minutes: form.prep_time_minutes,
+      calories: form.calories,
+      protein_g: form.protein_g,
+      carbs_g: form.carbs_g,
+      fat_g: form.fat_g,
+      instructions: form.instructions || null,
+      image: form.image || null,
+      ingredients: ingredients.map((ing) => ({
+        inventory_id: ing.inventory_id,
+        quantity_g: ing.quantity_g,
+      })),
+    };
+
+    try {
+      if (isDraftRecipe) {
+        await axios.post(`${apiUrl}/api/admin/recipes`, payload, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (draftRecipes && saveDrafts) {
+          saveDrafts(draftRecipes.filter((r) => r.recipe_id !== recipe.recipe_id));
+        }
+      } else {
+        await axios.put(`${apiUrl}/api/admin/recipes/${recipe.recipe_id}`, payload, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
       }
 
       onSave?.();
       onClose();
     } catch (err: any) {
-      setSubmitError(err.response?.data?.error || "Failed to update recipe");
+      setSubmitError(err.response?.data?.error || `Failed to ${isDraftRecipe ? "create" : "update"} recipe`);
     } finally {
       setSubmitting(false);
     }
