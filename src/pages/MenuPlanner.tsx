@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
-import { Plus, Trash2, X, AlertTriangle } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, AlertTriangle } from 'lucide-react'
 
 type Recipe = {
   recipe_id: number
@@ -143,6 +143,7 @@ export default function MenuPlannerPage() {
   const [lastWeekMenu, setLastWeekMenu] = useState<LastWeekMenu>({ monday: [], thursday: [] })
   const [loading, setLoading] = useState(true)
   const [buildingDay, setBuildingDay] = useState<'monday' | 'thursday' | null>(null)
+  const [editingPlateId, setEditingPlateId] = useState<number | null>(null)
   const [plateName, setPlateName] = useState('')
   const [builderRecipes, setBuilderRecipes] = useState<BuilderRecipe[]>([])
   const [makeLarge, setMakeLarge] = useState(false)
@@ -182,11 +183,38 @@ export default function MenuPlannerPage() {
   }
 
   const startBuildingPlate = (day: 'monday' | 'thursday') => {
+    setEditingPlateId(null)
     setBuildingDay(day)
     setPlateName('')
     setBuilderRecipes([])
     setMakeLarge(false)
     setCategoryFilter('ALL')
+  }
+
+  // Reopens the builder pre-filled with an existing plate's name, recipes,
+  // and per-recipe servings, so they can be adjusted in place instead of
+  // deleting and rebuilding the plate from scratch.
+  const startEditingPlate = (plate: Plate) => {
+    setEditingPlateId(plate.id)
+    setBuildingDay(plate.delivery_day)
+    setPlateName(plate.name)
+    setMakeLarge(!!largeTwinFor(plate.id))
+    setCategoryFilter('ALL')
+    setBuilderRecipes(
+      plate.recipes.map((pr) => ({
+        recipe: recipes.find((r) => r.recipe_id === pr.recipe_id) || {
+          recipe_id: pr.recipe_id,
+          name: pr.name,
+          category: '',
+        },
+        servings: pr.servings,
+      }))
+    )
+  }
+
+  const closeBuilder = () => {
+    setBuildingDay(null)
+    setEditingPlateId(null)
   }
 
   const addRecipeToBuilder = (recipe: Recipe) => {
@@ -209,17 +237,22 @@ export default function MenuPlannerPage() {
     }
     setSaving(true)
     try {
-      await axios.post(
-        `${apiUrl}/api/admin/menu-planner/plates`,
-        {
-          name: plateName.trim(),
-          day: buildingDay,
-          recipes: builderRecipes.map(br => ({ recipe_id: br.recipe.recipe_id, servings: br.servings })),
-          makeLarge,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-      setBuildingDay(null)
+      const payload = {
+        name: plateName.trim(),
+        day: buildingDay,
+        recipes: builderRecipes.map(br => ({ recipe_id: br.recipe.recipe_id, servings: br.servings })),
+        makeLarge,
+      }
+      if (editingPlateId) {
+        await axios.put(`${apiUrl}/api/admin/menu-planner/plates/${editingPlateId}`, payload, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      } else {
+        await axios.post(`${apiUrl}/api/admin/menu-planner/plates`, payload, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      }
+      closeBuilder()
       await fetchAll()
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to save plate')
@@ -362,6 +395,7 @@ export default function MenuPlannerPage() {
           plates={platesByDay('monday')}
           largeTwinFor={largeTwinFor}
           onAddPlate={() => startBuildingPlate('monday')}
+          onEditPlate={startEditingPlate}
           onDeletePlate={deletePlate}
           getCategoryColor={getCategoryColor}
         />
@@ -375,6 +409,7 @@ export default function MenuPlannerPage() {
           plates={platesByDay('thursday')}
           largeTwinFor={largeTwinFor}
           onAddPlate={() => startBuildingPlate('thursday')}
+          onEditPlate={startEditingPlate}
           onDeletePlate={deletePlate}
           getCategoryColor={getCategoryColor}
         />
@@ -386,9 +421,9 @@ export default function MenuPlannerPage() {
           <div className="bg-[#FBF7F0] rounded-2xl border border-[#CDBDA8] max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-[#FBF7F0] border-b border-[#E4D8C9] p-6 flex items-center justify-between">
               <h2 className="text-2xl font-extrabold text-[#4B2B1D]">
-                Build Plate - {buildingDay === 'monday' ? 'Monday' : 'Thursday'}
+                {editingPlateId ? 'Edit Plate' : 'Build Plate'} - {buildingDay === 'monday' ? 'Monday' : 'Thursday'}
               </h2>
-              <button onClick={() => setBuildingDay(null)} className="text-[#755B4C] hover:text-[#4B2B1D]">
+              <button onClick={closeBuilder} className="text-[#755B4C] hover:text-[#4B2B1D]">
                 <X className="h-6 w-6" />
               </button>
             </div>
@@ -539,7 +574,7 @@ export default function MenuPlannerPage() {
 
               <div className="flex gap-3">
                 <button
-                  onClick={() => setBuildingDay(null)}
+                  onClick={closeBuilder}
                   className="flex-1 rounded-lg border border-[#B9A88F] bg-white px-4 py-3 text-sm font-extrabold text-[#4B2B1D] hover:bg-[#F8F2E8] transition"
                 >
                   Cancel
@@ -549,7 +584,7 @@ export default function MenuPlannerPage() {
                   disabled={!plateName.trim() || builderRecipes.length === 0 || saving}
                   className="flex-1 rounded-lg bg-[#16A34A] text-white px-4 py-3 text-sm font-extrabold hover:bg-[#15873F] disabled:opacity-50 transition"
                 >
-                  {saving ? 'Saving...' : 'Save Plate'}
+                  {saving ? 'Saving...' : editingPlateId ? 'Save Changes' : 'Save Plate'}
                 </button>
               </div>
             </div>
@@ -591,7 +626,7 @@ export default function MenuPlannerPage() {
 }
 
 function DeliveryColumn({
-  day, label, color, bg, plates, largeTwinFor, onAddPlate, onDeletePlate, getCategoryColor,
+  day, label, color, bg, plates, largeTwinFor, onAddPlate, onEditPlate, onDeletePlate, getCategoryColor,
 }: {
   day: 'monday' | 'thursday'
   label: string
@@ -600,6 +635,7 @@ function DeliveryColumn({
   plates: Plate[]
   largeTwinFor: (id: number) => Plate | undefined
   onAddPlate: () => void
+  onEditPlate: (plate: Plate) => void
   onDeletePlate: (plate: Plate) => void
   getCategoryColor: (category: string) => string
 }) {
@@ -640,12 +676,22 @@ function DeliveryColumn({
               >
                 <div className="flex items-start justify-between mb-2">
                   <p className="font-extrabold text-[#4B2B1D]">{plate.name}</p>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onDeletePlate(plate) }}
-                    className="text-[#D62F3D] hover:bg-[#FFF4F4] p-1 rounded transition"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onEditPlate(plate) }}
+                      className="text-[#755B4C] hover:bg-[#F3EBDF] p-1 rounded transition"
+                      title="Edit plate"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onDeletePlate(plate) }}
+                      className="text-[#D62F3D] hover:bg-[#FFF4F4] p-1 rounded transition"
+                      title="Delete plate"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Low stock warning banner */}
