@@ -1,13 +1,12 @@
 import React from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import LoginPage from './pages/Login'
-import DashboardPage from './pages/Dashboard.tsx'
-import OperationalOptimizationPage from './pages/OperationalOptimization.tsx'
 import Fit4SureRecipesPage from './pages/Recipes.tsx'
 import InventoryPage from './pages/Inventory.tsx'
 import OrdersPage from './pages/Orders.tsx'
 import MenuPlannerPage from './pages/MenuPlanner.tsx'
 import TaskDashboardPage from './pages/TaskDashboard.tsx'
+import OperationsHubPage from './pages/OperationsHub.tsx'
 import CustomersPage from './pages/Customers.tsx'
 import FinancialsPage from './pages/Financials.tsx'
 import ReportsPage from './pages/Reports.tsx'
@@ -35,10 +34,10 @@ function App() {
           <Route path="/test" element={<TestPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={token ? <Navigate to="/dashboard" /> : <Navigate to="/login" />} />
-          <Route path="/operational-optimization" element={token ? <OperationalOptimizationPage /> : <Navigate to="/login" />} />
-          <Route path="/task-management" element={token ? <TaskDashboardPage /> : <Navigate to="/login" />} />
-          <Route path="/operations-hub" element={<Navigate to="/task-management" />} />
-          <Route path="/dashboard" element={token ? <DashboardPage /> : <Navigate to="/login" />} />
+          <Route path="/operational-optimization" element={token ? <OperationsHubPage /> : <Navigate to="/login" />} />
+          <Route path="/operations-hub" element={<Navigate to="/operational-optimization" />} />
+          <Route path="/task-management" element={<Navigate to="/dashboard" />} />
+          <Route path="/dashboard" element={token ? <TaskDashboardPage /> : <Navigate to="/login" />} />
           <Route path="/orders" element={token ? <OrdersPage /> : <Navigate to="/login" />} />
           <Route path="/customers" element={token ? <CustomersPage /> : <Navigate to="/login" />} />
           <Route path="/menu-planner" element={token ? <MenuPlannerPage /> : <Navigate to="/login" />} />

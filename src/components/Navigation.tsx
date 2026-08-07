@@ -11,8 +11,7 @@ import {
   DollarSign,
   FileText,
   Settings,
-  LogOut,
-  LayoutGrid
+  LogOut
 } from 'lucide-react'
 
 export function Navigation() {
@@ -21,7 +20,6 @@ export function Navigation() {
   const tabs = [
     { path: '/operational-optimization', label: 'Operational Optimization', icon: BarChart3 },
     { path: '/dashboard', label: 'Dashboard', icon: PieChart },
-    { path: '/task-management', label: 'Task Management', icon: LayoutGrid },
     { path: '/orders', label: 'Orders', icon: ShoppingCart },
     { path: '/customers', label: 'Customers', icon: Users },
     { path: '/menu-planner', label: 'Menu Planner', icon: Calendar },
