@@ -785,34 +785,34 @@ export default function OperationsHubPage() {
 
             {/* Filters */}
             <div className="flex flex-wrap items-center gap-2 mb-4">
-              <div className="flex items-center gap-1.5 rounded-lg border border-[#CDBDA8] bg-white px-2 py-1.5 flex-1 min-w-[160px]">
-                <Search className="h-3.5 w-3.5 text-[#755B4C]" />
+              <div className="flex items-center gap-1.5 rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-[10px] py-[7px] flex-1 min-w-[160px]">
+                <Search className="h-3.5 w-3.5 text-[#9A8774]" />
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search tasks..."
-                  className="text-xs outline-none flex-1 text-[#4B2B1D]"
+                  className="text-[13px] outline-none flex-1 bg-transparent text-[#4B2B1D]"
                 />
               </div>
-              <select value={filterOwner} onChange={(e) => setFilterOwner(e.target.value)} className="text-xs rounded-lg border border-[#CDBDA8] bg-white px-2 py-1.5 text-[#4B2B1D]">
+              <select value={filterOwner} onChange={(e) => setFilterOwner(e.target.value)} className="text-[13px] rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-[10px] py-[7px] text-[#755B4C]">
                 <option value="">All Owners</option>
                 {staff.map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
-              <select value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)} className="text-xs rounded-lg border border-[#CDBDA8] bg-white px-2 py-1.5 text-[#4B2B1D]">
+              <select value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)} className="text-[13px] rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-[10px] py-[7px] text-[#755B4C]">
                 <option value="">All Priorities</option>
                 {PRIORITIES.map((p) => (
                   <option key={p} value={p}>{p}</option>
                 ))}
               </select>
-              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-xs rounded-lg border border-[#CDBDA8] bg-white px-2 py-1.5 text-[#4B2B1D]">
+              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-[13px] rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-[10px] py-[7px] text-[#755B4C]">
                 <option value="">All Statuses</option>
                 {STATUSES.map((s) => (
                   <option key={s} value={s}>{STATUS_LABELS[s]}</option>
                 ))}
               </select>
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="text-xs rounded-lg border border-[#CDBDA8] bg-white px-2 py-1.5 text-[#4B2B1D]">
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="text-[13px] rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-[10px] py-[7px] text-[#755B4C]">
                 <option value="due_date">Sort: Due Date</option>
                 <option value="priority">Sort: Priority</option>
                 <option value="status">Sort: Status</option>
@@ -889,7 +889,7 @@ export default function OperationsHubPage() {
                   setViewingStaffId(e.target.value)
                   localStorage.setItem(VIEWING_STAFF_KEY, e.target.value)
                 }}
-                className="text-[10px] rounded border border-[#CDBDA8] bg-white px-1.5 py-1 text-[#4B2B1D]"
+                className="text-[10px] rounded-lg border border-[#CDBDA8] bg-[#FBF7F0] px-1.5 py-1 text-[#755B4C]"
               >
                 <option value="">Viewing as...</option>
                 {staff.map((s) => (
@@ -962,7 +962,7 @@ export default function OperationsHubPage() {
                 <input
                   value={formState.title}
                   onChange={(e) => setFormState((f) => ({ ...f, title: e.target.value }))}
-                  className="mt-1 w-full rounded-lg border border-[#CDBDA8] bg-white px-3 py-2 text-sm text-[#4B2B1D]"
+                  className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
                 />
               </div>
               <div>
@@ -971,7 +971,7 @@ export default function OperationsHubPage() {
                   value={formState.description}
                   onChange={(e) => setFormState((f) => ({ ...f, description: e.target.value }))}
                   rows={2}
-                  className="mt-1 w-full rounded-lg border border-[#CDBDA8] bg-white px-3 py-2 text-sm text-[#4B2B1D]"
+                  className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -980,7 +980,7 @@ export default function OperationsHubPage() {
                   <select
                     value={formState.department}
                     onChange={(e) => setFormState((f) => ({ ...f, department: e.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-[#CDBDA8] bg-white px-3 py-2 text-sm text-[#4B2B1D]"
+                    className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
                   >
                     {DEPARTMENTS.map((d) => (
                       <option key={d} value={d}>{d}</option>
@@ -992,7 +992,7 @@ export default function OperationsHubPage() {
                   <select
                     value={formState.owner_id}
                     onChange={(e) => setFormState((f) => ({ ...f, owner_id: e.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-[#CDBDA8] bg-white px-3 py-2 text-sm text-[#4B2B1D]"
+                    className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
                   >
                     <option value="">Unassigned</option>
                     {staff.map((s) => (
@@ -1005,7 +1005,7 @@ export default function OperationsHubPage() {
                   <select
                     value={formState.priority}
                     onChange={(e) => setFormState((f) => ({ ...f, priority: e.target.value as Priority }))}
-                    className="mt-1 w-full rounded-lg border border-[#CDBDA8] bg-white px-3 py-2 text-sm text-[#4B2B1D]"
+                    className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
                   >
                     {PRIORITIES.map((p) => (
                       <option key={p} value={p}>{p}</option>
@@ -1017,7 +1017,7 @@ export default function OperationsHubPage() {
                   <select
                     value={formState.status}
                     onChange={(e) => setFormState((f) => ({ ...f, status: e.target.value as Status }))}
-                    className="mt-1 w-full rounded-lg border border-[#CDBDA8] bg-white px-3 py-2 text-sm text-[#4B2B1D]"
+                    className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
                   >
                     {STATUSES.map((s) => (
                       <option key={s} value={s}>{STATUS_LABELS[s]}</option>
@@ -1029,7 +1029,7 @@ export default function OperationsHubPage() {
                   <select
                     value={formState.operational_day}
                     onChange={(e) => setFormState((f) => ({ ...f, operational_day: e.target.value as OperationalDay }))}
-                    className="mt-1 w-full rounded-lg border border-[#CDBDA8] bg-white px-3 py-2 text-sm text-[#4B2B1D]"
+                    className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
                   >
                     {OPERATIONAL_DAYS.map((d) => (
                       <option key={d} value={d}>{DAY_LABELS[d]}</option>
@@ -1042,7 +1042,7 @@ export default function OperationsHubPage() {
                     type="date"
                     value={formState.due_date}
                     onChange={(e) => setFormState((f) => ({ ...f, due_date: e.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-[#CDBDA8] bg-white px-3 py-2 text-sm text-[#4B2B1D]"
+                    className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
                   />
                 </div>
                 <div>
@@ -1051,7 +1051,7 @@ export default function OperationsHubPage() {
                     type="number"
                     value={formState.estimated_minutes}
                     onChange={(e) => setFormState((f) => ({ ...f, estimated_minutes: e.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-[#CDBDA8] bg-white px-3 py-2 text-sm text-[#4B2B1D]"
+                    className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
                   />
                 </div>
               </div>
@@ -1138,7 +1138,7 @@ export default function OperationsHubPage() {
                       onChange={(e) => setNewChecklistLabel(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && addChecklistItem()}
                       placeholder="Add checklist item..."
-                      className="flex-1 rounded-lg border border-[#CDBDA8] bg-white px-3 py-1.5 text-xs text-[#4B2B1D]"
+                      className="flex-1 rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-1.5 text-xs text-[#4B2B1D]"
                     />
                     <button onClick={addChecklistItem} className="rounded-lg bg-[#2E527F] text-white p-1.5 hover:bg-[#254368] transition">
                       <Plus className="h-3.5 w-3.5" />
@@ -1169,7 +1169,7 @@ export default function OperationsHubPage() {
                       onChange={(e) => setNewComment(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && addComment()}
                       placeholder="Add a comment..."
-                      className="flex-1 rounded-lg border border-[#CDBDA8] bg-white px-3 py-1.5 text-xs text-[#4B2B1D]"
+                      className="flex-1 rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-1.5 text-xs text-[#4B2B1D]"
                     />
                     <button onClick={addComment} className="rounded-lg bg-[#2E527F] text-white p-1.5 hover:bg-[#254368] transition">
                       <Check className="h-3.5 w-3.5" />
