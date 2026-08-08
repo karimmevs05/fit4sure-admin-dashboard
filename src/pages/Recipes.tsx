@@ -26,6 +26,10 @@ type RecipeIngredient = {
   quantity_g: number;
   unit_price_cents?: number;
   ingredient_cost_cents?: number;
+  protein_per_100g?: number | null;
+  carbs_per_100g?: number | null;
+  fat_per_100g?: number | null;
+  calories_per_100g?: number | null;
 };
 
 type Recipe = {
@@ -59,6 +63,17 @@ const CATEGORY_CLASSES: Record<Category, string> = {
 
 const INPUT_CLASS =
   "h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none transition placeholder:text-[#9A8774] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10";
+
+// Same look as INPUT_CLASS but non-interactive -- used for values computed
+// from ingredients (calories/macros) that would just get overwritten on
+// the next load if someone typed into them.
+function ReadOnlyValue({ value }: { value: string | number }) {
+  return (
+    <div className="flex h-11 w-full items-center rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D]">
+      {value}
+    </div>
+  );
+}
 
 export default function Fit4SureRecipesPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -585,6 +600,10 @@ function AddRecipeDrawer({
     name: string;
     quantity_g: number;
     unit_price_cents: number | null;
+    protein_per_100g: number | null;
+    carbs_per_100g: number | null;
+    fat_per_100g: number | null;
+    calories_per_100g: number | null;
   };
 
   const [form, setForm] = useState({
@@ -592,15 +611,35 @@ function AddRecipeDrawer({
     category: "beef" as Category,
     servings: 1,
     prep_time_minutes: 30,
-    calories: 0,
-    protein_g: 0,
-    carbs_g: 0,
-    fat_g: 0,
     image: "",
     instructions: "",
   });
 
   const [ingredients, setIngredients] = useState<RecipeFormIngredient[]>([]);
+
+  // Calories/macros are never hand-entered -- the backend recalculates them
+  // live from ingredients on every read (see adminRecipes.js), so an
+  // editable field here would silently get overwritten the moment the
+  // recipe is reopened. Compute the same per-serving total client-side just
+  // to show what it'll actually be.
+  const computedMacros = useMemo(() => {
+    const totals = ingredients.reduce(
+      (acc, ing) => ({
+        calories: acc.calories + ((ing.calories_per_100g || 0) * ing.quantity_g) / 100,
+        protein_g: acc.protein_g + ((ing.protein_per_100g || 0) * ing.quantity_g) / 100,
+        carbs_g: acc.carbs_g + ((ing.carbs_per_100g || 0) * ing.quantity_g) / 100,
+        fat_g: acc.fat_g + ((ing.fat_per_100g || 0) * ing.quantity_g) / 100,
+      }),
+      { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+    );
+    const divisor = form.servings || 1;
+    return {
+      calories: Math.round(totals.calories / divisor),
+      protein_g: +(totals.protein_g / divisor).toFixed(1),
+      carbs_g: +(totals.carbs_g / divisor).toFixed(1),
+      fat_g: +(totals.fat_g / divisor).toFixed(1),
+    };
+  }, [ingredients, form.servings]);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -635,9 +674,10 @@ function AddRecipeDrawer({
         const newDraft: Recipe = {
           recipe_id: Date.now(), // temporary ID
           ...form,
-          protein_g: form.protein_g.toString(),
-          carbs_g: form.carbs_g.toString(),
-          fat_g: form.fat_g.toString(),
+          calories: computedMacros.calories,
+          protein_g: computedMacros.protein_g.toString(),
+          carbs_g: computedMacros.carbs_g.toString(),
+          fat_g: computedMacros.fat_g.toString(),
           cost_per_serving_cents: 0,
           ingredients: ingredients.map((ing) => ({
             id: Number(ing.id) || 0,
@@ -657,10 +697,10 @@ function AddRecipeDrawer({
             category: form.category,
             servings: form.servings,
             prep_time_minutes: form.prep_time_minutes,
-            calories: form.calories,
-            protein_g: form.protein_g,
-            carbs_g: form.carbs_g,
-            fat_g: form.fat_g,
+            calories: computedMacros.calories,
+            protein_g: computedMacros.protein_g,
+            carbs_g: computedMacros.carbs_g,
+            fat_g: computedMacros.fat_g,
             instructions: form.instructions || null,
             image: form.image || null,
             ingredients: ingredients.map((ing) => ({
@@ -679,10 +719,6 @@ function AddRecipeDrawer({
         category: "beef",
         servings: 1,
         prep_time_minutes: 30,
-        calories: 0,
-        protein_g: 0,
-        carbs_g: 0,
-        fat_g: 0,
         image: "",
         instructions: "",
       });
@@ -783,46 +819,19 @@ function AddRecipeDrawer({
               </Field>
             </div>
 
-            <Field label="Calories (kcal)">
-              <input
-                type="number"
-                min={0}
-                value={form.calories}
-                onChange={(event) => update("calories", Number(event.target.value))}
-                className={INPUT_CLASS}
-              />
+            <Field label="Calories">
+              <ReadOnlyValue value={computedMacros.calories} />
             </Field>
 
             <div className="grid grid-cols-3 gap-3">
               <Field label="Protein (g)">
-                <input
-                  type="number"
-                  min={0}
-                  step="0.1"
-                  value={form.protein_g}
-                  onChange={(event) => update("protein_g", Number(event.target.value))}
-                  className={INPUT_CLASS}
-                />
+                <ReadOnlyValue value={computedMacros.protein_g} />
               </Field>
               <Field label="Carbs (g)">
-                <input
-                  type="number"
-                  min={0}
-                  step="0.1"
-                  value={form.carbs_g}
-                  onChange={(event) => update("carbs_g", Number(event.target.value))}
-                  className={INPUT_CLASS}
-                />
+                <ReadOnlyValue value={computedMacros.carbs_g} />
               </Field>
               <Field label="Fat (g)">
-                <input
-                  type="number"
-                  min={0}
-                  step="0.1"
-                  value={form.fat_g}
-                  onChange={(event) => update("fat_g", Number(event.target.value))}
-                  className={INPUT_CLASS}
-                />
+                <ReadOnlyValue value={computedMacros.fat_g} />
               </Field>
             </div>
 
@@ -908,9 +917,10 @@ function AddRecipeDrawer({
                     const newDraft: Recipe = {
                       recipe_id: Date.now(),
                       ...form,
-                      protein_g: form.protein_g.toString(),
-                      carbs_g: form.carbs_g.toString(),
-                      fat_g: form.fat_g.toString(),
+                      calories: computedMacros.calories,
+                      protein_g: computedMacros.protein_g.toString(),
+                      carbs_g: computedMacros.carbs_g.toString(),
+                      fat_g: computedMacros.fat_g.toString(),
                       cost_per_serving_cents: 0,
                       ingredients: ingredients.map((ing) => ({
                         id: Number(ing.id) || 0,
@@ -972,6 +982,10 @@ function EditRecipeDrawer({
     name: string;
     quantity_g: number;
     unit_price_cents: number | null;
+    protein_per_100g: number | null;
+    carbs_per_100g: number | null;
+    fat_per_100g: number | null;
+    calories_per_100g: number | null;
   };
 
   const [form, setForm] = useState({
@@ -979,10 +993,6 @@ function EditRecipeDrawer({
     category: recipe.category || ("beef" as Category),
     servings: recipe.servings || 1,
     prep_time_minutes: recipe.prep_time_minutes || 0,
-    calories: recipe.calories || 0,
-    protein_g: recipe.protein_g ? parseFloat(recipe.protein_g) : 0,
-    carbs_g: recipe.carbs_g ? parseFloat(recipe.carbs_g) : 0,
-    fat_g: recipe.fat_g ? parseFloat(recipe.fat_g) : 0,
     instructions: recipe.instructions || "",
     image: recipe.image || "",
   });
@@ -994,8 +1004,36 @@ function EditRecipeDrawer({
       name: ing.name || "",
       quantity_g: ing.quantity_g || 0,
       unit_price_cents: ing.unit_price_cents ?? null,
+      protein_per_100g: ing.protein_per_100g ?? null,
+      carbs_per_100g: ing.carbs_per_100g ?? null,
+      fat_per_100g: ing.fat_per_100g ?? null,
+      calories_per_100g: ing.calories_per_100g ?? null,
     })) || []
   );
+
+  // Calories/macros are never hand-entered -- the backend recalculates them
+  // live from ingredients on every read (see adminRecipes.js), so an
+  // editable field here would silently get overwritten the moment the
+  // recipe is reopened. Compute the same per-serving total client-side just
+  // to show what it'll actually be.
+  const computedMacros = useMemo(() => {
+    const totals = ingredients.reduce(
+      (acc, ing) => ({
+        calories: acc.calories + ((ing.calories_per_100g || 0) * ing.quantity_g) / 100,
+        protein_g: acc.protein_g + ((ing.protein_per_100g || 0) * ing.quantity_g) / 100,
+        carbs_g: acc.carbs_g + ((ing.carbs_per_100g || 0) * ing.quantity_g) / 100,
+        fat_g: acc.fat_g + ((ing.fat_per_100g || 0) * ing.quantity_g) / 100,
+      }),
+      { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+    );
+    const divisor = form.servings || 1;
+    return {
+      calories: Math.round(totals.calories / divisor),
+      protein_g: +(totals.protein_g / divisor).toFixed(1),
+      carbs_g: +(totals.carbs_g / divisor).toFixed(1),
+      fat_g: +(totals.fat_g / divisor).toFixed(1),
+    };
+  }, [ingredients, form.servings]);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -1039,10 +1077,10 @@ function EditRecipeDrawer({
       category: form.category,
       servings: form.servings,
       prep_time_minutes: form.prep_time_minutes,
-      calories: form.calories,
-      protein_g: form.protein_g,
-      carbs_g: form.carbs_g,
-      fat_g: form.fat_g,
+      calories: computedMacros.calories,
+      protein_g: computedMacros.protein_g,
+      carbs_g: computedMacros.carbs_g,
+      fat_g: computedMacros.fat_g,
       instructions: form.instructions || null,
       image: form.image || null,
       ingredients: ingredients.map((ing) => ({
@@ -1164,45 +1202,18 @@ function EditRecipeDrawer({
             </div>
 
             <Field label="Calories">
-              <input
-                type="number"
-                min={0}
-                value={form.calories}
-                onChange={(event) => update("calories", Number(event.target.value))}
-                className={INPUT_CLASS}
-              />
+              <ReadOnlyValue value={computedMacros.calories} />
             </Field>
 
             <div className="grid grid-cols-3 gap-3">
               <Field label="Protein (g)">
-                <input
-                  type="number"
-                  min={0}
-                  step="0.1"
-                  value={form.protein_g}
-                  onChange={(event) => update("protein_g", Number(event.target.value))}
-                  className={INPUT_CLASS}
-                />
+                <ReadOnlyValue value={computedMacros.protein_g} />
               </Field>
               <Field label="Carbs (g)">
-                <input
-                  type="number"
-                  min={0}
-                  step="0.1"
-                  value={form.carbs_g}
-                  onChange={(event) => update("carbs_g", Number(event.target.value))}
-                  className={INPUT_CLASS}
-                />
+                <ReadOnlyValue value={computedMacros.carbs_g} />
               </Field>
               <Field label="Fat (g)">
-                <input
-                  type="number"
-                  min={0}
-                  step="0.1"
-                  value={form.fat_g}
-                  onChange={(event) => update("fat_g", Number(event.target.value))}
-                  className={INPUT_CLASS}
-                />
+                <ReadOnlyValue value={computedMacros.fat_g} />
               </Field>
             </div>
 

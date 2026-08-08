@@ -6,6 +6,10 @@ export type PickedIngredient = {
   name: string
   quantity_g: number
   unit_price_cents: number | null
+  protein_per_100g: number | null
+  carbs_per_100g: number | null
+  fat_per_100g: number | null
+  calories_per_100g: number | null
 }
 
 type InventoryOption = {
@@ -103,6 +107,10 @@ export function IngredientPicker({ onAdd }: { onAdd: (ingredient: PickedIngredie
       name: selected.name,
       quantity_g: qty,
       unit_price_cents: selected.unit_price_cents,
+      protein_per_100g: selected.protein_per_100g,
+      carbs_per_100g: selected.carbs_per_100g,
+      fat_per_100g: selected.fat_per_100g,
+      calories_per_100g: selected.calories_per_100g,
     })
     setSelected(null)
     setQuery('')
