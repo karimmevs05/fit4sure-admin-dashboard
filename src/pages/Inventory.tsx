@@ -34,6 +34,7 @@ export default function InventoryPage() {
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [activeCategory, setActiveCategory] = useState<string>('ALL')
+  const [stockFilter, setStockFilter] = useState<'ALL' | 'IN_STOCK' | 'OUT'>('ALL')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [receiptScannerOpen, setReceiptScannerOpen] = useState(false)
@@ -77,9 +78,12 @@ export default function InventoryPage() {
         .includes(search.toLowerCase())
       const matchesCategory =
         activeCategory === 'ALL' || item.category === activeCategory
-      return matchesSearch && matchesCategory
+      const inStock = (item.current_stock_g ?? 0) > 0
+      const matchesStock =
+        stockFilter === 'ALL' || (stockFilter === 'IN_STOCK' ? inStock : !inStock)
+      return matchesSearch && matchesCategory && matchesStock
     })
-  }, [items, search, activeCategory])
+  }, [items, search, activeCategory, stockFilter])
 
   const deleteItem = async (id: number) => {
     if (!confirm('Delete this ingredient?')) return
@@ -110,6 +114,8 @@ export default function InventoryPage() {
           setSearch={setSearch}
           activeCategory={activeCategory}
           setActiveCategory={setActiveCategory}
+          stockFilter={stockFilter}
+          setStockFilter={setStockFilter}
           onAdd={() => {
             setEditingId(null)
             setDrawerOpen(true)
@@ -165,6 +171,9 @@ export default function InventoryPage() {
                       Current Stock
                     </th>
                     <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">
                       Protein (g)
                     </th>
                     <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">
@@ -217,6 +226,17 @@ export default function InventoryPage() {
                         {item.current_stock_g != null
                           ? `${parseFloat(String(item.current_stock_g)).toFixed(0)}g`
                           : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {(item.current_stock_g ?? 0) > 0 ? (
+                          <span className="inline-flex items-center rounded-full bg-[#EAF5EC] px-2 py-1 text-xs font-bold text-[#16834A]">
+                            In Stock
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-[#F1EAE0] px-2 py-1 text-xs font-bold text-[#9A7E6F]">
+                            Not in Stock
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-center text-[#755B4C] text-sm">
                         {item.protein_per_100g ? parseFloat(String(item.protein_per_100g)).toFixed(1) : '-'}
@@ -287,6 +307,8 @@ function Header({
   setSearch,
   activeCategory,
   setActiveCategory,
+  stockFilter,
+  setStockFilter,
   onAdd,
   onReceipt,
 }: {
@@ -294,6 +316,8 @@ function Header({
   setSearch: (value: string) => void
   activeCategory: string
   setActiveCategory: (value: string) => void
+  stockFilter: 'ALL' | 'IN_STOCK' | 'OUT'
+  setStockFilter: (value: 'ALL' | 'IN_STOCK' | 'OUT') => void
   onAdd: () => void
   onReceipt: () => void
 }) {
@@ -338,6 +362,20 @@ function Header({
             <option value="Carbohydrates">Carbohydrates</option>
             <option value="Condiments">Condiments</option>
             <option value="Packaging">Packaging</option>
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" />
+        </div>
+
+        <div className="relative">
+          <Filter className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#2E527F]" />
+          <select
+            value={stockFilter}
+            onChange={(event) => setStockFilter(event.target.value as 'ALL' | 'IN_STOCK' | 'OUT')}
+            className="h-12 appearance-none rounded-xl border border-[#B7A58F] bg-[#FBF7F0] pl-11 pr-10 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+          >
+            <option value="ALL">All stock</option>
+            <option value="IN_STOCK">In Stock</option>
+            <option value="OUT">Not in Stock</option>
           </select>
           <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" />
         </div>

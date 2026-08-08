@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import axios from "axios";
+import { IngredientPicker, PickedIngredient } from "../components/IngredientPicker";
 import {
   BookOpen,
   ChevronDown,
@@ -17,18 +18,6 @@ import {
 } from "lucide-react";
 
 type Category = "beef" | "chicken" | "turkey" | "carbohydrates" | "vegetables" | "sauces" | "beverage" | "breakfast";
-
-// Rough inventory-category guess for an ingredient typed fresh (not yet in
-// Inventory) -- same heuristic the receipt-sync backfill uses, so a brand
-// new ingredient lands in a sane bucket without asking the user to pick one
-// mid-recipe-entry. Refinable later on the Inventory page.
-function guessInventoryCategory(name: string): string {
-  const lower = name.toLowerCase();
-  if (/chicken|beef|pork|turkey|fish|shrimp|salmon|steak|meat|egg|tofu/.test(lower)) return "Protein";
-  if (/rice|potato|pasta|bread|oat|quinoa|bean|corn|tortilla/.test(lower)) return "Carbohydrates";
-  if (/pepper|onion|carrot|broccoli|spinach|lettuce|tomato|vegetable|greens|squash|cauliflower|asparagus/.test(lower)) return "Vegetables";
-  return "Condiments";
-}
 
 type RecipeIngredient = {
   id: number;
@@ -598,12 +587,6 @@ function AddRecipeDrawer({
     unit_price_cents: number | null;
   };
 
-  type InventoryOption = {
-    id: number;
-    name: string;
-    unit_price_cents: number | null;
-  };
-
   const [form, setForm] = useState({
     name: "",
     category: "beef" as Category,
@@ -618,10 +601,6 @@ function AddRecipeDrawer({
   });
 
   const [ingredients, setIngredients] = useState<RecipeFormIngredient[]>([]);
-  const [inventoryOptions, setInventoryOptions] = useState<InventoryOption[]>([]);
-  const [ingredientNameInput, setIngredientNameInput] = useState<string>("");
-  const [newQuantityG, setNewQuantityG] = useState<string>("");
-  const [addingIngredient, setAddingIngredient] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -629,87 +608,10 @@ function AddRecipeDrawer({
   const token = localStorage.getItem("token");
   const apiUrl = import.meta.env.VITE_API_BASE_URL;
 
-  useEffect(() => {
-    if (!open) return;
-    (async () => {
-      try {
-        const response = await axios.get(`${apiUrl}/api/inventory`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setInventoryOptions(
-          (response.data.data || []).map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            unit_price_cents: item.unit_price_cents,
-          }))
-        );
-      } catch (err) {
-        console.error("Error fetching inventory options:", err);
-      }
-    })();
-  }, [open]);
-
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((current) => ({ ...current, [key]: value }));
     setSubmitError(null);
   }
-
-  const addIngredient = async () => {
-    const name = ingredientNameInput.trim();
-    const quantityG = parseFloat(newQuantityG);
-
-    if (!name || !quantityG || quantityG <= 0) {
-      alert("Please enter an ingredient name and a quantity in grams");
-      return;
-    }
-
-    const existing = inventoryOptions.find((o) => o.name.toLowerCase() === name.toLowerCase());
-    if (existing) {
-      setIngredients([
-        ...ingredients,
-        {
-          id: Date.now().toString(),
-          inventory_id: existing.id,
-          name: existing.name,
-          quantity_g: quantityG,
-          unit_price_cents: existing.unit_price_cents,
-        },
-      ]);
-      setIngredientNameInput("");
-      setNewQuantityG("");
-      return;
-    }
-
-    // Not in inventory yet -- create it there so it gets USDA macros and
-    // allergen tags automatically, same as adding it via the Inventory page.
-    setAddingIngredient(true);
-    try {
-      const response = await axios.post(
-        `${apiUrl}/api/inventory`,
-        { name, category: guessInventoryCategory(name), unit_price_cents: null, serving_size_g: 100 },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const created = response.data.data;
-      setInventoryOptions((prev) => [...prev, { id: created.id, name: created.name, unit_price_cents: created.unit_price_cents }]);
-      setIngredients([
-        ...ingredients,
-        {
-          id: Date.now().toString(),
-          inventory_id: created.id,
-          name: created.name,
-          quantity_g: quantityG,
-          unit_price_cents: created.unit_price_cents,
-        },
-      ]);
-      setIngredientNameInput("");
-      setNewQuantityG("");
-    } catch (err) {
-      console.error("Error creating new inventory ingredient:", err);
-      alert("Failed to add new ingredient");
-    } finally {
-      setAddingIngredient(false);
-    }
-  };
 
   const removeIngredient = (id: string) => {
     setIngredients(ingredients.filter((ing) => ing.id !== id));
@@ -926,50 +828,12 @@ function AddRecipeDrawer({
 
             <Field label="Ingredients">
               <div className="space-y-2 border border-[#B9A88F] rounded-xl p-3 bg-[#FBF6EE]">
-                {/* Add Ingredient Form */}
-                <div className="space-y-2 pb-3 border-b border-[#D8CDBE]">
-                  <div>
-                    <label className="block text-xs font-bold text-[#4B2B1D] mb-1">Ingredient</label>
-                    <input
-                      type="text"
-                      list="add-recipe-inventory-options"
-                      value={ingredientNameInput}
-                      onChange={(e) => setIngredientNameInput(e.target.value)}
-                      placeholder="Type an ingredient name..."
-                      className="h-9 w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2 text-xs font-medium text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-2 focus:ring-[#3E6594]/10"
-                    />
-                    <datalist id="add-recipe-inventory-options">
-                      {inventoryOptions.map((opt) => (
-                        <option key={opt.id} value={opt.name} />
-                      ))}
-                    </datalist>
-                  </div>
-                  <div className="grid grid-cols-2 gap-1">
-                    <div>
-                      <label className="block text-xs font-bold text-[#4B2B1D] mb-1">Quantity (g)</label>
-                      <input
-                        type="number"
-                        step="1"
-                        value={newQuantityG}
-                        onChange={(e) => setNewQuantityG(e.target.value)}
-                        placeholder="200"
-                        className="h-9 w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2 text-xs font-medium text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-2 focus:ring-[#3E6594]/10"
-                      />
-                    </div>
-                    <div className="flex items-end">
-                      <button
-                        type="button"
-                        onClick={addIngredient}
-                        disabled={addingIngredient}
-                        className="w-full h-9 bg-[#2E527F] text-white text-xs font-bold rounded-lg hover:bg-[#24466E] transition disabled:opacity-50"
-                      >
-                        {addingIngredient ? "Adding..." : "+ Add"}
-                      </button>
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-[#9A7E6F]">
-                    Matches an existing inventory item by name, or creates a new one automatically (with USDA-sourced macros where available).
-                  </p>
+                <div className="pb-3 border-b border-[#D8CDBE]">
+                  <IngredientPicker
+                    onAdd={(picked: PickedIngredient) =>
+                      setIngredients((prev) => [...prev, { id: Date.now().toString(), ...picked }])
+                    }
+                  />
                 </div>
 
                 {/* Ingredients List */}
@@ -1110,12 +974,6 @@ function EditRecipeDrawer({
     unit_price_cents: number | null;
   };
 
-  type InventoryOption = {
-    id: number;
-    name: string;
-    unit_price_cents: number | null;
-  };
-
   const [form, setForm] = useState({
     name: recipe.name || "",
     category: recipe.category || ("beef" as Category),
@@ -1139,96 +997,15 @@ function EditRecipeDrawer({
     })) || []
   );
 
-  const [inventoryOptions, setInventoryOptions] = useState<InventoryOption[]>([]);
-  const [ingredientNameInput, setIngredientNameInput] = useState<string>("");
-  const [newQuantityG, setNewQuantityG] = useState<string>("");
-  const [addingIngredient, setAddingIngredient] = useState(false);
-
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const token = localStorage.getItem("token");
   const apiUrl = import.meta.env.VITE_API_BASE_URL;
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const response = await axios.get(`${apiUrl}/api/inventory`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setInventoryOptions(
-          (response.data.data || []).map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            unit_price_cents: item.unit_price_cents,
-          }))
-        );
-      } catch (err) {
-        console.error("Error fetching inventory options:", err);
-      }
-    })();
-  }, []);
-
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((current) => ({ ...current, [key]: value }));
     setSubmitError(null);
   }
-
-  const addIngredient = async () => {
-    const name = ingredientNameInput.trim();
-    const quantityG = parseFloat(newQuantityG);
-
-    if (!name || !quantityG || quantityG <= 0) {
-      alert("Please enter an ingredient name and a quantity in grams");
-      return;
-    }
-
-    const existing = inventoryOptions.find((o) => o.name.toLowerCase() === name.toLowerCase());
-    if (existing) {
-      setIngredients([
-        ...ingredients,
-        {
-          id: Date.now().toString(),
-          inventory_id: existing.id,
-          name: existing.name,
-          quantity_g: quantityG,
-          unit_price_cents: existing.unit_price_cents,
-        },
-      ]);
-      setIngredientNameInput("");
-      setNewQuantityG("");
-      return;
-    }
-
-    // Not in inventory yet -- create it there so it gets USDA macros and
-    // allergen tags automatically, same as adding it via the Inventory page.
-    setAddingIngredient(true);
-    try {
-      const response = await axios.post(
-        `${apiUrl}/api/inventory`,
-        { name, category: guessInventoryCategory(name), unit_price_cents: null, serving_size_g: 100 },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const created = response.data.data;
-      setInventoryOptions((prev) => [...prev, { id: created.id, name: created.name, unit_price_cents: created.unit_price_cents }]);
-      setIngredients([
-        ...ingredients,
-        {
-          id: Date.now().toString(),
-          inventory_id: created.id,
-          name: created.name,
-          quantity_g: quantityG,
-          unit_price_cents: created.unit_price_cents,
-        },
-      ]);
-      setIngredientNameInput("");
-      setNewQuantityG("");
-    } catch (err) {
-      console.error("Error creating new inventory ingredient:", err);
-      alert("Failed to add new ingredient");
-    } finally {
-      setAddingIngredient(false);
-    }
-  };
 
   const removeIngredient = (id: string) => {
     setIngredients(ingredients.filter((ing) => ing.id !== id));
@@ -1474,40 +1251,11 @@ function EditRecipeDrawer({
                   </div>
                 )}
 
-                {/* Add New Ingredient */}
-                <div className="space-y-2">
-                  <input
-                    type="text"
-                    list="edit-recipe-inventory-options"
-                    value={ingredientNameInput}
-                    onChange={(e) => setIngredientNameInput(e.target.value)}
-                    placeholder="Type an ingredient name..."
-                    className="h-8 w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2 text-xs font-medium text-[#4B2B1D] outline-none focus:border-[#3E6594]"
-                  />
-                  <datalist id="edit-recipe-inventory-options">
-                    {inventoryOptions.map((opt) => (
-                      <option key={opt.id} value={opt.name} />
-                    ))}
-                  </datalist>
-                  <input
-                    type="number"
-                    value={newQuantityG}
-                    onChange={(e) => setNewQuantityG(e.target.value)}
-                    placeholder="Quantity (g)"
-                    className="h-8 w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2 text-xs font-medium text-[#4B2B1D] outline-none focus:border-[#3E6594]"
-                  />
-                  <button
-                    type="button"
-                    onClick={addIngredient}
-                    disabled={addingIngredient}
-                    className="w-full h-8 bg-[#2E527F] text-white text-xs font-bold rounded-lg hover:bg-[#24466E] transition disabled:opacity-50"
-                  >
-                    {addingIngredient ? "Adding..." : "+ Add Ingredient"}
-                  </button>
-                  <p className="text-[10px] text-[#9A7E6F]">
-                    Matches an existing inventory item by name, or creates a new one automatically.
-                  </p>
-                </div>
+                <IngredientPicker
+                  onAdd={(picked: PickedIngredient) =>
+                    setIngredients((prev) => [...prev, { id: Date.now().toString(), ...picked }])
+                  }
+                />
               </div>
             </Field>
 
