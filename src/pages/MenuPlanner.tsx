@@ -11,6 +11,7 @@ type Recipe = {
   carbs_g?: string | number
   fat_g?: string | number
   cost_per_serving_cents?: number
+  suggested_serving_g?: number | null
 }
 
 type PlanRecipe = {
@@ -564,7 +565,12 @@ export default function MenuPlannerPage() {
                       return (
                         <div key={br.recipe.recipe_id} className="bg-white rounded p-2 space-y-2">
                           <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-semibold text-[#4B2B1D] flex-1">{br.recipe.name}</p>
+                            <div className="flex-1">
+                              <p className="text-xs font-semibold text-[#4B2B1D]">{br.recipe.name}</p>
+                              {br.recipe.suggested_serving_g != null && (
+                                <p className="text-[10px] text-[#9A7E6F]">Suggested: {Math.round(br.recipe.suggested_serving_g)}g (Regular)</p>
+                              )}
+                            </div>
                             <div className="flex items-center gap-1">
                               <input
                                 type="number"
@@ -741,91 +747,60 @@ function DeliveryColumn({
               <div
                 key={plate.id}
                 onClick={() => setNutritionModalPlate(plate)}
-                className="rounded-lg border bg-white p-4 cursor-pointer hover:shadow-md transition"
-                style={{ borderColor: color }}
+                className="rounded-lg border border-[#E4D8C9] bg-white p-3 cursor-pointer hover:border-[#CDBDA8] transition"
               >
-                <div className="flex items-start justify-between mb-2">
-                  <p className="font-extrabold text-[#4B2B1D]">{plate.name}</p>
-                  <div className="flex items-center gap-1">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-bold text-[#4B2B1D]">{plate.name}</p>
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
                     <button
                       onClick={(e) => { e.stopPropagation(); onEditPlate(plate) }}
-                      className="text-[#755B4C] hover:bg-[#F3EBDF] p-1 rounded transition"
+                      className="text-[#9A8774] hover:text-[#4B2B1D] p-1 rounded transition"
                       title="Edit plate"
                     >
-                      <Pencil className="h-4 w-4" />
+                      <Pencil className="h-3.5 w-3.5" />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); onDeletePlate(plate) }}
-                      className="text-[#D62F3D] hover:bg-[#FFF4F4] p-1 rounded transition"
+                      className="text-[#9A8774] hover:text-[#D62F3D] p-1 rounded transition"
                       title="Delete plate"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
 
-                {/* Low stock warning banner */}
+                <p className="mt-1 text-xs text-[#9A8774] truncate">
+                  {plate.recipes.map((r) => r.name).join(' · ')}
+                  {large && ' · Large also available'}
+                </p>
+
+                {/* Low stock warning -- kept prominent, this needs to be seen */}
                 {plate.lowStockWarnings.length > 0 && (
-                  <div className="mb-2 rounded-lg bg-[#FFF4F4] border border-[#F5B5B5] p-2 flex items-start gap-1.5">
-                    <AlertTriangle className="h-3.5 w-3.5 text-[#D62F3D] flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-xs font-bold text-[#D62F3D]">Low stock</p>
-                      {plate.lowStockWarnings.map((w, i) => (
-                        <p key={i} className="text-xs text-[#9A3B3B]">
-                          {w.name}: have {Math.round(w.have_g)}g, need {Math.round(w.need_g)}g
-                        </p>
-                      ))}
-                    </div>
+                  <div className="mt-2 flex items-start gap-1 text-xs text-[#D62F3D]">
+                    <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                    <p>{plate.lowStockWarnings.map((w) => w.name).join(', ')} low on stock</p>
                   </div>
                 )}
 
                 {/* Allergen tags */}
                 {plate.allergens.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-2">
+                  <div className="mt-2 flex flex-wrap gap-1">
                     {plate.allergens.map(a => (
-                      <span key={a} className="text-xs font-bold px-1.5 py-0.5 rounded bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]">
+                      <span key={a} className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#FEF3C7] text-[#92400E]">
                         {ALLERGEN_LABELS[a] || a}
                       </span>
                     ))}
                   </div>
                 )}
 
-                <div className="space-y-1.5">
-                  {plate.recipes.map((recipe, idx) => (
-                    <div key={idx} className="bg-[#F9F5F0] rounded p-2">
-                      <p className="text-xs font-semibold text-[#4B2B1D]">{recipe.name} — {Math.round(recipe.cooked_weight_g)}g</p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Compact nutrition + margin summary, click card for full FDA label */}
-                <div className="mt-3 pt-3 border-t border-[#E4D8C9] flex items-center justify-between">
-                  <p className="text-xs font-bold text-[#755B4C]">
+                <div className="mt-2 flex items-center justify-between text-xs">
+                  <span className="text-[#755B4C]">
                     {Math.round(plate.totals.calories)} cal · {plate.totals.protein_g.toFixed(0)}g protein
-                  </p>
-                  <p className="text-xs font-bold text-[#2E527F] underline underline-offset-2">Nutrition Facts</p>
+                  </span>
+                  <span className="font-bold" style={{ color: marginColor }}>
+                    ${(plate.profit.price_cents / 100).toFixed(2)} ({plate.profit.margin_pct}%)
+                  </span>
                 </div>
-
-                {/* Profit margin */}
-                <div className="mt-2 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-[#755B4C]">
-                      Cost ${(plate.totals.cost_cents / 100).toFixed(2)} → Price ${(plate.profit.price_cents / 100).toFixed(2)}
-                    </p>
-                    <p className="text-xs font-extrabold" style={{ color: marginColor }}>
-                      +${(plate.profit.profit_cents / 100).toFixed(2)} profit ({plate.profit.margin_pct}% margin)
-                    </p>
-                  </div>
-                </div>
-
-                {large && (
-                  <div className="mt-3 pt-3 border-t border-dashed border-[#E4D8C9]">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#2E527F] text-white">Large version also available</span>
-                      <p className="text-xs font-bold" style={{ color }}>${(large.totals.cost_cents / 100).toFixed(2)}</p>
-                    </div>
-                  </div>
-                )}
               </div>
             )
           })
