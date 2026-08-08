@@ -116,6 +116,29 @@ interface ReceiptItem {
   productName?: string // User-assigned product name for database
 }
 
+// A receipt parsed by AI but not yet saved -- sits in the review queue so
+// an admin can confirm/edit each item's suggested inventory display name
+// before it's written to the database.
+interface PendingReceiptItem {
+  productName: string
+  displayName: string
+  price: number
+  quantity: number
+  unit: string
+  category: string
+  amount: number
+  confidence: number
+}
+
+interface PendingReceipt {
+  driveFileId: string
+  fileName: string
+  vendor: string
+  receiptTotal: number | null
+  lowConfidence: boolean
+  items: PendingReceiptItem[]
+}
+
 function Section({
   id,
   title,
@@ -192,6 +215,9 @@ function FinancialsPage() {
   const [showScreenshotForm, setShowScreenshotForm] = useState(false)
   const [syncInProgress, setSyncInProgress] = useState(false)
   const [syncResult, setSyncResult] = useState<{ processed: number; failed: number; errors?: { filename: string; error: string }[] } | null>(null)
+  const [pendingReceipts, setPendingReceipts] = useState<PendingReceipt[]>([])
+  const [parseFailures, setParseFailures] = useState<{ filename: string; error: string }[]>([])
+  const [confirmingReceipts, setConfirmingReceipts] = useState(false)
   const [manualItems, setManualItems] = useState<ReceiptItem[]>([
     { description: '', amount: 0, category: 'food_cogs', confidence: 1, productName: '', unit: 'count', quantity: undefined }
   ])
@@ -683,7 +709,9 @@ function FinancialsPage() {
     }
   }
 
-  // Sync receipts from Google Drive
+  // Parse receipts from Google Drive -- does not save anything yet. Results
+  // land in pendingReceipts for review (each item's display name can be
+  // edited) before confirmSyncedReceipts actually writes to the database.
   const syncGoogleDrive = async () => {
     try {
       setSyncInProgress(true)
@@ -700,24 +728,73 @@ function FinancialsPage() {
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || 'Sync failed')
+        throw new Error(error.error || 'Parse failed')
+      }
+
+      const data = await response.json()
+      setPendingReceipts(data.data.parsed || [])
+      setParseFailures(data.data.failed || [])
+      setSyncResult(null)
+
+      if ((data.data.parsed || []).length === 0 && (data.data.failed || []).length === 0) {
+        alert('No new receipts found in the Drive folder.')
+      }
+    } catch (error) {
+      console.error('Parse error:', error)
+      alert(`Parse error: ${error instanceof Error ? error.message : 'Failed to parse receipts'}`)
+    } finally {
+      setSyncInProgress(false)
+    }
+  }
+
+  const updatePendingItemDisplayName = (receiptIdx: number, itemIdx: number, displayName: string) => {
+    setPendingReceipts(prev => prev.map((r, ri) =>
+      ri !== receiptIdx ? r : { ...r, items: r.items.map((it, ii) => ii !== itemIdx ? it : { ...it, displayName }) }
+    ))
+  }
+
+  const discardPendingReceipt = (receiptIdx: number) => {
+    setPendingReceipts(prev => prev.filter((_, i) => i !== receiptIdx))
+  }
+
+  // Saves the (possibly edited) reviewed receipts to inventory/expenses and
+  // archives their source files in Drive.
+  const confirmSyncedReceipts = async () => {
+    if (pendingReceipts.length === 0) return
+    try {
+      setConfirmingReceipts(true)
+      const token = localStorage.getItem('token')
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
+
+      const response = await fetch(`${apiUrl}/api/admin/receipt-sync/confirm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ receipts: pendingReceipts })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Save failed')
       }
 
       const data = await response.json()
       setSyncResult(data.data)
-      if (data.data.processed > 0) {
-        await fetchExpenses()
-      }
+      setPendingReceipts([])
+      await fetchExpenses()
+
       if (data.data.failed > 0) {
-        alert(`Sync complete: ${data.data.processed} processed, ${data.data.failed} failed. See "Why these failed" below for details.`)
+        alert(`Saved ${data.data.processed}, ${data.data.failed} failed. See "Why these failed" below for details.`)
       } else {
-        alert(`✓ Sync complete: ${data.data.processed} processed, ${data.data.failed} failed`)
+        alert(`✓ Saved ${data.data.processed} receipt(s) to inventory`)
       }
     } catch (error) {
-      console.error('Sync error:', error)
-      alert(`Sync error: ${error instanceof Error ? error.message : 'Failed to sync'}`)
+      console.error('Confirm error:', error)
+      alert(`Save error: ${error instanceof Error ? error.message : 'Failed to save receipts'}`)
     } finally {
-      setSyncInProgress(false)
+      setConfirmingReceipts(false)
     }
   }
 
@@ -1240,53 +1317,136 @@ function FinancialsPage() {
                   <li>Extracts vendor name</li>
                   <li>Reads each item, price, and quantity/weight</li>
                   <li>Auto-categorizes (Food, Packaging, etc.)</li>
-                  <li>Saves to database automatically</li>
+                  <li>Suggests a clean inventory display name (e.g. "Member's Mark Grass Fed Beef Top Sirloin Steak" → "Top Sirloin Steak") for you to confirm before it saves</li>
                 </ul>
               </div>
 
-              <div className="rounded-lg bg-[#FDFBF7] p-4 border border-[#E8DCC8]">
-                <p className="text-sm text-[#755B4C] mb-3">
-                  <strong>Status:</strong> {syncInProgress ? 'Syncing...' : 'Ready. Syncs automatically every 5 minutes.'}
-                </p>
-                {syncResult && (
-                  <>
-                    <p className="text-sm text-[#4B2B1D] mb-3">
-                      <strong>Last sync:</strong> {syncResult.processed} processed, {syncResult.failed} failed
-                    </p>
-                    {syncResult.errors && syncResult.errors.length > 0 && (
-                      <div className="mt-2 rounded-lg bg-[#FFF4F5] border border-[#E8B4B9] p-3">
-                        <p className="text-xs font-bold text-[#D62F3D] mb-2">Why these failed:</p>
-                        <ul className="space-y-1">
-                          {syncResult.errors.map((e, idx) => (
-                            <li key={idx} className="text-xs text-[#755B4C]">
-                              <span className="font-semibold text-[#4B2B1D]">{e.filename}:</span> {e.error}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
+              {pendingReceipts.length === 0 && (
+                <div className="rounded-lg bg-[#FDFBF7] p-4 border border-[#E8DCC8]">
+                  <p className="text-sm text-[#755B4C] mb-3">
+                    <strong>Status:</strong> {syncInProgress ? 'Parsing...' : 'Ready.'}
+                  </p>
+                  {syncResult && (
+                    <>
+                      <p className="text-sm text-[#4B2B1D] mb-3">
+                        <strong>Last save:</strong> {syncResult.processed} saved, {syncResult.failed} failed
+                      </p>
+                      {syncResult.errors && syncResult.errors.length > 0 && (
+                        <div className="mt-2 rounded-lg bg-[#FFF4F5] border border-[#E8B4B9] p-3">
+                          <p className="text-xs font-bold text-[#D62F3D] mb-2">Why these failed:</p>
+                          <ul className="space-y-1">
+                            {syncResult.errors.map((e, idx) => (
+                              <li key={idx} className="text-xs text-[#755B4C]">
+                                <span className="font-semibold text-[#4B2B1D]">{e.filename}:</span> {e.error}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {parseFailures.length > 0 && (
+                    <div className="mt-2 rounded-lg bg-[#FFF4F5] border border-[#E8B4B9] p-3">
+                      <p className="text-xs font-bold text-[#D62F3D] mb-2">Failed to parse:</p>
+                      <ul className="space-y-1">
+                        {parseFailures.map((e, idx) => (
+                          <li key={idx} className="text-xs text-[#755B4C]">
+                            <span className="font-semibold text-[#4B2B1D]">{e.filename}:</span> {e.error}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
 
-              <button
-                onClick={syncGoogleDrive}
-                disabled={syncInProgress}
-                className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-              >
-                {syncInProgress ? (
-                  <>
-                    <Loader className="inline-block h-4 w-4 mr-2 animate-spin" />
-                    Syncing...
-                  </>
-                ) : (
-                  '🔄 Sync Google Drive Now'
-                )}
-              </button>
+              {pendingReceipts.length === 0 && (
+                <button
+                  onClick={syncGoogleDrive}
+                  disabled={syncInProgress}
+                  className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  {syncInProgress ? (
+                    <>
+                      <Loader className="inline-block h-4 w-4 mr-2 animate-spin" />
+                      Parsing...
+                    </>
+                  ) : (
+                    '🔄 Sync Google Drive Now'
+                  )}
+                </button>
+              )}
+
+              {pendingReceipts.length > 0 && (
+                <div className="space-y-4">
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-sm font-semibold text-amber-900">
+                      Review {pendingReceipts.length} parsed receipt{pendingReceipts.length > 1 ? 's' : ''} before saving
+                    </p>
+                    <p className="text-xs text-amber-800 mt-1">Edit any display name below, or discard a receipt to leave it for next time. Nothing is saved until you confirm.</p>
+                  </div>
+
+                  {pendingReceipts.map((receipt, ri) => (
+                    <div key={receipt.driveFileId} className="rounded-lg border border-[#E8DCC8] bg-[#FDFBF7] p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <p className="text-sm font-bold text-[#4B2B1D]">{receipt.vendor}</p>
+                          <p className="text-xs text-[#9A7E6F]">{receipt.fileName}{receipt.receiptTotal != null && ` · $${receipt.receiptTotal.toFixed(2)}`}</p>
+                          {receipt.lowConfidence && (
+                            <p className="text-xs font-semibold text-[#D62F3D] mt-1">⚠ Item total doesn't match receipt total — double-check amounts</p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => discardPendingReceipt(ri)}
+                          className="text-xs font-semibold text-[#9A7E6F] hover:text-[#D62F3D]"
+                        >
+                          Discard
+                        </button>
+                      </div>
+
+                      <div className="space-y-2">
+                        {receipt.items.map((item, ii) => (
+                          <div key={ii} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center rounded-lg bg-white border border-[#E4D8C9] p-2">
+                            <div>
+                              <p className="text-[10px] text-[#9A7E6F]">Parsed as</p>
+                              <p className="text-xs text-[#755B4C] truncate">{item.productName}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-[#9A7E6F]">Display name (inventory)</p>
+                              <input
+                                value={item.displayName}
+                                onChange={(e) => updatePendingItemDisplayName(ri, ii, e.target.value)}
+                                className="w-full h-8 rounded border border-[#B9A88F] bg-[#FBF6EE] px-2 text-xs font-semibold text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                              />
+                            </div>
+                            <p className="text-xs font-bold text-[#4B2B1D] text-right">${item.amount.toFixed(2)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setPendingReceipts([])}
+                      className="flex-1 rounded-lg border border-[#B9A88F] bg-white py-3 text-sm font-semibold text-[#4B2B1D]"
+                    >
+                      Cancel All
+                    </button>
+                    <button
+                      onClick={confirmSyncedReceipts}
+                      disabled={confirmingReceipts}
+                      className="flex-1 rounded-lg bg-blue-600 text-white py-3 text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {confirmingReceipts ? 'Saving...' : `✓ Confirm & Save ${pendingReceipts.length} Receipt${pendingReceipts.length > 1 ? 's' : ''}`}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="text-xs text-[#9A7E6F] bg-[#FBF7F0] p-3 rounded">
                 <p><strong>📁 Folder name:</strong> "Fit4Sure Receipts"</p>
-                <p><strong>✅ Processed items:</strong> Automatically moved to "Fit4Sure Receipts/Processed"</p>
+                <p><strong>✅ Confirmed receipts:</strong> Automatically moved to "Fit4Sure Receipts/Processed"</p>
               </div>
             </div>
           )}
