@@ -982,16 +982,11 @@ function AddOrderModal({
   token: string | null
 }) {
   const [customerName, setCustomerName] = useState(prefillCustomer?.name || '')
-  const [items, setItems] = useState<Array<{ mealName: string; category: string; quantity: string; dayOfWeek: string }>>(
-    prefillCustomer && (prefillCustomer.lastOrder?.length ?? 0) > 0
-      ? prefillCustomer.lastOrder.map((l) => ({
-          mealName: l.menu_name,
-          category: l.category || 'Regular',
-          quantity: String(l.quantity),
-          dayOfWeek: l.day_of_week || '',
-        }))
-      : []
-  )
+  // Deliberately not pre-filling from prefillCustomer.lastOrder -- showing an
+  // old order (often for meals not even on this week's menu) next to the
+  // live picker read as confusing clutter. Always start empty; build the
+  // order by tapping this week's actual plates.
+  const [items, setItems] = useState<Array<{ mealName: string; category: string; quantity: string; dayOfWeek: string }>>([])
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [weeklyMenu, setWeeklyMenu] = useState<WeeklyMenu | null>(null)
