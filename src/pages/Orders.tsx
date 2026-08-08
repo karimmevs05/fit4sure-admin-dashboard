@@ -115,11 +115,27 @@ export default function OrdersPage() {
 
   useEffect(() => {
     fetchOrdersData()
+
+    // Keep this page current without a manual reload: refetch whenever the
+    // tab regains focus/visibility, plus a background poll every 5 minutes
+    // in case it's left open on a screen all day.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchOrdersData({ silent: true })
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    const interval = setInterval(() => fetchOrdersData({ silent: true }), 5 * 60 * 1000)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+      clearInterval(interval)
+    }
   }, [])
 
-  const fetchOrdersData = async () => {
+  const fetchOrdersData = async ({ silent = false }: { silent?: boolean } = {}) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const headers = { Authorization: `Bearer ${token}` }
 
       const [thisWeek, history, insights, weeklyMenuRes] = await Promise.all([
@@ -136,7 +152,7 @@ export default function OrdersPage() {
     } catch (error) {
       console.error('Error fetching orders:', error)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
