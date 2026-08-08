@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import axios from 'axios'
+import { Link } from 'react-router-dom'
 import {
   BarChart3,
   TrendingUp,
@@ -91,6 +92,7 @@ type WeeklyMenu = {
   monday: MenuPlate[]
   thursday: MenuPlate[]
   breakfast: BreakfastItem[]
+  menuReady: boolean
 }
 
 export default function OrdersPage() {
@@ -106,6 +108,7 @@ export default function OrdersPage() {
   const [prefillCustomer, setPrefillCustomer] = useState<NonResponder | null>(null)
   const [editingLine, setEditingLine] = useState<OrderLine | null>(null)
   const [syncing, setSyncing] = useState(false)
+  const [weeklyMenu, setWeeklyMenu] = useState<WeeklyMenu | null>(null)
 
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
@@ -119,15 +122,17 @@ export default function OrdersPage() {
       setLoading(true)
       const headers = { Authorization: `Bearer ${token}` }
 
-      const [thisWeek, history, insights] = await Promise.all([
+      const [thisWeek, history, insights, weeklyMenuRes] = await Promise.all([
         axios.get(`${apiUrl}/api/admin/orders/this-week`, { headers }),
         axios.get(`${apiUrl}/api/admin/orders/history`, { headers }),
         axios.get(`${apiUrl}/api/admin/orders/insights`, { headers }),
+        axios.get(`${apiUrl}/api/admin/orders/weekly-menu`, { headers }),
       ])
 
       setThisWeekData(thisWeek.data.data)
       setHistoryData(history.data.data)
       setInsightsData(insights.data.data)
+      setWeeklyMenu(weeklyMenuRes.data.data)
     } catch (error) {
       console.error('Error fetching orders:', error)
     } finally {
@@ -219,6 +224,26 @@ export default function OrdersPage() {
           Add Manual Order
         </button>
       </div>
+
+      {weeklyMenu && !weeklyMenu.menuReady && (
+        <div className="rounded-2xl border border-[#F0C5B8] bg-[#FFF4F0] p-4 flex items-center justify-between gap-4">
+          <p className="text-sm font-bold text-[#B8571F]">
+            ⚠️ Menu not fully built for the{' '}
+            {new Date(weeklyMenu.weekStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} delivery week
+            {weeklyMenu.monday.length === 0 && weeklyMenu.thursday.length === 0
+              ? ' — no Monday or Thursday plates yet.'
+              : weeklyMenu.monday.length === 0
+              ? ' — no Monday plates yet.'
+              : ' — no Thursday plates yet.'}
+          </p>
+          <Link
+            to="/menu-planner"
+            className="inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-[#2E527F] px-4 text-xs font-bold text-white transition hover:bg-[#24466E] flex-shrink-0"
+          >
+            Go to Menu Planner
+          </Link>
+        </div>
+      )}
 
       <div className="space-y-4">
         <div className="flex gap-2 border-b border-[#D8CDBE]">
