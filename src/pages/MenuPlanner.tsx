@@ -349,6 +349,17 @@ export default function MenuPlannerPage() {
     )
   }, [builderRecipes])
 
+  // Live per-recipe macros/cost for a single row in "Recipes in Plate", scaled
+  // by that recipe's current servings (same formula as builderTotals, just
+  // for one recipe instead of the whole plate) -- so each row updates as its
+  // own gram input changes, not just the combined total at the bottom.
+  const recipeLiveMacros = (br: BuilderRecipe) => ({
+    calories: Math.round((br.recipe.calories || 0) * br.servings),
+    protein_g: parseFloat(String(br.recipe.protein_g || 0)) * br.servings,
+    carbs_g: parseFloat(String(br.recipe.carbs_g || 0)) * br.servings,
+    fat_g: parseFloat(String(br.recipe.fat_g || 0)) * br.servings,
+  })
+
   const platesByDay = (day: 'monday' | 'thursday') => plates.filter(p => p.delivery_day === day && !p.large_variant_of)
   const largeTwinFor = (plateId: number) => plates.find(p => p.large_variant_of === plateId)
 
@@ -548,29 +559,52 @@ export default function MenuPlannerPage() {
                     Recipes in Plate ({builderRecipes.length}) -- set the serving size
                   </label>
                   <div className="space-y-2 border border-[#16A34A] rounded-lg p-3 bg-[#F0FDF4]">
-                    {builderRecipes.map((br) => (
-                      <div key={br.recipe.recipe_id} className="flex items-center justify-between bg-white rounded p-2 gap-2">
-                        <p className="text-xs font-semibold text-[#4B2B1D] flex-1">{br.recipe.name}</p>
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            min="1"
-                            step="1"
-                            value={br.servingSizeG}
-                            placeholder={br.gramsPerServing == null ? '...' : undefined}
-                            onChange={(e) => updateBuilderServingSize(br.recipe.recipe_id, parseFloat(e.target.value) || 0)}
-                            className="w-16 h-8 rounded border border-[#B9A88F] bg-white px-2 text-xs text-center outline-none"
-                          />
-                          <span className="text-xs text-[#9A7E6F]">g cooked</span>
+                    {builderRecipes.map((br) => {
+                      const live = recipeLiveMacros(br)
+                      return (
+                        <div key={br.recipe.recipe_id} className="bg-white rounded p-2 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-[#4B2B1D] flex-1">{br.recipe.name}</p>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={br.servingSizeG}
+                                placeholder={br.gramsPerServing == null ? '...' : undefined}
+                                onChange={(e) => updateBuilderServingSize(br.recipe.recipe_id, parseFloat(e.target.value) || 0)}
+                                className="w-16 h-8 rounded border border-[#B9A88F] bg-white px-2 text-xs text-center outline-none"
+                              />
+                              <span className="text-xs text-[#9A7E6F]">g cooked</span>
+                            </div>
+                            <button
+                              onClick={() => removeBuilderRecipe(br.recipe.recipe_id)}
+                              className="text-[#D62F3D] hover:bg-[#FFF4F4] p-1 rounded transition flex-shrink-0"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-4 gap-1.5">
+                            <div className="text-center bg-[#F9F5F0] rounded p-1">
+                              <p className="font-bold text-[#4B2B1D] text-xs">{live.calories}</p>
+                              <p className="text-[10px] text-[#9A7E6F]">CAL</p>
+                            </div>
+                            <div className="text-center bg-[#F9F5F0] rounded p-1">
+                              <p className="font-bold text-[#4B2B1D] text-xs">{live.protein_g.toFixed(1)}g</p>
+                              <p className="text-[10px] text-[#9A7E6F]">PRO</p>
+                            </div>
+                            <div className="text-center bg-[#F9F5F0] rounded p-1">
+                              <p className="font-bold text-[#4B2B1D] text-xs">{live.carbs_g.toFixed(1)}g</p>
+                              <p className="text-[10px] text-[#9A7E6F]">CARB</p>
+                            </div>
+                            <div className="text-center bg-[#F9F5F0] rounded p-1">
+                              <p className="font-bold text-[#4B2B1D] text-xs">{live.fat_g.toFixed(1)}g</p>
+                              <p className="text-[10px] text-[#9A7E6F]">FAT</p>
+                            </div>
+                          </div>
                         </div>
-                        <button
-                          onClick={() => removeBuilderRecipe(br.recipe.recipe_id)}
-                          className="text-[#D62F3D] hover:bg-[#FFF4F4] p-1 rounded transition flex-shrink-0"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
+                      )
+                    })}
                     <div className="pt-2 border-t border-[#D8CDBE] flex justify-between">
                       <p className="text-xs font-bold text-[#755B4C]">Cost Total:</p>
                       <p className="text-sm font-extrabold text-[#16A34A]">${(builderTotals.cost_cents / 100).toFixed(2)}</p>
