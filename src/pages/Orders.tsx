@@ -73,6 +73,26 @@ type InsightsData = {
 
 type Tab = 'this-week' | 'packing-sheet' | 'history' | 'insights'
 
+type MenuPlate = {
+  id: number
+  name: string
+  price: number
+  large: { id: number; price: number } | null
+}
+
+type BreakfastItem = {
+  id: number
+  name: string
+  price: number
+}
+
+type WeeklyMenu = {
+  weekStart: string
+  monday: MenuPlate[]
+  thursday: MenuPlate[]
+  breakfast: BreakfastItem[]
+}
+
 export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState<Tab>('this-week')
   const [searchCustomer, setSearchCustomer] = useState('')
@@ -970,15 +990,56 @@ function AddOrderModal({
           quantity: String(l.quantity),
           dayOfWeek: l.day_of_week || '',
         }))
-      : [{ mealName: '', category: 'Regular', quantity: '1', dayOfWeek: '' }]
+      : []
   )
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [weeklyMenu, setWeeklyMenu] = useState<WeeklyMenu | null>(null)
+  const [loadingMenu, setLoadingMenu] = useState(true)
 
-  const addItem = () => setItems([...items, { mealName: '', category: 'Regular', quantity: '1', dayOfWeek: '' }])
+  useEffect(() => {
+    const fetchMenu = async () => {
+      try {
+        const res = await axios.get(`${apiUrl}/api/admin/orders/weekly-menu`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        setWeeklyMenu(res.data.data)
+      } catch (err) {
+        console.error('Failed to load weekly menu', err)
+      } finally {
+        setLoadingMenu(false)
+      }
+    }
+    fetchMenu()
+  }, [])
+
+  // Tapping a tile adds it to this client's order, or bumps the quantity
+  // if it's already on the list.
+  const addFromMenu = (mealName: string, category: string, dayOfWeek: string) => {
+    setItems((prev) => {
+      const idx = prev.findIndex((it) => it.mealName === mealName && it.category === category && it.dayOfWeek === dayOfWeek)
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = { ...next[idx], quantity: String((parseFloat(next[idx].quantity) || 0) + 1) }
+        return next
+      }
+      return [...prev, { mealName, category, quantity: '1', dayOfWeek }]
+    })
+  }
+
+  const addManualItem = () => setItems([...items, { mealName: '', category: 'Regular', quantity: '1', dayOfWeek: '' }])
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx))
   const updateItem = (idx: number, field: string, value: string) => {
     setItems(items.map((it, i) => (i === idx ? { ...it, [field]: value } : it)))
+  }
+  const bumpQty = (idx: number, delta: number) => {
+    setItems(
+      items.map((it, i) => {
+        if (i !== idx) return it
+        const next = (parseFloat(it.quantity) || 0) + delta
+        return next <= 0 ? it : { ...it, quantity: String(next) }
+      })
+    )
   }
 
   const submit = async () => {
@@ -1016,7 +1077,7 @@ function AddOrderModal({
     <>
       <button onClick={onClose} className="fixed inset-0 z-40 bg-[#2A1A12]/30 backdrop-blur-[1px]" />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-xl rounded-2xl bg-[#F8F2E8] p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="w-full max-w-2xl rounded-2xl bg-[#F8F2E8] p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-extrabold text-[#4B2B1D]">Add Manual Order</h2>
             <button onClick={onClose} className="rounded-lg border border-[#B9A88F] p-2">
@@ -1029,53 +1090,154 @@ function AddOrderModal({
             value={customerName}
             onChange={(e) => setCustomerName(e.target.value)}
             disabled={!!prefillCustomer}
-            className="w-full h-10 rounded-lg border border-[#B9A88F] bg-white px-3 text-sm text-[#4B2B1D] outline-none disabled:opacity-60 mb-3"
+            className="w-full h-10 rounded-lg border border-[#B9A88F] bg-white px-3 text-sm text-[#4B2B1D] outline-none disabled:opacity-60 mb-4"
           />
 
-          <p className="text-xs font-bold text-[#4B2B1D] mb-2">Items</p>
-          <div className="space-y-2 mb-3">
-            {items.map((item, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-1 items-center">
-                <input
-                  value={item.mealName}
-                  onChange={(e) => updateItem(idx, 'mealName', e.target.value)}
-                  placeholder="Meal name"
-                  className="col-span-5 h-9 rounded-lg border border-[#B9A88F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
-                />
-                <select
-                  value={item.category}
-                  onChange={(e) => updateItem(idx, 'category', e.target.value)}
-                  className="col-span-3 h-9 rounded-lg border border-[#B9A88F] bg-white px-1 text-xs text-[#4B2B1D] outline-none"
-                >
-                  <option value="Regular">Regular</option>
-                  <option value="Large">Large</option>
-                  <option value="Breakfast">Breakfast</option>
-                  <option value="By The LB">By The LB</option>
-                </select>
-                <input
-                  type="number"
-                  value={item.quantity}
-                  onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
-                  className="col-span-2 h-9 rounded-lg border border-[#B9A88F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
-                />
-                <select
-                  value={item.dayOfWeek}
-                  onChange={(e) => updateItem(idx, 'dayOfWeek', e.target.value)}
-                  className="col-span-1 h-9 rounded-lg border border-[#B9A88F] bg-white px-1 text-xs text-[#4B2B1D] outline-none"
-                >
-                  <option value="">-</option>
-                  <option value="monday">Mon</option>
-                  <option value="thursday">Thu</option>
-                </select>
-                <button onClick={() => removeItem(idx)} className="col-span-1 text-[#D62F3D] text-xs">
-                  ✕
-                </button>
-              </div>
-            ))}
+          <p className="text-xs font-bold text-[#4B2B1D] mb-2">This Week's Menu — tap to add</p>
+          {loadingMenu ? (
+            <p className="text-xs text-[#9A7E6F] mb-4">Loading menu...</p>
+          ) : !weeklyMenu || (weeklyMenu.monday.length === 0 && weeklyMenu.thursday.length === 0 && weeklyMenu.breakfast.length === 0) ? (
+            <p className="text-xs text-[#9A7E6F] mb-4">
+              No plates built for this week yet in Menu Planner — use "+ add item not on the menu" below.
+            </p>
+          ) : (
+            <div className="space-y-3 mb-4">
+              {(['monday', 'thursday'] as const).map((day) =>
+                weeklyMenu[day].length === 0 ? null : (
+                  <div key={day}>
+                    <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#755B4C] mb-1.5">{day} Delivery</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {weeklyMenu[day].map((plate) => (
+                        <div key={plate.id} className="rounded-lg border border-[#E4D8C9] bg-white p-2">
+                          <p className="text-xs font-semibold text-[#4B2B1D] mb-1.5 truncate" title={plate.name}>
+                            {plate.name}
+                          </p>
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => addFromMenu(plate.name, 'Regular', day)}
+                              className="flex-1 rounded-md bg-[#EAF1F8] px-1.5 py-1 text-[10px] font-bold text-[#2E527F] hover:bg-[#DCE8F5] transition"
+                            >
+                              Reg ${Number(plate.price).toFixed(2)}
+                            </button>
+                            {plate.large && (
+                              <button
+                                type="button"
+                                onClick={() => addFromMenu(plate.name, 'Large', day)}
+                                className="flex-1 rounded-md bg-[#F3E8D8] px-1.5 py-1 text-[10px] font-bold text-[#8A5A1E] hover:bg-[#EADCC4] transition"
+                              >
+                                Lg ${Number(plate.large.price).toFixed(2)}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              )}
+              {weeklyMenu.breakfast.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#755B4C] mb-1.5">Breakfast</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {weeklyMenu.breakfast.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => addFromMenu(item.name, 'Breakfast', '')}
+                        className="rounded-lg border border-[#E4D8C9] bg-white p-2 text-left hover:bg-[#F8F2E8] transition"
+                      >
+                        <p className="text-xs font-semibold text-[#4B2B1D] truncate">{item.name}</p>
+                        <p className="text-[10px] text-[#755B4C]">${Number(item.price).toFixed(2)}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-bold text-[#4B2B1D]">This Client's Order</p>
+            <button type="button" onClick={addManualItem} className="text-[10px] font-bold text-[#2E527F] hover:underline">
+              + add item not on the menu
+            </button>
           </div>
-          <button onClick={addItem} className="text-xs font-bold text-[#2E527F] mb-3">
-            + Add another item
-          </button>
+
+          {items.length === 0 && <p className="text-xs text-[#9A7E6F] mb-3">Tap items above to build this client's order.</p>}
+
+          <div className="space-y-2 mb-4">
+            {items.map((item, idx) =>
+              !item.mealName ? (
+                <div key={idx} className="grid grid-cols-12 gap-1 items-center">
+                  <input
+                    value={item.mealName}
+                    onChange={(e) => updateItem(idx, 'mealName', e.target.value)}
+                    placeholder="Meal name"
+                    className="col-span-5 h-9 rounded-lg border border-[#B9A88F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
+                  />
+                  <select
+                    value={item.category}
+                    onChange={(e) => updateItem(idx, 'category', e.target.value)}
+                    className="col-span-3 h-9 rounded-lg border border-[#B9A88F] bg-white px-1 text-xs text-[#4B2B1D] outline-none"
+                  >
+                    <option value="Regular">Regular</option>
+                    <option value="Large">Large</option>
+                    <option value="Breakfast">Breakfast</option>
+                    <option value="By The LB">By The LB</option>
+                  </select>
+                  <input
+                    type="number"
+                    value={item.quantity}
+                    onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
+                    className="col-span-2 h-9 rounded-lg border border-[#B9A88F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
+                  />
+                  <select
+                    value={item.dayOfWeek}
+                    onChange={(e) => updateItem(idx, 'dayOfWeek', e.target.value)}
+                    className="col-span-1 h-9 rounded-lg border border-[#B9A88F] bg-white px-1 text-xs text-[#4B2B1D] outline-none"
+                  >
+                    <option value="">-</option>
+                    <option value="monday">Mon</option>
+                    <option value="thursday">Thu</option>
+                  </select>
+                  <button onClick={() => removeItem(idx)} className="col-span-1 text-[#D62F3D] text-xs">
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <div key={idx} className="flex items-center justify-between rounded-lg border border-[#E4D8C9] bg-white px-3 py-2">
+                  <p className="text-xs font-semibold text-[#4B2B1D]">
+                    {item.mealName}{' '}
+                    <span className="text-[#9A7E6F] font-normal">
+                      ({item.category}
+                      {item.dayOfWeek ? `, ${item.dayOfWeek}` : ''})
+                    </span>
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => bumpQty(idx, -1)}
+                      className="h-6 w-6 rounded-md border border-[#B9A88F] text-xs font-bold text-[#4B2B1D]"
+                    >
+                      −
+                    </button>
+                    <span className="w-5 text-center text-xs font-bold text-[#4B2B1D]">{item.quantity}</span>
+                    <button
+                      type="button"
+                      onClick={() => bumpQty(idx, 1)}
+                      className="h-6 w-6 rounded-md border border-[#B9A88F] text-xs font-bold text-[#4B2B1D]"
+                    >
+                      +
+                    </button>
+                    <button onClick={() => removeItem(idx)} className="text-[#D62F3D] text-xs ml-1">
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
+          </div>
 
           <label className="block text-xs font-bold text-[#4B2B1D] mb-1">Notes</label>
           <textarea
@@ -1087,7 +1249,7 @@ function AddOrderModal({
 
           <button
             onClick={submit}
-            disabled={submitting}
+            disabled={submitting || items.length === 0}
             className="w-full h-11 rounded-xl bg-[#2E527F] text-sm font-extrabold text-white hover:bg-[#24466E] disabled:opacity-50"
           >
             {submitting ? 'Saving...' : 'Save Order'}
