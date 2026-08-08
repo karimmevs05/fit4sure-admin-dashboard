@@ -1,10 +1,9 @@
 import React, { useState } from 'react'
-import type { Task, Owner, Tag, Urgency, Expense } from './types'
+import type { Task, Tag, Urgency, Expense, StaffUser } from './types'
 import { COLORS, TagBadge, UrgencyDot, OverdueBadge, DecisionBadge, TAG_LABELS } from './ui'
 import { dueBucketForTask, formatCents, formatDueLabel } from './selectors'
 import * as api from './api'
 
-const OWNERS: Owner[] = ['Karim', 'Xavier']
 const TAGS: Tag[] = ['operations', 'admin', 'marketing', 'sales']
 const URGENCIES: Urgency[] = ['critical', 'workon', 'eventually']
 
@@ -12,9 +11,9 @@ function inputCls() {
   return 'text-[13px] px-[10px] py-[7px] rounded-xl border font-[inherit]'
 }
 
-export function EditTaskForm({ task, actor, onSave, onCancel }: { task: Task; actor: string; onSave: (t: Task) => void; onCancel: () => void }) {
+export function EditTaskForm({ task, roster, onSave, onCancel }: { task: Task; roster: StaffUser[]; onSave: (t: Task) => void; onCancel: () => void }) {
   const [name, setName] = useState(task.name)
-  const [owner, setOwner] = useState<Owner>(task.owner)
+  const [ownerId, setOwnerId] = useState<number>(task.owner_id ?? roster[0]?.user_id)
   const [tag, setTag] = useState<Tag>(task.tag)
   const [urgency, setUrgency] = useState<Urgency>(task.urgency)
   const [dueDate, setDueDate] = useState(task.due_date.slice(0, 10))
@@ -27,12 +26,11 @@ export function EditTaskForm({ task, actor, onSave, onCancel }: { task: Task; ac
     try {
       const updated = await api.updateTask(task.id, {
         name: name.trim(),
-        owner,
+        owner_id: ownerId,
         tag,
         urgency,
         due_date: dueDate,
         budget_cents: budget ? Math.round(parseFloat(budget) * 100) : 0,
-        actor,
       })
       onSave(updated)
     } finally {
@@ -46,8 +44,8 @@ export function EditTaskForm({ task, actor, onSave, onCancel }: { task: Task; ac
         <input className={`${inputCls()} flex-1 min-w-[160px]`} style={{ borderColor: COLORS.cardBorder }} value={name} onChange={(e) => setName(e.target.value)} />
       </div>
       <div className="flex gap-2 mb-2 flex-wrap">
-        <select className={inputCls()} style={{ borderColor: COLORS.cardBorder }} value={owner} onChange={(e) => setOwner(e.target.value as Owner)}>
-          {OWNERS.map((o) => <option key={o} value={o}>{o}</option>)}
+        <select className={inputCls()} style={{ borderColor: COLORS.cardBorder }} value={ownerId} onChange={(e) => setOwnerId(Number(e.target.value))}>
+          {roster.map((u) => <option key={u.user_id} value={u.user_id}>{u.display_name}</option>)}
         </select>
         <select className={inputCls()} style={{ borderColor: COLORS.cardBorder }} value={tag} onChange={(e) => setTag(e.target.value as Tag)}>
           {TAGS.map((t) => <option key={t} value={t}>{TAG_LABELS[t]}</option>)}
@@ -72,7 +70,7 @@ export function EditTaskForm({ task, actor, onSave, onCancel }: { task: Task; ac
   )
 }
 
-function ExpenseLedger({ task, actor, onChanged }: { task: Task; actor: string; onChanged: (t: Task) => void }) {
+function ExpenseLedger({ task, onChanged }: { task: Task; onChanged: (t: Task) => void }) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loaded, setLoaded] = useState(false)
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
@@ -93,7 +91,7 @@ function ExpenseLedger({ task, actor, onChanged }: { task: Task; actor: string; 
     if (!desc.trim() || !amt || amt <= 0) return
     setBusy(true)
     try {
-      const updatedTask = await api.addExpense(task.id, { date, description: desc.trim(), amount_cents: Math.round(amt * 100), actor })
+      const updatedTask = await api.addExpense(task.id, { date, description: desc.trim(), amount_cents: Math.round(amt * 100) })
       setDesc('')
       setAmount('')
       onChanged(updatedTask)
@@ -106,7 +104,7 @@ function ExpenseLedger({ task, actor, onChanged }: { task: Task; actor: string; 
   const remove = async (expId: number) => {
     setBusy(true)
     try {
-      const updatedTask = await api.deleteExpense(task.id, expId, actor)
+      const updatedTask = await api.deleteExpense(task.id, expId)
       onChanged(updatedTask)
       await load()
     } finally {
@@ -141,11 +139,11 @@ function ExpenseLedger({ task, actor, onChanged }: { task: Task; actor: string; 
   )
 }
 
-export function TaskRow({ task, today, investor, actor, onChanged, onDeleted }: {
+export function TaskRow({ task, today, investor, roster, onChanged, onDeleted }: {
   task: Task
   today: Date
   investor: boolean
-  actor: string
+  roster: StaffUser[]
   onChanged: (t: Task) => void
   onDeleted: (id: number) => void
 }) {
@@ -160,18 +158,18 @@ export function TaskRow({ task, today, investor, actor, onChanged, onDeleted }: 
   const isOverdue = dueBucket === 'overdue'
 
   const saveNote = async (value: string) => {
-    const updated = await api.updateNote(task.id, value, actor)
+    const updated = await api.updateNote(task.id, value)
     onChanged(updated)
   }
 
   const toggleTodo = async (todoId: number, done: boolean) => {
-    await api.updateTodo(task.id, todoId, { done }, actor)
+    await api.updateTodo(task.id, todoId, { done })
     onChanged({ ...task, todos: task.todos.map((t) => (t.id === todoId ? { ...t, done } : t)) })
   }
 
   const submitTodo = async () => {
     if (!todoText.trim()) return
-    const todo = await api.addTodo(task.id, todoText.trim(), todoUrgency, actor)
+    const todo = await api.addTodo(task.id, todoText.trim(), todoUrgency)
     onChanged({ ...task, todos: [...task.todos, todo] })
     setTodoText('')
     setAddingTodo(false)
@@ -179,7 +177,7 @@ export function TaskRow({ task, today, investor, actor, onChanged, onDeleted }: 
 
   const toggleStatus = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    const updated = await api.updateTask(task.id, { status: task.status === 'done' ? 'open' : 'done', actor })
+    const updated = await api.updateTask(task.id, { status: task.status === 'done' ? 'open' : 'done' })
     onChanged(updated)
   }
 
@@ -187,7 +185,7 @@ export function TaskRow({ task, today, investor, actor, onChanged, onDeleted }: 
     return (
       <EditTaskForm
         task={task}
-        actor={actor}
+        roster={roster}
         onCancel={() => setEditing(false)}
         onSave={(t) => { onChanged(t); setEditing(false) }}
       />
@@ -211,7 +209,7 @@ export function TaskRow({ task, today, investor, actor, onChanged, onDeleted }: 
           {task.needs_decision && <DecisionBadge />}
         </span>
         <TagBadge tag={task.tag} className="w-[74px] text-center box-border" />
-        {!investor && <span className="text-[12px] w-[60px]" style={{ color: COLORS.textMuted }}>{task.owner}</span>}
+        {!investor && <span className="text-[12px] w-[60px]" style={{ color: COLORS.textMuted }}>{task.owner_name}</span>}
         <span className="text-[12px] w-[100px]" style={{ color: isOverdue ? COLORS.red : COLORS.textMuted, fontWeight: isOverdue ? 600 : undefined }}>
           {task.status === 'done' ? 'done' : 'due'} {formatDueLabel(task.due_date)}
         </span>
@@ -281,10 +279,10 @@ export function TaskRow({ task, today, investor, actor, onChanged, onDeleted }: 
           )}
 
           <div className="text-[11px] uppercase tracking-wide mt-3 mb-[6px]" style={{ color: COLORS.textMuted }}>Expenses</div>
-          <ExpenseLedger task={task} actor={actor} onChanged={onChanged} />
+          <ExpenseLedger task={task} onChanged={onChanged} />
 
           <div className="text-[11px] uppercase tracking-wide mt-3 mb-[6px]" style={{ color: COLORS.textMuted }}>Source</div>
-          <SourceRefInput task={task} actor={actor} onChanged={onChanged} />
+          <SourceRefInput task={task} onChanged={onChanged} />
           <div className="flex items-center gap-2 mt-[6px] text-[12px]" style={{ color: COLORS.textSecondary }}>
             <span style={{ color: COLORS.textMuted }}>📎</span>
             <span style={{ color: COLORS.textMuted }}>Attachments coming soon</span>
@@ -305,7 +303,7 @@ export function TaskRow({ task, today, investor, actor, onChanged, onDeleted }: 
   )
 }
 
-function SourceRefInput({ task, actor, onChanged }: { task: Task; actor: string; onChanged: (t: Task) => void }) {
+function SourceRefInput({ task, onChanged }: { task: Task; onChanged: (t: Task) => void }) {
   const [value, setValue] = useState(task.source_ref || '')
   return (
     <input
@@ -315,7 +313,7 @@ function SourceRefInput({ task, actor, onChanged }: { task: Task; actor: string;
       value={value}
       placeholder="Reference, contact, etc."
       onChange={(e) => setValue(e.target.value)}
-      onBlur={() => value !== (task.source_ref || '') && api.updateTask(task.id, { source_ref: value, actor }).then(onChanged)}
+      onBlur={() => value !== (task.source_ref || '') && api.updateTask(task.id, { source_ref: value }).then(onChanged)}
     />
   )
 }

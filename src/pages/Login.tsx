@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('admin@fit4sure.local')
-  const [password, setPassword] = useState('password123')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()

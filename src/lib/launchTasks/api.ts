@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Task, Milestone, ActivityLogEntry, DayNote, Expense, Owner, Tag, Urgency } from './types'
+import type { Task, Milestone, ActivityLogEntry, DayNote, Expense, StaffUser, Tag, Urgency } from './types'
 
 function apiUrl() {
   return import.meta.env.VITE_API_BASE_URL
@@ -17,14 +17,23 @@ export async function fetchTasks(): Promise<Task[]> {
   return res.data.data
 }
 
+export async function fetchUsers(): Promise<StaffUser[]> {
+  const res = await axios.get(`${apiUrl()}/api/admin/users`, authConfig())
+  return (res.data.data as StaffUser[]).filter((u) => u.is_active)
+}
+
+export async function fetchCurrentUser(): Promise<{ user_id: number; display_name: string; email: string }> {
+  const res = await axios.get(`${apiUrl()}/api/auth/me`, authConfig())
+  return res.data
+}
+
 export async function createTask(input: {
   name: string
-  owner: Owner
+  owner_id: number
   tag: Tag
   urgency: Urgency
   due_date: string
   budget_cents?: number
-  actor: string
 }): Promise<Task> {
   const res = await axios.post(BASE(), input, authConfig())
   return res.data.data
@@ -32,7 +41,7 @@ export async function createTask(input: {
 
 export async function updateTask(id: number, patch: Partial<{
   name: string
-  owner: Owner
+  owner_id: number
   tag: Tag
   urgency: Urgency
   due_date: string
@@ -41,7 +50,6 @@ export async function updateTask(id: number, patch: Partial<{
   status: 'open' | 'done'
   needs_decision: boolean
   source_ref: string
-  actor: string
 }>): Promise<Task> {
   const res = await axios.patch(`${BASE()}/${id}`, patch, authConfig())
   return res.data.data
@@ -56,33 +64,33 @@ export async function fetchExpenses(taskId: number): Promise<Expense[]> {
   return res.data.data
 }
 
-export async function addExpense(taskId: number, input: { date: string; description: string; amount_cents: number; actor: string }): Promise<Task> {
+export async function addExpense(taskId: number, input: { date: string; description: string; amount_cents: number }): Promise<Task> {
   const res = await axios.post(`${BASE()}/${taskId}/expenses`, input, authConfig())
   return res.data.data.task
 }
 
-export async function deleteExpense(taskId: number, expenseId: number, actor: string): Promise<Task> {
-  const res = await axios.delete(`${BASE()}/${taskId}/expenses/${expenseId}`, { ...authConfig(), data: { actor } })
+export async function deleteExpense(taskId: number, expenseId: number): Promise<Task> {
+  const res = await axios.delete(`${BASE()}/${taskId}/expenses/${expenseId}`, authConfig())
   return res.data.data
 }
 
-export async function updateNote(taskId: number, note: string, actor: string): Promise<Task> {
-  const res = await axios.patch(`${BASE()}/${taskId}/note`, { note, actor }, authConfig())
+export async function updateNote(taskId: number, note: string): Promise<Task> {
+  const res = await axios.patch(`${BASE()}/${taskId}/note`, { note }, authConfig())
   return res.data.data
 }
 
-export async function addTodo(taskId: number, text: string, urgency: Urgency, actor: string) {
-  const res = await axios.post(`${BASE()}/${taskId}/todos`, { text, urgency, actor }, authConfig())
+export async function addTodo(taskId: number, text: string, urgency: Urgency) {
+  const res = await axios.post(`${BASE()}/${taskId}/todos`, { text, urgency }, authConfig())
   return res.data.data
 }
 
-export async function updateTodo(taskId: number, todoId: number, patch: Partial<{ text: string; done: boolean; urgency: Urgency }>, actor: string) {
-  const res = await axios.patch(`${BASE()}/${taskId}/todos/${todoId}`, { ...patch, actor }, authConfig())
+export async function updateTodo(taskId: number, todoId: number, patch: Partial<{ text: string; done: boolean; urgency: Urgency }>) {
+  const res = await axios.patch(`${BASE()}/${taskId}/todos/${todoId}`, patch, authConfig())
   return res.data.data
 }
 
-export async function deleteTodo(taskId: number, todoId: number, actor: string) {
-  await axios.delete(`${BASE()}/${taskId}/todos/${todoId}`, { ...authConfig(), data: { actor } })
+export async function deleteTodo(taskId: number, todoId: number) {
+  await axios.delete(`${BASE()}/${taskId}/todos/${todoId}`, authConfig())
 }
 
 export async function fetchMilestones(): Promise<Milestone[]> {
@@ -90,8 +98,8 @@ export async function fetchMilestones(): Promise<Milestone[]> {
   return res.data.data
 }
 
-export async function updateMilestone(id: number, status: Milestone['status'], actor: string): Promise<Milestone> {
-  const res = await axios.patch(`${BASE()}/milestones/${id}`, { status, actor }, authConfig())
+export async function updateMilestone(id: number, status: Milestone['status']): Promise<Milestone> {
+  const res = await axios.patch(`${BASE()}/milestones/${id}`, { status }, authConfig())
   return res.data.data
 }
 
@@ -105,7 +113,7 @@ export async function fetchDayNote(date: string): Promise<DayNote> {
   return res.data.data
 }
 
-export async function saveDayNote(date: string, note: string, actor: string): Promise<DayNote> {
-  const res = await axios.put(`${apiUrl()}/api/admin/launch-day-notes/${date}`, { note, actor }, authConfig())
+export async function saveDayNote(date: string, note: string): Promise<DayNote> {
+  const res = await axios.put(`${apiUrl()}/api/admin/launch-day-notes/${date}`, { note }, authConfig())
   return res.data.data
 }

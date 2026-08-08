@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import type { Task, Owner, Tag, Urgency, Phase } from './types'
+import type { Task, Tag, Urgency, Phase, StaffUser } from './types'
 import { COLORS } from './ui'
 import { dueBucketForTask, phaseProgress } from './selectors'
 import { TaskRow } from './TaskRow'
@@ -14,11 +14,12 @@ function selectCls() {
   return 'text-[13px] px-[10px] py-[7px] rounded-xl border font-[inherit]'
 }
 
-export function ListView({ tasks, today, investor, actor, onChanged, onDeleted, onCreated }: {
+export function ListView({ tasks, today, investor, roster, currentUserId, onChanged, onDeleted, onCreated }: {
   tasks: Task[]
   today: Date
   investor: boolean
-  actor: string
+  roster: StaffUser[]
+  currentUserId?: number
   onChanged: (t: Task) => void
   onDeleted: (id: number) => void
   onCreated: (t: Task) => void
@@ -36,7 +37,7 @@ export function ListView({ tasks, today, investor, actor, onChanged, onDeleted, 
     return tasks.filter((t) => {
       const statusVal = t.needs_decision && fStatus === 'needs-decision' ? 'needs-decision' : t.status
       const dueBucket = dueBucketForTask(t, today)
-      if (fOwner && t.owner !== fOwner) return false
+      if (fOwner && String(t.owner_id) !== fOwner) return false
       if (fUrgency && t.urgency !== fUrgency) return false
       if (fStatus && statusVal !== fStatus && !(fStatus === 'needs-decision' && t.needs_decision)) return false
       if (fTag && t.tag !== fTag) return false
@@ -48,8 +49,8 @@ export function ListView({ tasks, today, investor, actor, onChanged, onDeleted, 
 
   const clear = () => { setFOwner(''); setFUrgency(''); setFStatus(''); setFTag(''); setFDue(''); setSearch('') }
 
-  const createTask = async (phase: Phase, data: { name: string; owner: Owner; tag: Tag; urgency: Urgency; due_date: string }) => {
-    const task = await api.createTask({ ...data, actor })
+  const createTask = async (phase: Phase, data: { name: string; owner_id: number; tag: Tag; urgency: Urgency; due_date: string }) => {
+    const task = await api.createTask(data)
     onCreated(task)
     setAddingPhase(null)
   }
@@ -71,8 +72,7 @@ export function ListView({ tasks, today, investor, actor, onChanged, onDeleted, 
           <div className="flex gap-2 mb-4 flex-wrap items-center">
             <select className={selectCls()} style={{ borderColor: COLORS.cardBorder, background: COLORS.cardBg, color: COLORS.textSecondary }} value={fOwner} onChange={(e) => setFOwner(e.target.value)}>
               <option value="">Owner: all</option>
-              <option value="Karim">Karim</option>
-              <option value="Xavier">Xavier</option>
+              {roster.map((u) => <option key={u.user_id} value={u.user_id}>{u.display_name}</option>)}
             </select>
             <select className={selectCls()} style={{ borderColor: COLORS.cardBorder, background: COLORS.cardBg, color: COLORS.textSecondary }} value={fUrgency} onChange={(e) => setFUrgency(e.target.value)}>
               <option value="">Urgency: all</option>
@@ -150,13 +150,15 @@ export function ListView({ tasks, today, investor, actor, onChanged, onDeleted, 
             </div>
 
             {sorted.map((task) => (
-              <TaskRow key={task.id} task={task} today={today} investor={investor} actor={actor} onChanged={onChanged} onDeleted={onDeleted} />
+              <TaskRow key={task.id} task={task} today={today} investor={investor} roster={roster} onChanged={onChanged} onDeleted={onDeleted} />
             ))}
 
             {!investor && (
               addingPhase === phase ? (
                 <AddTaskForm
                   defaultDueDate={defaultDateStr}
+                  roster={roster}
+                  defaultOwnerId={currentUserId}
                   onSubmit={(data) => createTask(phase, data)}
                   onCancel={() => setAddingPhase(null)}
                 />

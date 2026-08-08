@@ -2,7 +2,7 @@
 // mockup's JS (computeMetrics, computeIndicators, collectTodoAttentionItems,
 // buildFocus, buildDigest) -- the logic there is correct, only the data
 // source changed (real API instead of DOM attributes / localStorage).
-import type { Task, AttentionItem, AttentionIcon, FocusItem, Owner } from './types'
+import type { Task, AttentionItem, AttentionIcon, FocusItem, StaffUser } from './types'
 
 const DAY_MS = 86400000
 const PROJECT_START = { y: 2026, m: 8, d: 1 } // fixed anchor, not relative to "today"
@@ -153,10 +153,10 @@ export function buildMeetingZone(tasks: Task[], today: Date): MeetingGroup[] {
   return defs.filter((d) => groups[d.key].length).map((d) => ({ ...d, items: groups[d.key] }))
 }
 
-export function buildFocus(tasks: Task[], today: Date, owners: Owner[] = ['Karim', 'Xavier']): Record<Owner, FocusItem[]> {
-  const result = {} as Record<Owner, FocusItem[]>
+export function buildFocus(tasks: Task[], today: Date, owners: StaffUser[]): Record<number, FocusItem[]> {
+  const result: Record<number, FocusItem[]> = {}
   for (const owner of owners) {
-    const ownerTasks = tasks.filter((t) => t.owner === owner && t.status !== 'done')
+    const ownerTasks = tasks.filter((t) => t.owner_id === owner.user_id && t.status !== 'done')
     const items: FocusItem[] = []
     for (const t of ownerTasks) {
       const name = cleanTaskName(t.name)
@@ -168,7 +168,7 @@ export function buildFocus(tasks: Task[], today: Date, owners: Owner[] = ['Karim
       }
     }
     items.sort((a, b) => a.priority - b.priority)
-    result[owner] = items.slice(0, 3)
+    result[owner.user_id] = items.slice(0, 3)
   }
   return result
 }

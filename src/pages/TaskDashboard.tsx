@@ -1,16 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import type { Task, Milestone, ActivityLogEntry, Owner } from '../lib/launchTasks/types'
+import type { Task, Milestone, ActivityLogEntry, StaffUser } from '../lib/launchTasks/types'
 import { COLORS, Card, AttentionIconDot } from '../lib/launchTasks/ui'
 import { buildFocus, buildDigest, buildAttention, computeReadinessPct, formatCents } from '../lib/launchTasks/selectors'
 import { ListView } from '../lib/launchTasks/ListView'
 import { TimelineView } from '../lib/launchTasks/TimelineView'
 import * as api from '../lib/launchTasks/api'
 
-const OWNERS: Owner[] = ['Karim', 'Xavier']
 const MILESTONE_CYCLE: Milestone['status'][] = ['not_started', 'in_progress', 'complete']
 
 export default function TaskDashboardPage() {
   const [tasks, setTasks] = useState<Task[]>([])
+  const [roster, setRoster] = useState<StaffUser[]>([])
+  const [currentUser, setCurrentUser] = useState<{ user_id: number; display_name: string } | null>(null)
   const [milestones, setMilestones] = useState<Milestone[]>([])
   const [activity, setActivity] = useState<ActivityLogEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -19,7 +20,6 @@ export default function TaskDashboardPage() {
   const [view, setView] = useState<'list' | 'timeline'>('list')
   const [investor, setInvestor] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
-  const [actor, setActor] = useState<Owner>(() => (localStorage.getItem('launchTaskActor') as Owner) || 'Karim')
 
   const today = useMemo(() => {
     const now = new Date()
@@ -30,10 +30,18 @@ export default function TaskDashboardPage() {
     try {
       setLoading(true)
       setError(null)
-      const [t, m, a] = await Promise.all([api.fetchTasks(), api.fetchMilestones(), api.fetchActivityLog(20)])
+      const [t, m, a, u, me] = await Promise.all([
+        api.fetchTasks(),
+        api.fetchMilestones(),
+        api.fetchActivityLog(20),
+        api.fetchUsers(),
+        api.fetchCurrentUser(),
+      ])
       setTasks(t)
       setMilestones(m)
       setActivity(a)
+      setRoster(u)
+      setCurrentUser(me)
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to load task dashboard')
     } finally {
@@ -58,20 +66,15 @@ export default function TaskDashboardPage() {
     refreshActivity()
   }
 
-  const setActorPersisted = (o: Owner) => {
-    setActor(o)
-    localStorage.setItem('launchTaskActor', o)
-  }
-
   const cycleMilestone = async (m: Milestone) => {
     if (investor) return
     const idx = MILESTONE_CYCLE.indexOf(m.status)
     const next = MILESTONE_CYCLE[(idx + 1) % MILESTONE_CYCLE.length]
-    const updated = await api.updateMilestone(m.id, next, actor)
+    const updated = await api.updateMilestone(m.id, next)
     setMilestones((prev) => prev.map((x) => (x.id === m.id ? updated : x)))
   }
 
-  const focus = useMemo(() => buildFocus(tasks, today, OWNERS), [tasks, today])
+  const focus = useMemo(() => buildFocus(tasks, today, roster), [tasks, today, roster])
   const digest = useMemo(() => buildDigest(tasks, today), [tasks, today])
   const attention = useMemo(() => buildAttention(tasks, today, 5), [tasks, today])
   const readinessPct = useMemo(() => computeReadinessPct(tasks), [tasks])
@@ -106,17 +109,9 @@ export default function TaskDashboardPage() {
               Task management dashboard
             </div>
           </div>
-          {!investor && (
-            <div className="pb-[10px]">
-              <select
-                className="text-[12px] px-2 py-1 rounded-full border"
-                style={{ borderColor: COLORS.cardBorder, background: COLORS.cardBg, color: COLORS.textSecondary }}
-                value={actor}
-                onChange={(e) => setActorPersisted(e.target.value as Owner)}
-                title="Acting as"
-              >
-                {OWNERS.map((o) => <option key={o} value={o}>Acting as {o}</option>)}
-              </select>
+          {!investor && currentUser && (
+            <div className="pb-[10px] text-[12px]" style={{ color: COLORS.textMuted }}>
+              Logged in as <b style={{ color: COLORS.textSecondary }}>{currentUser.display_name}</b>
             </div>
           )}
         </div>
@@ -160,12 +155,12 @@ export default function TaskDashboardPage() {
             </div>
             <div className="text-[11.5px] mb-3" style={{ color: '#B9A88F' }} dangerouslySetInnerHTML={{ __html: digest.replace(/(\d+) (overdue|due today|completed in the last 2 days|waiting on a decision)/g, '<b style="color:#755B4C">$1</b> $2') }} />
             <div className="flex gap-4">
-              {OWNERS.map((owner) => (
-                <div key={owner} className="flex-1 rounded-xl border px-[14px] py-3" style={{ background: '#F0E6D2', borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-[9px]" style={{ color: '#9A8774' }}>{owner}'s focus</div>
-                  {focus[owner].length === 0 ? (
+              {roster.map((owner) => (
+                <div key={owner.user_id} className="flex-1 rounded-xl border px-[14px] py-3" style={{ background: '#F0E6D2', borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-[9px]" style={{ color: '#9A8774' }}>{owner.display_name}'s focus</div>
+                  {(focus[owner.user_id] || []).length === 0 ? (
                     <div className="text-[12.5px]" style={{ color: '#CDBDA8' }}>Nothing urgent today.</div>
-                  ) : focus[owner].map((it, i) => (
+                  ) : focus[owner.user_id].map((it, i) => (
                     <div key={i} className="flex items-center gap-2 px-[10px] py-2 rounded-[10px] mb-[6px] last:mb-0 text-[13px] border" style={{ background: '#FFFDFA', borderColor: COLORS.divider }}>
                       <span className="w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: it.icon === 'overdue' ? COLORS.red : COLORS.orange }} />
                       <span className="flex-1" style={{ color: COLORS.textPrimary }}>{it.name}</span>
@@ -244,9 +239,9 @@ export default function TaskDashboardPage() {
         )}
 
         {view === 'list' ? (
-          <ListView tasks={tasks} today={today} investor={investor} actor={actor} onChanged={handleChanged} onDeleted={handleDeleted} onCreated={handleCreated} />
+          <ListView tasks={tasks} today={today} investor={investor} roster={roster} currentUserId={currentUser?.user_id} onChanged={handleChanged} onDeleted={handleDeleted} onCreated={handleCreated} />
         ) : (
-          <TimelineView tasks={tasks} today={today} investor={investor} actor={actor} onChanged={handleChanged} onCreated={handleCreated} />
+          <TimelineView tasks={tasks} today={today} investor={investor} roster={roster} currentUserId={currentUser?.user_id} onChanged={handleChanged} onCreated={handleCreated} />
         )}
 
         {!investor && (

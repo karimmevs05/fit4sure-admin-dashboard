@@ -10,15 +10,12 @@ import OperationsHubPage from './pages/OperationsHub.tsx'
 import CustomersPage from './pages/Customers.tsx'
 import FinancialsPage from './pages/Financials.tsx'
 import ReportsPage from './pages/Reports.tsx'
+import SettingsPage from './pages/Settings.tsx'
 import TestPage from './pages/Test.tsx'
 import { Navigation } from './components/Navigation'
 
 function MealPlan() {
   return <div style={{ padding: '2rem' }}><h1>Meal Plan</h1><p>Coming soon</p></div>
-}
-
-function Settings() {
-  return <div style={{ padding: '2rem' }}><h1>Settings</h1><p>Coming soon</p></div>
 }
 
 function App() {
@@ -46,7 +43,7 @@ function App() {
           <Route path="/financials" element={token ? <FinancialsPage /> : <Navigate to="/login" />} />
           <Route path="/meal-plan" element={token ? <MealPlan /> : <Navigate to="/login" />} />
           <Route path="/reports" element={token ? <ReportsPage /> : <Navigate to="/login" />} />
-          <Route path="/settings" element={token ? <Settings /> : <Navigate to="/login" />} />
+          <Route path="/settings" element={token ? <SettingsPage /> : <Navigate to="/login" />} />
         </Routes>
       </div>
     </div>

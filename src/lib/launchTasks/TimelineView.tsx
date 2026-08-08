@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import type { Task, Owner, Tag, Urgency } from './types'
+import type { Task, Tag, Urgency, StaffUser } from './types'
 import { COLORS, TagBadge, UrgencyDot } from './ui'
 import { computeMetrics, computeScheduleAndBudget, buildMeetingZone, dueBucketForTask, dateOnly } from './selectors'
 import { AddTaskForm } from './AddTaskForm'
@@ -24,11 +24,12 @@ function barFillColor(status: 'good' | 'watch' | 'risk') {
   return COLORS.red
 }
 
-export function TimelineView({ tasks, today, investor, actor, onChanged, onCreated }: {
+export function TimelineView({ tasks, today, investor, roster, currentUserId, onChanged, onCreated }: {
   tasks: Task[]
   today: Date
   investor: boolean
-  actor: string
+  roster: StaffUser[]
+  currentUserId?: number
   onChanged: (t: Task) => void
   onCreated: (t: Task) => void
 }) {
@@ -48,7 +49,7 @@ export function TimelineView({ tasks, today, investor, actor, onChanged, onCreat
 
   const calendarTasks = useMemo(() => {
     let list = tasks.filter((t) =>
-      (!cfOwner || t.owner === cfOwner) &&
+      (!cfOwner || String(t.owner_id) === cfOwner) &&
       (!cfUrgency || t.urgency === cfUrgency) &&
       (!cfStatus || t.status === cfStatus) &&
       (!cfTag || t.tag === cfTag) &&
@@ -66,8 +67,8 @@ export function TimelineView({ tasks, today, investor, actor, onChanged, onCreat
   const dayTasksFor = (dateStr: string) => calendarTasks.filter((t) => t.due_date.slice(0, 10) === dateStr)
   const selectedTasks = dayTasksFor(selectedDate)
 
-  const createForDay = async (data: { name: string; owner: Owner; tag: Tag; urgency: Urgency; due_date: string }) => {
-    const task = await api.createTask({ ...data, actor })
+  const createForDay = async (data: { name: string; owner_id: number; tag: Tag; urgency: Urgency; due_date: string }) => {
+    const task = await api.createTask(data)
     onCreated(task)
     setAddingDay(false)
   }
@@ -129,7 +130,8 @@ export function TimelineView({ tasks, today, investor, actor, onChanged, onCreat
       {!investor && (
         <div className="flex gap-2 mb-3 flex-wrap items-center">
           <select className="text-[13px] px-[10px] py-[7px] rounded-xl border" style={{ borderColor: COLORS.cardBorder, background: COLORS.cardBg, color: COLORS.textSecondary }} value={cfOwner} onChange={(e) => setCfOwner(e.target.value)}>
-            <option value="">Owner: all</option><option value="Karim">Karim</option><option value="Xavier">Xavier</option>
+            <option value="">Owner: all</option>
+            {roster.map((u) => <option key={u.user_id} value={u.user_id}>{u.display_name}</option>)}
           </select>
           <select className="text-[13px] px-[10px] py-[7px] rounded-xl border" style={{ borderColor: COLORS.cardBorder, background: COLORS.cardBg, color: COLORS.textSecondary }} value={cfUrgency} onChange={(e) => setCfUrgency(e.target.value)}>
             <option value="">Urgency: all</option><option value="critical">Critical</option><option value="workon">To work on</option><option value="eventually">Eventually</option>
@@ -209,7 +211,8 @@ export function TimelineView({ tasks, today, investor, actor, onChanged, onCreat
             dateStr={selectedDate}
             tasks={selectedTasks}
             investor={investor}
-            actor={actor}
+            roster={roster}
+            currentUserId={currentUserId}
             onChanged={onChanged}
             addingDay={addingDay}
             setAddingDay={setAddingDay}
@@ -231,15 +234,16 @@ function Stat({ label, value, sub, subDanger, first }: { label: string; value: s
   )
 }
 
-function DayPanel({ dateStr, tasks, investor, actor, onChanged, addingDay, setAddingDay, onCreate }: {
+function DayPanel({ dateStr, tasks, investor, roster, currentUserId, onChanged, addingDay, setAddingDay, onCreate }: {
   dateStr: string
   tasks: Task[]
   investor: boolean
-  actor: string
+  roster: StaffUser[]
+  currentUserId?: number
   onChanged: (t: Task) => void
   addingDay: boolean
   setAddingDay: (v: boolean) => void
-  onCreate: (data: { name: string; owner: Owner; tag: Tag; urgency: Urgency; due_date: string }) => void
+  onCreate: (data: { name: string; owner_id: number; tag: Tag; urgency: Urgency; due_date: string }) => void
 }) {
   const [dayNote, setDayNote] = useState('')
   const [loadedDate, setLoadedDate] = useState<string | null>(null)
@@ -267,7 +271,7 @@ function DayPanel({ dateStr, tasks, investor, actor, onChanged, addingDay, setAd
             placeholder="Notes for this day..."
             value={dayNote}
             onChange={(e) => setDayNote(e.target.value)}
-            onBlur={() => loadedDate === dateStr && api.saveDayNote(dateStr, dayNote, actor)}
+            onBlur={() => loadedDate === dateStr && api.saveDayNote(dateStr, dayNote)}
           />
         </>
       )}
@@ -275,12 +279,12 @@ function DayPanel({ dateStr, tasks, investor, actor, onChanged, addingDay, setAd
       {tasks.length === 0 ? (
         <div className="text-[12.5px] mb-3" style={{ color: '#CDBDA8' }}>Nothing due this day.</div>
       ) : tasks.map((t) => (
-        <DayTaskCard key={t.id} task={t} investor={investor} actor={actor} onChanged={onChanged} />
+        <DayTaskCard key={t.id} task={t} investor={investor} onChanged={onChanged} />
       ))}
 
       {!investor && (
         addingDay ? (
-          <AddTaskForm defaultDueDate={dateStr} fixedDueDate={dateStr} onSubmit={onCreate} onCancel={() => setAddingDay(false)} />
+          <AddTaskForm defaultDueDate={dateStr} fixedDueDate={dateStr} roster={roster} defaultOwnerId={currentUserId} onSubmit={onCreate} onCancel={() => setAddingDay(false)} />
         ) : (
           <div
             className="flex items-center gap-2 px-3 py-[10px] border border-dashed rounded-xl text-[13px] cursor-pointer mt-[10px]"
@@ -295,7 +299,7 @@ function DayPanel({ dateStr, tasks, investor, actor, onChanged, addingDay, setAd
   )
 }
 
-function DayTaskCard({ task, investor, actor, onChanged }: { task: Task; investor: boolean; actor: string; onChanged: (t: Task) => void }) {
+function DayTaskCard({ task, investor, onChanged }: { task: Task; investor: boolean; onChanged: (t: Task) => void }) {
   const [note, setNote] = useState(task.note || '')
   let badge: React.ReactNode = null
   if (task.status === 'done') badge = <span className="text-[9.5px] px-[6px] py-[1px] rounded font-semibold" style={{ background: '#EAF5EC', color: '#16834A' }}>DONE</span>
@@ -310,7 +314,7 @@ function DayTaskCard({ task, investor, actor, onChanged }: { task: Task; investo
       </div>
       <div className="flex gap-2 items-center mt-[5px] pl-[15px] text-[11px]" style={{ color: '#B9A88F' }}>
         <TagBadge tag={task.tag} className="!text-[10px] !px-[7px]" />
-        {!investor && <span>{task.owner}</span>}
+        {!investor && <span>{task.owner_name}</span>}
       </div>
       {!investor && (
         <textarea
@@ -319,7 +323,7 @@ function DayTaskCard({ task, investor, actor, onChanged }: { task: Task; investo
           placeholder="Notes for this task..."
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          onBlur={() => note !== (task.note || '') && api.updateNote(task.id, note, actor).then(onChanged)}
+          onBlur={() => note !== (task.note || '') && api.updateNote(task.id, note).then(onChanged)}
         />
       )}
     </div>

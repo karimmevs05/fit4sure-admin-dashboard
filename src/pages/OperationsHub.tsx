@@ -347,8 +347,18 @@ export default function OperationsHubPage() {
 
   const fetchStaff = async () => {
     try {
-      const response = await axios.get(`${apiUrl}/api/admin/staff`, authConfig)
-      setStaff(response.data.data || [])
+      // Staff/admin accounts are unified into the real users table (2026-08-08) --
+      // map user_id/display_name back onto the id/name shape this page expects.
+      const response = await axios.get(`${apiUrl}/api/admin/users`, authConfig)
+      const users = (response.data.data || []).map((u: any) => ({
+        id: u.user_id,
+        name: u.display_name,
+        email: u.email,
+        department: u.department,
+        status: u.status,
+        is_active: u.is_active,
+      }))
+      setStaff(users)
     } catch (error) {
       console.error('Error fetching staff:', error)
     }

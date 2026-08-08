@@ -1,4 +1,17 @@
-export type Owner = 'Karim' | 'Xavier'
+export type UserStatus = 'available' | 'busy' | 'off'
+
+export type StaffUser = {
+  user_id: number
+  email: string
+  display_name: string
+  department: string | null
+  status: UserStatus
+  role: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export type Tag = 'operations' | 'admin' | 'marketing' | 'sales'
 export type Urgency = 'critical' | 'workon' | 'eventually'
 export type TaskStatus = 'open' | 'done'
@@ -28,7 +41,8 @@ export type Expense = {
 export type Task = {
   id: number
   name: string
-  owner: Owner
+  owner_id: number
+  owner_name: string
   tag: Tag
   urgency: Urgency
   due_date: string

@@ -1,25 +1,26 @@
 import React, { useState } from 'react'
-import type { Owner, Tag, Urgency } from './types'
+import type { Tag, Urgency, StaffUser } from './types'
 import { COLORS, TAG_LABELS } from './ui'
 
-const OWNERS: Owner[] = ['Karim', 'Xavier']
 const TAGS: Tag[] = ['operations', 'admin', 'marketing', 'sales']
 
-export function AddTaskForm({ defaultDueDate, fixedDueDate, onSubmit, onCancel }: {
+export function AddTaskForm({ defaultDueDate, fixedDueDate, roster, defaultOwnerId, onSubmit, onCancel }: {
   defaultDueDate: string
   fixedDueDate?: string
-  onSubmit: (data: { name: string; owner: Owner; tag: Tag; urgency: Urgency; due_date: string }) => void
+  roster: StaffUser[]
+  defaultOwnerId?: number
+  onSubmit: (data: { name: string; owner_id: number; tag: Tag; urgency: Urgency; due_date: string }) => void
   onCancel: () => void
 }) {
   const [name, setName] = useState('')
-  const [owner, setOwner] = useState<Owner>('Karim')
+  const [ownerId, setOwnerId] = useState<number>(defaultOwnerId ?? roster[0]?.user_id)
   const [tag, setTag] = useState<Tag>('operations')
   const [urgency, setUrgency] = useState<Urgency>('workon')
   const [dueDate, setDueDate] = useState(fixedDueDate || defaultDueDate)
 
   const submit = () => {
-    if (!name.trim()) return
-    onSubmit({ name: name.trim(), owner, tag, urgency, due_date: fixedDueDate || dueDate })
+    if (!name.trim() || !ownerId) return
+    onSubmit({ name: name.trim(), owner_id: ownerId, tag, urgency, due_date: fixedDueDate || dueDate })
   }
 
   return (
@@ -37,8 +38,8 @@ export function AddTaskForm({ defaultDueDate, fixedDueDate, onSubmit, onCancel }
         />
       </div>
       <div className="flex gap-2 mb-2 flex-wrap items-center">
-        <select className="text-[13px] px-[10px] py-[7px] rounded-xl border" style={{ borderColor: COLORS.cardBorder }} value={owner} onChange={(e) => setOwner(e.target.value as Owner)}>
-          {OWNERS.map((o) => <option key={o} value={o}>{o}</option>)}
+        <select className="text-[13px] px-[10px] py-[7px] rounded-xl border" style={{ borderColor: COLORS.cardBorder }} value={ownerId} onChange={(e) => setOwnerId(Number(e.target.value))}>
+          {roster.map((u) => <option key={u.user_id} value={u.user_id}>{u.display_name}</option>)}
         </select>
         <select className="text-[13px] px-[10px] py-[7px] rounded-xl border" style={{ borderColor: COLORS.cardBorder }} value={tag} onChange={(e) => setTag(e.target.value as Tag)}>
           {TAGS.map((t) => <option key={t} value={t}>{TAG_LABELS[t]}</option>)}
