@@ -11,7 +11,28 @@ type Recipe = {
   carbs_g?: string | number
   fat_g?: string | number
   cost_per_serving_cents?: number
+  cost_per_pound_cents?: number
   suggested_serving_g?: number | null
+  per_pound?: { calories: number; protein_g: string; carbs_g: string; fat_g: string }
+}
+
+const GRAMS_PER_POUND = 455
+
+// Live estimate of a recipe's macros/cost at an arbitrary gram amount, from
+// its per-pound figures -- instant (no API round-trip) so it can update on
+// every keystroke while picking a serving size, before the recipe is even
+// added to the plate. The actual saved plate still uses the accurate
+// yield-corrected calculation from the backend.
+function macrosAtGrams(recipe: Recipe, grams: number) {
+  const ratio = grams / GRAMS_PER_POUND
+  const pp = recipe.per_pound
+  return {
+    calories: Math.round((pp?.calories ?? 0) * ratio),
+    protein_g: (parseFloat(pp?.protein_g ?? '0') * ratio),
+    carbs_g: (parseFloat(pp?.carbs_g ?? '0') * ratio),
+    fat_g: (parseFloat(pp?.fat_g ?? '0') * ratio),
+    cost_cents: Math.round((recipe.cost_per_pound_cents ?? 0) * ratio),
+  }
 }
 
 type PlanRecipe = {
@@ -153,6 +174,7 @@ export default function MenuPlannerPage() {
   const [builderRecipes, setBuilderRecipes] = useState<BuilderRecipe[]>([])
   const [makeLarge, setMakeLarge] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL')
+  const [defaultServingSizeG, setDefaultServingSizeG] = useState<string>('')
   const [saving, setSaving] = useState(false)
 
   const token = localStorage.getItem('token')
@@ -194,6 +216,7 @@ export default function MenuPlannerPage() {
     setBuilderRecipes([])
     setMakeLarge(false)
     setCategoryFilter('ALL')
+    setDefaultServingSizeG('')
   }
 
   // Reopens the builder pre-filled with an existing plate's name, recipes,
@@ -205,6 +228,7 @@ export default function MenuPlannerPage() {
     setPlateName(plate.name)
     setMakeLarge(!!largeTwinFor(plate.id))
     setCategoryFilter('ALL')
+    setDefaultServingSizeG('')
     setBuilderRecipes(
       plate.recipes.map((pr) => {
         // pr.cooked_weight_g is already this recipe's cooked weight at its
@@ -232,10 +256,18 @@ export default function MenuPlannerPage() {
 
   const addRecipeToBuilder = async (recipe: Recipe) => {
     if (builderRecipes.some(br => br.recipe.recipe_id === recipe.recipe_id)) return
-    // Look up this recipe's cooked weight for exactly 1 base serving, so
-    // the serving-size-in-grams input has a real conversion rate to work
-    // with. Defaults to 1 serving's worth until that resolves.
-    setBuilderRecipes([...builderRecipes, { recipe, servings: 1, gramsPerServing: null, servingSizeG: '' }])
+    // If a serving size was set up top, use it immediately (servings is a
+    // rough estimate until the real gramsPerServing rate resolves below,
+    // then gets recalculated against that for an accurate save). Otherwise
+    // fall back to the old "1 base serving" default.
+    const requestedG = parseFloat(defaultServingSizeG)
+    const hasRequestedG = !isNaN(requestedG) && requestedG > 0
+    setBuilderRecipes([...builderRecipes, {
+      recipe,
+      servings: hasRequestedG ? requestedG / GRAMS_PER_POUND : 1,
+      gramsPerServing: null,
+      servingSizeG: hasRequestedG ? String(requestedG) : '',
+    }])
     try {
       const response = await axios.get(`${apiUrl}/api/admin/recipes/${recipe.recipe_id}/yield-corrected`, {
         params: { servings: 1 },
@@ -243,11 +275,16 @@ export default function MenuPlannerPage() {
       })
       const gramsPerServing = response.data.data?.cooked_weight_g ?? null
       setBuilderRecipes((current) =>
-        current.map((br) =>
-          br.recipe.recipe_id === recipe.recipe_id
-            ? { ...br, gramsPerServing, servingSizeG: gramsPerServing ? String(Math.round(gramsPerServing)) : '' }
-            : br
-        )
+        current.map((br) => {
+          if (br.recipe.recipe_id !== recipe.recipe_id) return br
+          if (hasRequestedG) {
+            // Recompute the accurate servings ratio now that we know the
+            // real cooked weight for 1 base serving, keeping the gram
+            // amount the user asked for unchanged.
+            return { ...br, gramsPerServing, servings: gramsPerServing ? requestedG / gramsPerServing : requestedG }
+          }
+          return { ...br, gramsPerServing, servingSizeG: gramsPerServing ? String(Math.round(gramsPerServing)) : '' }
+        })
       )
     } catch (err) {
       console.error('Error fetching serving size for recipe:', err)
@@ -350,16 +387,6 @@ export default function MenuPlannerPage() {
     )
   }, [builderRecipes])
 
-  // Live per-recipe macros/cost for a single row in "Recipes in Plate", scaled
-  // by that recipe's current servings (same formula as builderTotals, just
-  // for one recipe instead of the whole plate) -- so each row updates as its
-  // own gram input changes, not just the combined total at the bottom.
-  const recipeLiveMacros = (br: BuilderRecipe) => ({
-    calories: Math.round((br.recipe.calories || 0) * br.servings),
-    protein_g: parseFloat(String(br.recipe.protein_g || 0)) * br.servings,
-    carbs_g: parseFloat(String(br.recipe.carbs_g || 0)) * br.servings,
-    fat_g: parseFloat(String(br.recipe.fat_g || 0)) * br.servings,
-  })
 
   const platesByDay = (day: 'monday' | 'thursday') => plates.filter(p => p.delivery_day === day && !p.large_variant_of)
   const largeTwinFor = (plateId: number) => plates.find(p => p.large_variant_of === plateId)
@@ -487,69 +514,89 @@ export default function MenuPlannerPage() {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-extrabold text-[#4B2B1D] mb-3">Filter by Category</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {categories.map(cat => (
-                    <button
-                      key={cat}
-                      onClick={() => setCategoryFilter(cat)}
-                      className={`px-3 py-2 rounded-lg text-xs font-bold transition ${
-                        categoryFilter === cat
-                          ? 'bg-[#2E527F] text-white'
-                          : 'border border-[#CDBDA8] bg-white text-[#4B2B1D] hover:bg-[#F8F2E8]'
-                      }`}
-                    >
-                      {cat === 'carbohydrates' ? 'carb' : cat === 'vegetables' ? 'veg' : cat}
-                    </button>
-                  ))}
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-extrabold text-[#4B2B1D] mb-2">Filter by Category</label>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="w-full h-11 rounded-xl border border-[#B9A88F] bg-white px-3 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+                  >
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>
+                        {cat === 'ALL' ? 'All categories' : cat === 'carbohydrates' ? 'Carb' : cat === 'vegetables' ? 'Veg' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-extrabold text-[#4B2B1D] mb-2">Serving Size (g)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={defaultServingSizeG}
+                    onChange={(e) => setDefaultServingSizeG(e.target.value)}
+                    placeholder="e.g. 455"
+                    className="w-full h-11 rounded-xl border border-[#B9A88F] bg-white px-3 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+                  />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-extrabold text-[#4B2B1D] mb-3">Select Recipes</label>
+                <label className="block text-xs font-extrabold text-[#4B2B1D] mb-3">
+                  Select Recipes{defaultServingSizeG && ` -- macros/cost shown at ${defaultServingSizeG}g`}
+                </label>
                 <div className="max-h-[300px] overflow-y-auto border border-[#E4D8C9] rounded-lg p-3 bg-white space-y-2">
                   {getFilteredRecipes().length === 0 ? (
                     <p className="text-xs text-[#755B4C]">No recipes in this category</p>
                   ) : (
-                    getFilteredRecipes().map(recipe => (
-                      <button
-                        key={recipe.recipe_id}
-                        onClick={() => addRecipeToBuilder(recipe)}
-                        disabled={builderRecipes.some(br => br.recipe.recipe_id === recipe.recipe_id)}
-                        className="w-full text-left rounded-lg border border-[#E4D8C9] hover:bg-[#F8F2E8] p-3 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <p className="font-semibold text-[#4B2B1D]">{recipe.name}</p>
-                            <span className={`text-xs font-bold px-1.5 py-0.5 rounded inline-block mt-1 ${getCategoryColor(recipe.category)}`}>
-                              {recipe.category === 'carbohydrates' ? 'carb' : recipe.category === 'vegetables' ? 'veg' : recipe.category}
+                    getFilteredRecipes().map(recipe => {
+                      const requestedG = parseFloat(defaultServingSizeG)
+                      const previewG = !isNaN(requestedG) && requestedG > 0 ? requestedG : null
+                      const preview = previewG ? macrosAtGrams(recipe, previewG) : null
+                      return (
+                        <button
+                          key={recipe.recipe_id}
+                          onClick={() => addRecipeToBuilder(recipe)}
+                          disabled={builderRecipes.some(br => br.recipe.recipe_id === recipe.recipe_id)}
+                          className="w-full text-left rounded-lg border border-[#E4D8C9] hover:bg-[#F8F2E8] p-3 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div>
+                              <p className="font-semibold text-[#4B2B1D]">{recipe.name}</p>
+                              <span className={`text-xs font-bold px-1.5 py-0.5 rounded inline-block mt-1 ${getCategoryColor(recipe.category)}`}>
+                                {recipe.category === 'carbohydrates' ? 'carb' : recipe.category === 'vegetables' ? 'veg' : recipe.category}
+                              </span>
+                            </div>
+                            <span className="text-xs font-bold text-[#2E527F]">
+                              {preview
+                                ? `$${(preview.cost_cents / 100).toFixed(2)} @ ${previewG}g`
+                                : recipe.cost_per_serving_cents != null
+                                ? `$${(recipe.cost_per_serving_cents / 100).toFixed(2)}/serving`
+                                : null}
                             </span>
                           </div>
-                          {recipe.cost_per_serving_cents != null && (
-                            <span className="text-xs font-bold text-[#2E527F]">${(recipe.cost_per_serving_cents / 100).toFixed(2)}/serving</span>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-4 gap-2 mt-2">
-                          <div className="text-center bg-[#F9F5F0] rounded p-1">
-                            <p className="font-bold text-[#4B2B1D] text-sm">{recipe.calories ?? '-'}</p>
-                            <p className="text-xs text-[#9A7E6F]">CAL</p>
+                          <div className="grid grid-cols-4 gap-2 mt-2">
+                            <div className="text-center bg-[#F9F5F0] rounded p-1">
+                              <p className="font-bold text-[#4B2B1D] text-sm">{preview ? preview.calories : recipe.calories ?? '-'}</p>
+                              <p className="text-xs text-[#9A7E6F]">CAL</p>
+                            </div>
+                            <div className="text-center bg-[#F9F5F0] rounded p-1">
+                              <p className="font-bold text-[#4B2B1D] text-sm">{preview ? preview.protein_g.toFixed(1) : recipe.protein_g ?? '-'}g</p>
+                              <p className="text-xs text-[#9A7E6F]">PRO</p>
+                            </div>
+                            <div className="text-center bg-[#F9F5F0] rounded p-1">
+                              <p className="font-bold text-[#4B2B1D] text-sm">{preview ? preview.carbs_g.toFixed(1) : recipe.carbs_g ?? '-'}g</p>
+                              <p className="text-xs text-[#9A7E6F]">CARB</p>
+                            </div>
+                            <div className="text-center bg-[#F9F5F0] rounded p-1">
+                              <p className="font-bold text-[#4B2B1D] text-sm">{preview ? preview.fat_g.toFixed(1) : recipe.fat_g ?? '-'}g</p>
+                              <p className="text-xs text-[#9A7E6F]">FAT</p>
+                            </div>
                           </div>
-                          <div className="text-center bg-[#F9F5F0] rounded p-1">
-                            <p className="font-bold text-[#4B2B1D] text-sm">{recipe.protein_g ?? '-'}g</p>
-                            <p className="text-xs text-[#9A7E6F]">PRO</p>
-                          </div>
-                          <div className="text-center bg-[#F9F5F0] rounded p-1">
-                            <p className="font-bold text-[#4B2B1D] text-sm">{recipe.carbs_g ?? '-'}g</p>
-                            <p className="text-xs text-[#9A7E6F]">CARB</p>
-                          </div>
-                          <div className="text-center bg-[#F9F5F0] rounded p-1">
-                            <p className="font-bold text-[#4B2B1D] text-sm">{recipe.fat_g ?? '-'}g</p>
-                            <p className="text-xs text-[#9A7E6F]">FAT</p>
-                          </div>
-                        </div>
-                      </button>
-                    ))
+                        </button>
+                      )
+                    })
                   )}
                 </div>
               </div>
@@ -557,81 +604,61 @@ export default function MenuPlannerPage() {
               {builderRecipes.length > 0 && (
                 <div>
                   <label className="block text-xs font-extrabold text-[#4B2B1D] mb-3">
-                    Recipes in Plate ({builderRecipes.length}) -- set the serving size
+                    Recipes in Plate ({builderRecipes.length})
                   </label>
-                  <div className="space-y-2 border border-[#16A34A] rounded-lg p-3 bg-[#F0FDF4]">
-                    {builderRecipes.map((br) => {
-                      const live = recipeLiveMacros(br)
-                      return (
-                        <div key={br.recipe.recipe_id} className="bg-white rounded p-2 space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex-1">
-                              <p className="text-xs font-semibold text-[#4B2B1D]">{br.recipe.name}</p>
-                              {br.recipe.suggested_serving_g != null && (
-                                <p className="text-[10px] text-[#9A7E6F]">Suggested: {Math.round(br.recipe.suggested_serving_g)}g (Regular)</p>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="number"
-                                min="1"
-                                step="1"
-                                value={br.servingSizeG}
-                                placeholder={br.gramsPerServing == null ? '...' : undefined}
-                                onChange={(e) => updateBuilderServingSize(br.recipe.recipe_id, parseFloat(e.target.value) || 0)}
-                                className="w-16 h-8 rounded border border-[#B9A88F] bg-white px-2 text-xs text-center outline-none"
-                              />
-                              <span className="text-xs text-[#9A7E6F]">g cooked</span>
-                            </div>
-                            <button
-                              onClick={() => removeBuilderRecipe(br.recipe.recipe_id)}
-                              className="text-[#D62F3D] hover:bg-[#FFF4F4] p-1 rounded transition flex-shrink-0"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                          <div className="grid grid-cols-4 gap-1.5">
-                            <div className="text-center bg-[#F9F5F0] rounded p-1">
-                              <p className="font-bold text-[#4B2B1D] text-xs">{live.calories}</p>
-                              <p className="text-[10px] text-[#9A7E6F]">CAL</p>
-                            </div>
-                            <div className="text-center bg-[#F9F5F0] rounded p-1">
-                              <p className="font-bold text-[#4B2B1D] text-xs">{live.protein_g.toFixed(1)}g</p>
-                              <p className="text-[10px] text-[#9A7E6F]">PRO</p>
-                            </div>
-                            <div className="text-center bg-[#F9F5F0] rounded p-1">
-                              <p className="font-bold text-[#4B2B1D] text-xs">{live.carbs_g.toFixed(1)}g</p>
-                              <p className="text-[10px] text-[#9A7E6F]">CARB</p>
-                            </div>
-                            <div className="text-center bg-[#F9F5F0] rounded p-1">
-                              <p className="font-bold text-[#4B2B1D] text-xs">{live.fat_g.toFixed(1)}g</p>
-                              <p className="text-[10px] text-[#9A7E6F]">FAT</p>
-                            </div>
-                          </div>
+                  <div className="space-y-1.5 border border-[#16A34A] rounded-lg p-3 bg-[#F0FDF4]">
+                    {builderRecipes.map((br) => (
+                      <div key={br.recipe.recipe_id} className="flex items-center justify-between gap-2 bg-white rounded p-2">
+                        <p className="text-xs font-semibold text-[#4B2B1D] flex-1 truncate">{br.recipe.name}</p>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={br.servingSizeG}
+                            placeholder={br.gramsPerServing == null ? '...' : undefined}
+                            onChange={(e) => updateBuilderServingSize(br.recipe.recipe_id, parseFloat(e.target.value) || 0)}
+                            className="w-16 h-8 rounded border border-[#B9A88F] bg-white px-2 text-xs text-center outline-none"
+                          />
+                          <span className="text-xs text-[#9A7E6F]">g</span>
                         </div>
-                      )
-                    })}
-                    <div className="pt-2 border-t border-[#D8CDBE] flex justify-between">
-                      <p className="text-xs font-bold text-[#755B4C]">Cost Total:</p>
-                      <p className="text-sm font-extrabold text-[#16A34A]">${(builderTotals.cost_cents / 100).toFixed(2)}</p>
+                        <button
+                          onClick={() => removeBuilderRecipe(br.recipe.recipe_id)}
+                          className="text-[#D62F3D] hover:bg-[#FFF4F4] p-1 rounded transition flex-shrink-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* One combined total for the whole plate, instead of a
+                        macro breakdown repeated per recipe -- keeps this
+                        section scannable without scrolling. */}
+                    <div className="pt-2 mt-1 border-t border-[#D8CDBE] space-y-2">
+                      <div className="flex justify-between">
+                        <p className="text-xs font-bold text-[#755B4C]">Plate Total</p>
+                        <p className="text-sm font-extrabold text-[#16A34A]">${(builderTotals.cost_cents / 100).toFixed(2)}</p>
+                      </div>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        <div className="text-center bg-[#F9F5F0] rounded p-1.5">
+                          <p className="font-bold text-[#4B2B1D] text-sm">{builderTotals.calories}</p>
+                          <p className="text-[10px] text-[#9A7E6F]">CAL</p>
+                        </div>
+                        <div className="text-center bg-[#F9F5F0] rounded p-1.5">
+                          <p className="font-bold text-[#4B2B1D] text-sm">{builderTotals.protein_g.toFixed(1)}g</p>
+                          <p className="text-[10px] text-[#9A7E6F]">PRO</p>
+                        </div>
+                        <div className="text-center bg-[#F9F5F0] rounded p-1.5">
+                          <p className="font-bold text-[#4B2B1D] text-sm">{builderTotals.carbs_g.toFixed(1)}g</p>
+                          <p className="text-[10px] text-[#9A7E6F]">CARB</p>
+                        </div>
+                        <div className="text-center bg-[#F9F5F0] rounded p-1.5">
+                          <p className="font-bold text-[#4B2B1D] text-sm">{builderTotals.fat_g.toFixed(1)}g</p>
+                          <p className="text-[10px] text-[#9A7E6F]">FAT</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-
-              {builderRecipes.length > 0 && (
-                <div className="flex flex-col items-center gap-2">
-                  <NutritionFactsLabel
-                    title={plateName.trim() || 'New plate'}
-                    calories={builderTotals.calories}
-                    proteinG={builderTotals.protein_g}
-                    carbsG={builderTotals.carbs_g}
-                    fatG={builderTotals.fat_g}
-                    isEstimate
-                  />
-                  <p className="text-xs text-[#9A7E6F] text-center">
-                    Real cooked-weight label and profit margin appear on the plate card once saved.
-                  </p>
                 </div>
               )}
 
