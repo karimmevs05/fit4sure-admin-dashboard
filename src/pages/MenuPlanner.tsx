@@ -542,65 +542,6 @@ export default function MenuPlannerPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-extrabold text-[#4B2B1D] mb-3">
-                  Select Recipes{defaultServingSizeG && ` -- macros/cost shown at ${defaultServingSizeG}g`}
-                </label>
-                <div className="max-h-[300px] overflow-y-auto border border-[#E4D8C9] rounded-lg p-3 bg-white space-y-2">
-                  {getFilteredRecipes().length === 0 ? (
-                    <p className="text-xs text-[#755B4C]">No recipes in this category</p>
-                  ) : (
-                    getFilteredRecipes().map(recipe => {
-                      const requestedG = parseFloat(defaultServingSizeG)
-                      const previewG = !isNaN(requestedG) && requestedG > 0 ? requestedG : null
-                      const preview = previewG ? macrosAtGrams(recipe, previewG) : null
-                      return (
-                        <button
-                          key={recipe.recipe_id}
-                          onClick={() => addRecipeToBuilder(recipe)}
-                          disabled={builderRecipes.some(br => br.recipe.recipe_id === recipe.recipe_id)}
-                          className="w-full text-left rounded-lg border border-[#E4D8C9] hover:bg-[#F8F2E8] p-3 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <div className="flex items-start justify-between mb-2">
-                            <div>
-                              <p className="font-semibold text-[#4B2B1D]">{recipe.name}</p>
-                              <span className={`text-xs font-bold px-1.5 py-0.5 rounded inline-block mt-1 ${getCategoryColor(recipe.category)}`}>
-                                {recipe.category === 'carbohydrates' ? 'carb' : recipe.category === 'vegetables' ? 'veg' : recipe.category}
-                              </span>
-                            </div>
-                            <span className="text-xs font-bold text-[#2E527F]">
-                              {preview
-                                ? `$${(preview.cost_cents / 100).toFixed(2)} @ ${previewG}g`
-                                : recipe.cost_per_serving_cents != null
-                                ? `$${(recipe.cost_per_serving_cents / 100).toFixed(2)}/serving`
-                                : null}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-4 gap-2 mt-2">
-                            <div className="text-center bg-[#F9F5F0] rounded p-1">
-                              <p className="font-bold text-[#4B2B1D] text-sm">{preview ? preview.calories : recipe.calories ?? '-'}</p>
-                              <p className="text-xs text-[#9A7E6F]">CAL</p>
-                            </div>
-                            <div className="text-center bg-[#F9F5F0] rounded p-1">
-                              <p className="font-bold text-[#4B2B1D] text-sm">{preview ? preview.protein_g.toFixed(1) : recipe.protein_g ?? '-'}g</p>
-                              <p className="text-xs text-[#9A7E6F]">PRO</p>
-                            </div>
-                            <div className="text-center bg-[#F9F5F0] rounded p-1">
-                              <p className="font-bold text-[#4B2B1D] text-sm">{preview ? preview.carbs_g.toFixed(1) : recipe.carbs_g ?? '-'}g</p>
-                              <p className="text-xs text-[#9A7E6F]">CARB</p>
-                            </div>
-                            <div className="text-center bg-[#F9F5F0] rounded p-1">
-                              <p className="font-bold text-[#4B2B1D] text-sm">{preview ? preview.fat_g.toFixed(1) : recipe.fat_g ?? '-'}g</p>
-                              <p className="text-xs text-[#9A7E6F]">FAT</p>
-                            </div>
-                          </div>
-                        </button>
-                      )
-                    })
-                  )}
-                </div>
-              </div>
-
               {builderRecipes.length > 0 && (
                 <div>
                   <label className="block text-xs font-extrabold text-[#4B2B1D] mb-3">
@@ -661,6 +602,65 @@ export default function MenuPlannerPage() {
                   </div>
                 </div>
               )}
+
+              <div>
+                <label className="block text-xs font-extrabold text-[#4B2B1D] mb-3">
+                  Select Recipes{defaultServingSizeG && ` -- macros/cost shown at ${defaultServingSizeG}g`}
+                </label>
+                <div className="max-h-[300px] overflow-y-auto border border-[#E4D8C9] rounded-lg p-3 bg-white space-y-2">
+                  {getFilteredRecipes().length === 0 ? (
+                    <p className="text-xs text-[#755B4C]">No recipes in this category</p>
+                  ) : (
+                    getFilteredRecipes().map(recipe => {
+                      const requestedG = parseFloat(defaultServingSizeG)
+                      const previewG = !isNaN(requestedG) && requestedG > 0 ? requestedG : null
+                      const preview = previewG ? macrosAtGrams(recipe, previewG) : null
+                      return (
+                        <button
+                          key={recipe.recipe_id}
+                          onClick={() => addRecipeToBuilder(recipe)}
+                          disabled={builderRecipes.some(br => br.recipe.recipe_id === recipe.recipe_id)}
+                          className="w-full text-left rounded-lg border border-[#E4D8C9] hover:bg-[#F8F2E8] p-3 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div>
+                              <p className="font-semibold text-[#4B2B1D]">{recipe.name}</p>
+                              <span className={`text-xs font-bold px-1.5 py-0.5 rounded inline-block mt-1 ${getCategoryColor(recipe.category)}`}>
+                                {recipe.category === 'carbohydrates' ? 'carb' : recipe.category === 'vegetables' ? 'veg' : recipe.category}
+                              </span>
+                            </div>
+                            <span className="text-xs font-bold text-[#2E527F]">
+                              {preview
+                                ? `$${(preview.cost_cents / 100).toFixed(2)} @ ${previewG}g`
+                                : recipe.cost_per_serving_cents != null
+                                ? `$${(recipe.cost_per_serving_cents / 100).toFixed(2)}/serving`
+                                : null}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-4 gap-2 mt-2">
+                            <div className="text-center bg-[#F9F5F0] rounded p-1">
+                              <p className="font-bold text-[#4B2B1D] text-sm">{preview ? preview.calories : recipe.calories ?? '-'}</p>
+                              <p className="text-xs text-[#9A7E6F]">CAL</p>
+                            </div>
+                            <div className="text-center bg-[#F9F5F0] rounded p-1">
+                              <p className="font-bold text-[#4B2B1D] text-sm">{preview ? preview.protein_g.toFixed(1) : recipe.protein_g ?? '-'}g</p>
+                              <p className="text-xs text-[#9A7E6F]">PRO</p>
+                            </div>
+                            <div className="text-center bg-[#F9F5F0] rounded p-1">
+                              <p className="font-bold text-[#4B2B1D] text-sm">{preview ? preview.carbs_g.toFixed(1) : recipe.carbs_g ?? '-'}g</p>
+                              <p className="text-xs text-[#9A7E6F]">CARB</p>
+                            </div>
+                            <div className="text-center bg-[#F9F5F0] rounded p-1">
+                              <p className="font-bold text-[#4B2B1D] text-sm">{preview ? preview.fat_g.toFixed(1) : recipe.fat_g ?? '-'}g</p>
+                              <p className="text-xs text-[#9A7E6F]">FAT</p>
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
 
               <label className="flex items-center gap-3 rounded-xl border border-[#CDBDA8] bg-white p-4 cursor-pointer">
                 <input
