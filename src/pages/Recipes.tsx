@@ -47,6 +47,7 @@ type Recipe = {
   cost_per_serving_cents: number;
   total_recipe_cost_cents?: number;
   ingredients?: RecipeIngredient[];
+  per_pound?: { calories: number; protein_g: string; carbs_g: string; fat_g: string };
 };
 
 
@@ -451,26 +452,27 @@ function RecipeCard({
 
         <div className="mt-2 grid grid-cols-4 gap-1">
           <MacroBadge
-            value={recipe.calories}
+            value={recipe.per_pound?.calories ?? 0}
             label="CAL"
             className="bg-[#E8EEF5] text-[#134DA1]"
           />
           <MacroBadge
-            value={`${Math.round(parseFloat(recipe.protein_g))}g`}
+            value={`${Math.round(parseFloat(recipe.per_pound?.protein_g ?? '0'))}g`}
             label="PRO"
             className="bg-[#EAF5EC] text-[#16834A]"
           />
           <MacroBadge
-            value={`${Math.round(parseFloat(recipe.carbs_g))}g`}
+            value={`${Math.round(parseFloat(recipe.per_pound?.carbs_g ?? '0'))}g`}
             label="CARB"
             className="bg-[#FFF0E1] text-[#DC6500]"
           />
           <MacroBadge
-            value={`${Math.round(parseFloat(recipe.fat_g))}g`}
+            value={`${Math.round(parseFloat(recipe.per_pound?.fat_g ?? '0'))}g`}
             label="FAT"
             className="bg-[#FDEBEC] text-[#D62F3D]"
           />
         </div>
+        <p className="mt-0.5 text-[9px] text-[#9A8774]">per lb (455g)</p>
 
         <div className="mt-auto pt-2 border-t border-[#E4D8C9]">
           <div className="flex items-center justify-between mb-2">
@@ -1325,9 +1327,10 @@ function RecipeDetailsDrawer({
     "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=500&q=80";
   const categoryKey = recipe.category as Category;
   const colors = CATEGORY_CLASSES[categoryKey] || CATEGORY_CLASSES.beef;
-  const protein = parseFloat(recipe.protein_g);
-  const carbs = parseFloat(recipe.carbs_g);
-  const fat = parseFloat(recipe.fat_g);
+  const calories = recipe.per_pound?.calories ?? 0;
+  const protein = parseFloat(recipe.per_pound?.protein_g ?? '0');
+  const carbs = parseFloat(recipe.per_pound?.carbs_g ?? '0');
+  const fat = parseFloat(recipe.per_pound?.fat_g ?? '0');
 
   return (
     <>
@@ -1374,11 +1377,11 @@ function RecipeDetailsDrawer({
             />
           </div>
 
-          {/* Key Metrics Grid */}
+          {/* Key Metrics Grid -- per lb (455g) of the recipe, same basis as the card */}
           <div className="grid grid-cols-4 gap-3">
             <div className="rounded-xl bg-[#E8EEF5] p-3 text-center">
               <p className="text-xs text-[#755B4C] font-bold mb-1">CALORIES</p>
-              <p className="text-xl font-extrabold text-[#134DA1]">{recipe.calories}</p>
+              <p className="text-xl font-extrabold text-[#134DA1]">{calories}</p>
             </div>
             <div className="rounded-xl bg-[#EAF5EC] p-3 text-center">
               <p className="text-xs text-[#755B4C] font-bold mb-1">PROTEIN</p>
@@ -1393,6 +1396,7 @@ function RecipeDetailsDrawer({
               <p className="text-xl font-extrabold text-[#D62F3D]">{fat.toFixed(1)}g</p>
             </div>
           </div>
+          <p className="-mt-3 text-[10px] text-[#9A8774]">per lb (455g)</p>
 
           {/* Cost and Servings */}
           <div className="grid grid-cols-2 gap-4 border-t border-[#D8CDBE] pt-4">
