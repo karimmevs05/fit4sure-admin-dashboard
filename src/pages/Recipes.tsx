@@ -45,6 +45,7 @@ type Recipe = {
   servings: number;
   prep_time_minutes: number | null;
   cost_per_serving_cents: number;
+  cost_per_pound_cents?: number;
   total_recipe_cost_cents?: number;
   ingredients?: RecipeIngredient[];
   per_pound?: { calories: number; protein_g: string; carbs_g: string; fat_g: string };
@@ -480,10 +481,10 @@ function RecipeCard({
               {recipe.servings}x • {recipe.prep_time_minutes || '?'} min
             </span>
             <span className="text-lg font-extrabold text-[#16813D]">
-              ${(recipe.cost_per_serving_cents / 100).toFixed(2)}
+              ${((recipe.cost_per_pound_cents ?? 0) / 100).toFixed(2)}
             </span>
           </div>
-          <p className="text-[9px] text-[#9A8774]">per serving</p>
+          <p className="text-[9px] text-[#9A8774]">per lb (455g)</p>
         </div>
 
         <div className="mt-2 flex justify-end gap-2 pt-2 border-t border-[#E4D8C9]">
@@ -1401,9 +1402,9 @@ function RecipeDetailsDrawer({
           {/* Cost and Servings */}
           <div className="grid grid-cols-2 gap-4 border-t border-[#D8CDBE] pt-4">
             <div className="rounded-xl bg-[#F5F0E8] p-4">
-              <p className="text-xs text-[#755B4C] font-bold mb-1">COST PER SERVING</p>
+              <p className="text-xs text-[#755B4C] font-bold mb-1">PRICE PER 1 LB</p>
               <p className="text-2xl font-extrabold text-[#16813D]">
-                ${(recipe.cost_per_serving_cents / 100).toFixed(2)}
+                ${((recipe.cost_per_pound_cents ?? 0) / 100).toFixed(2)}
               </p>
             </div>
             <div className="rounded-xl bg-[#F5F0E8] p-4">
