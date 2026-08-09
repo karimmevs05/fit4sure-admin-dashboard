@@ -675,16 +675,18 @@ function FinancialsPage() {
         return
       }
 
-      const response = await fetch(`${apiUrl}/api/admin/receipt-review/approve`, {
+      const response = await fetch(`${apiUrl}/api/admin/receipt-sync/confirm`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          items: validItems,
-          vendor: manualVendor,
-          date: manualDate
+          receipts: [{
+            vendor: manualVendor,
+            date: manualDate,
+            items: validItems.map(item => ({ ...item, displayName: item.productName })),
+          }]
         })
       })
 
@@ -750,6 +752,14 @@ function FinancialsPage() {
   const updatePendingItemDisplayName = (receiptIdx: number, itemIdx: number, displayName: string) => {
     setPendingReceipts(prev => prev.map((r, ri) =>
       ri !== receiptIdx ? r : { ...r, items: r.items.map((it, ii) => ii !== itemIdx ? it : { ...it, displayName }) }
+    ))
+  }
+
+  const updatePendingItemField = <K extends keyof PendingReceiptItem>(
+    receiptIdx: number, itemIdx: number, field: K, value: PendingReceiptItem[K]
+  ) => {
+    setPendingReceipts(prev => prev.map((r, ri) =>
+      ri !== receiptIdx ? r : { ...r, items: r.items.map((it, ii) => ii !== itemIdx ? it : { ...it, [field]: value }) }
     ))
   }
 
@@ -1406,20 +1416,54 @@ function FinancialsPage() {
 
                       <div className="space-y-2">
                         {receipt.items.map((item, ii) => (
-                          <div key={ii} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center rounded-lg bg-white border border-[#E4D8C9] p-2">
-                            <div>
-                              <p className="text-[10px] text-[#9A7E6F]">Parsed as</p>
-                              <p className="text-xs text-[#755B4C] truncate">{item.productName}</p>
+                          <div key={ii} className="rounded-lg bg-white border border-[#E4D8C9] p-2 space-y-2">
+                            <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
+                              <div>
+                                <p className="text-[10px] text-[#9A7E6F]">Parsed as</p>
+                                <p className="text-xs text-[#755B4C] truncate">{item.productName}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] text-[#9A7E6F]">Display name (inventory)</p>
+                                <input
+                                  value={item.displayName}
+                                  onChange={(e) => updatePendingItemDisplayName(ri, ii, e.target.value)}
+                                  className="w-full h-8 rounded border border-[#B9A88F] bg-[#FBF6EE] px-2 text-xs font-semibold text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                                />
+                              </div>
+                              <p className="text-xs font-bold text-[#4B2B1D] text-right">${item.amount.toFixed(2)}</p>
                             </div>
-                            <div>
-                              <p className="text-[10px] text-[#9A7E6F]">Display name (inventory)</p>
-                              <input
-                                value={item.displayName}
-                                onChange={(e) => updatePendingItemDisplayName(ri, ii, e.target.value)}
-                                className="w-full h-8 rounded border border-[#B9A88F] bg-[#FBF6EE] px-2 text-xs font-semibold text-[#4B2B1D] outline-none focus:border-[#3E6594]"
-                              />
+                            <div className="grid grid-cols-[1fr_1fr_1fr] gap-2 items-end">
+                              <div>
+                                <p className="text-[10px] text-[#9A7E6F]">Quantity</p>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={item.quantity}
+                                  onChange={(e) => updatePendingItemField(ri, ii, 'quantity', parseFloat(e.target.value) || 0)}
+                                  className="w-full h-8 rounded border border-[#B9A88F] bg-[#FBF6EE] px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                                />
+                              </div>
+                              <div>
+                                <p className="text-[10px] text-[#9A7E6F]">Unit</p>
+                                <input
+                                  value={item.unit}
+                                  onChange={(e) => updatePendingItemField(ri, ii, 'unit', e.target.value)}
+                                  className="w-full h-8 rounded border border-[#B9A88F] bg-[#FBF6EE] px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                                />
+                              </div>
+                              <div>
+                                <p className="text-[10px] text-[#9A7E6F]">Cost category</p>
+                                <select
+                                  value={item.category}
+                                  onChange={(e) => updatePendingItemField(ri, ii, 'category', e.target.value)}
+                                  className="w-full h-8 rounded border border-[#B9A88F] bg-[#FBF6EE] px-2 text-xs font-semibold text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                                >
+                                  {Object.entries(categoryColors).map(([key, { label }]) => (
+                                    <option key={key} value={key}>{label}</option>
+                                  ))}
+                                </select>
+                              </div>
                             </div>
-                            <p className="text-xs font-bold text-[#4B2B1D] text-right">${item.amount.toFixed(2)}</p>
                           </div>
                         ))}
                       </div>
