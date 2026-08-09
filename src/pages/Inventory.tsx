@@ -28,16 +28,41 @@ type InventoryItem = {
   macros_source?: string
 }
 
+type SortColumn =
+  | 'name' | 'category' | 'store' | 'grade' | 'price' | 'serving_size'
+  | 'stock' | 'status' | 'protein' | 'carbs' | 'fat' | 'calories'
+
+function sortValue(item: InventoryItem, col: SortColumn): string | number {
+  switch (col) {
+    case 'name': return item.name?.toLowerCase() ?? ''
+    case 'category': return item.category?.toLowerCase() ?? ''
+    case 'store': return item.store?.toLowerCase() ?? ''
+    case 'grade': return item.grade?.toLowerCase() ?? ''
+    case 'price': return item.unit_price_cents ?? -Infinity
+    case 'serving_size': return parseFloat(String(item.serving_size_g)) || 0
+    case 'stock': return item.current_stock_g ?? 0
+    case 'status': return (item.current_stock_g ?? 0) > 0 ? 1 : 0
+    case 'protein': return item.protein_per_100g ?? -Infinity
+    case 'carbs': return item.carbs_per_100g ?? -Infinity
+    case 'fat': return item.fat_per_100g ?? -Infinity
+    case 'calories': return item.calories_per_100g ?? -Infinity
+  }
+}
+
 export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [activeCategory, setActiveCategory] = useState<string>('ALL')
-  const [stockFilter, setStockFilter] = useState<'ALL' | 'IN_STOCK' | 'OUT'>('ALL')
+  const [activeTab, setActiveTab] = useState<'stock' | 'ingredients'>('stock')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [receiptScannerOpen, setReceiptScannerOpen] = useState(false)
+  const [storeFilter, setStoreFilter] = useState<string>('ALL')
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'OUT'>('ALL')
+  const [sortColumn, setSortColumn] = useState<SortColumn | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
@@ -71,6 +96,11 @@ export default function InventoryPage() {
     }
   }
 
+  const stores = useMemo(() => {
+    const set = new Set(items.map((i) => i.store).filter(Boolean) as string[])
+    return Array.from(set).sort()
+  }, [items])
+
   const filtered = useMemo(() => {
     return items.filter((item) => {
       const matchesSearch = item.name
@@ -78,12 +108,38 @@ export default function InventoryPage() {
         .includes(search.toLowerCase())
       const matchesCategory =
         activeCategory === 'ALL' || item.category === activeCategory
+      const matchesStore = storeFilter === 'ALL' || item.store === storeFilter
       const inStock = (item.current_stock_g ?? 0) > 0
-      const matchesStock =
-        stockFilter === 'ALL' || (stockFilter === 'IN_STOCK' ? inStock : !inStock)
-      return matchesSearch && matchesCategory && matchesStock
+      const matchesStatus =
+        statusFilter === 'ALL' || (statusFilter === 'IN_STOCK' ? inStock : !inStock)
+      return matchesSearch && matchesCategory && matchesStore && matchesStatus
     })
-  }, [items, search, activeCategory, stockFilter])
+  }, [items, search, activeCategory, storeFilter, statusFilter])
+
+  const inStockItems = useMemo(
+    () => filtered.filter((item) => (item.current_stock_g ?? 0) > 0),
+    [filtered]
+  )
+
+  const sortedIngredients = useMemo(() => {
+    if (!sortColumn) return filtered
+    const sorted = [...filtered].sort((a, b) => {
+      const av = sortValue(a, sortColumn)
+      const bv = sortValue(b, sortColumn)
+      if (typeof av === 'string' && typeof bv === 'string') return av.localeCompare(bv)
+      return (av as number) - (bv as number)
+    })
+    return sortDirection === 'asc' ? sorted : sorted.reverse()
+  }, [filtered, sortColumn, sortDirection])
+
+  const toggleSort = (col: SortColumn) => {
+    if (sortColumn === col) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortColumn(col)
+      setSortDirection('asc')
+    }
+  }
 
   const deleteItem = async (id: number) => {
     if (!confirm('Delete this ingredient?')) return
@@ -114,8 +170,12 @@ export default function InventoryPage() {
           setSearch={setSearch}
           activeCategory={activeCategory}
           setActiveCategory={setActiveCategory}
-          stockFilter={stockFilter}
-          setStockFilter={setStockFilter}
+          storeFilter={storeFilter}
+          setStoreFilter={setStoreFilter}
+          stores={stores}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          showStatusFilter={activeTab === 'ingredients'}
           onAdd={() => {
             setEditingId(null)
             setDrawerOpen(true)
@@ -132,11 +192,49 @@ export default function InventoryPage() {
           </div>
         )}
 
-        <div className={drawerOpen ? 'mt-6 xl:pr-[380px]' : 'mt-6'}>
+        <div className="mt-6 flex gap-2 border-b border-[#CDBDA8]">
+          <button
+            onClick={() => setActiveTab('stock')}
+            className={`px-4 py-2 text-sm font-extrabold border-b-2 -mb-px transition ${
+              activeTab === 'stock'
+                ? 'border-[#2E527F] text-[#2E527F]'
+                : 'border-transparent text-[#9A8774] hover:text-[#4B2B1D]'
+            }`}
+          >
+            In Stock
+          </button>
+          <button
+            onClick={() => setActiveTab('ingredients')}
+            className={`px-4 py-2 text-sm font-extrabold border-b-2 -mb-px transition ${
+              activeTab === 'ingredients'
+                ? 'border-[#2E527F] text-[#2E527F]'
+                : 'border-transparent text-[#9A8774] hover:text-[#4B2B1D]'
+            }`}
+          >
+            All Ingredients
+          </button>
+        </div>
+
+        <div className={drawerOpen ? 'mt-4 xl:pr-[380px]' : 'mt-4'}>
           {loading ? (
             <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-10 text-center">
               <p className="text-lg font-extrabold">Loading inventory...</p>
             </div>
+          ) : activeTab === 'stock' ? (
+            inStockItems.length === 0 ? (
+              <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-10 text-center">
+                <p className="text-lg font-extrabold">No in-stock ingredients found.</p>
+                <p className="mt-1 text-sm text-[#755B4C]">
+                  Try a different search, or log a receipt to add stock.
+                </p>
+              </div>
+            ) : (
+              <StockTable
+                items={inStockItems}
+                onEdit={(id) => { setEditingId(id); setDrawerOpen(true) }}
+                onDelete={deleteItem}
+              />
+            )
           ) : filtered.length === 0 ? (
             <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-10 text-center">
               <p className="text-lg font-extrabold">No ingredients found.</p>
@@ -145,137 +243,14 @@ export default function InventoryPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[#E4D8C9]">
-                    <th className="px-4 py-3 text-left font-extrabold text-[#4B2B1D]">
-                      Name
-                    </th>
-                    <th className="px-4 py-3 text-left font-extrabold text-[#4B2B1D]">
-                      Category
-                    </th>
-                    <th className="px-4 py-3 text-left font-extrabold text-[#4B2B1D]">
-                      Store
-                    </th>
-                    <th className="px-4 py-3 text-left font-extrabold text-[#4B2B1D]">
-                      Grade
-                    </th>
-                    <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">
-                      Price/lb
-                    </th>
-                    <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">
-                      Serving Size
-                    </th>
-                    <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">
-                      Current Stock
-                    </th>
-                    <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">
-                      Protein (g)
-                    </th>
-                    <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">
-                      Carbs (g)
-                    </th>
-                    <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">
-                      Fat (g)
-                    </th>
-                    <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">
-                      Calories
-                    </th>
-                    <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((item) => (
-                    <tr
-                      key={item.id}
-                      className="border-b border-[#E4D8C9] hover:bg-[#F8F2E8] transition"
-                    >
-                      <td className="px-4 py-3 font-medium text-[#4B2B1D]">
-                        {item.name}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center rounded-full bg-[#EDF2F7] px-2 py-1 text-xs font-bold text-[#2F5F98]">
-                          {item.category}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-[#755B4C] text-xs">
-                        {item.store || '-'}
-                      </td>
-                      <td className="px-4 py-3 text-[#755B4C] text-xs">
-                        {item.grade || '-'}
-                      </td>
-                      <td className="px-4 py-3 text-right text-[#755B4C]">
-                        {item.unit_price_cents != null
-                          ? `$${(item.unit_price_cents / 100).toFixed(2)}`
-                          : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-right text-[#755B4C]">
-                        {item.serving_size_g != null && item.serving_size_g !== '' && !isNaN(parseFloat(String(item.serving_size_g)))
-                          ? item.category === 'Protein'
-                            ? `${(parseFloat(String(item.serving_size_g)) / 28.3495).toFixed(1)}oz`
-                            : `${parseFloat(String(item.serving_size_g)).toFixed(1)}g`
-                          : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-right text-[#755B4C]">
-                        {item.current_stock_g != null
-                          ? `${parseFloat(String(item.current_stock_g)).toFixed(0)}g`
-                          : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {(item.current_stock_g ?? 0) > 0 ? (
-                          <span className="inline-flex items-center rounded-full bg-[#EAF5EC] px-2 py-1 text-xs font-bold text-[#16834A]">
-                            In Stock
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-full bg-[#F1EAE0] px-2 py-1 text-xs font-bold text-[#9A7E6F]">
-                            Not in Stock
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-center text-[#755B4C] text-sm">
-                        {item.protein_per_100g ? parseFloat(String(item.protein_per_100g)).toFixed(1) : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-center text-[#755B4C] text-sm">
-                        {item.carbs_per_100g ? parseFloat(String(item.carbs_per_100g)).toFixed(1) : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-center text-[#755B4C] text-sm">
-                        {item.fat_per_100g ? parseFloat(String(item.fat_per_100g)).toFixed(1) : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-center text-[#755B4C] text-sm">
-                        {item.calories_per_100g ? parseFloat(String(item.calories_per_100g)).toFixed(0) : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => {
-                              setEditingId(item.id)
-                              setDrawerOpen(true)
-                            }}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#B9A88F] bg-[#FBF6EE] text-[#2E527F] transition hover:border-[#3E6594] hover:bg-[#EDF2F7]"
-                            aria-label={`Edit ${item.name}`}
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => deleteItem(item.id)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#E4B6B9] bg-[#FFF4F4] text-[#D62F3D] transition hover:bg-[#FDEBEC]"
-                            aria-label={`Delete ${item.name}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <IngredientsTable
+              items={sortedIngredients}
+              sortColumn={sortColumn}
+              sortDirection={sortDirection}
+              onSort={toggleSort}
+              onEdit={(id) => { setEditingId(id); setDrawerOpen(true) }}
+              onDelete={deleteItem}
+            />
           )}
         </div>
       </div>
@@ -307,8 +282,12 @@ function Header({
   setSearch,
   activeCategory,
   setActiveCategory,
-  stockFilter,
-  setStockFilter,
+  storeFilter,
+  setStoreFilter,
+  stores,
+  statusFilter,
+  setStatusFilter,
+  showStatusFilter,
   onAdd,
   onReceipt,
 }: {
@@ -316,8 +295,12 @@ function Header({
   setSearch: (value: string) => void
   activeCategory: string
   setActiveCategory: (value: string) => void
-  stockFilter: 'ALL' | 'IN_STOCK' | 'OUT'
-  setStockFilter: (value: 'ALL' | 'IN_STOCK' | 'OUT') => void
+  storeFilter: string
+  setStoreFilter: (value: string) => void
+  stores: string[]
+  statusFilter: 'ALL' | 'IN_STOCK' | 'OUT'
+  setStatusFilter: (value: 'ALL' | 'IN_STOCK' | 'OUT') => void
+  showStatusFilter: boolean
   onAdd: () => void
   onReceipt: () => void
 }) {
@@ -369,16 +352,33 @@ function Header({
         <div className="relative">
           <Filter className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#2E527F]" />
           <select
-            value={stockFilter}
-            onChange={(event) => setStockFilter(event.target.value as 'ALL' | 'IN_STOCK' | 'OUT')}
+            value={storeFilter}
+            onChange={(event) => setStoreFilter(event.target.value)}
             className="h-12 appearance-none rounded-xl border border-[#B7A58F] bg-[#FBF7F0] pl-11 pr-10 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
           >
-            <option value="ALL">All stock</option>
-            <option value="IN_STOCK">In Stock</option>
-            <option value="OUT">Not in Stock</option>
+            <option value="ALL">All stores</option>
+            {stores.map((store) => (
+              <option key={store} value={store}>{store}</option>
+            ))}
           </select>
           <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" />
         </div>
+
+        {showStatusFilter && (
+          <div className="relative">
+            <Filter className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#2E527F]" />
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as 'ALL' | 'IN_STOCK' | 'OUT')}
+              className="h-12 appearance-none rounded-xl border border-[#B7A58F] bg-[#FBF7F0] pl-11 pr-10 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+            >
+              <option value="ALL">All stock</option>
+              <option value="IN_STOCK">In Stock</option>
+              <option value="OUT">Not in Stock</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" />
+          </div>
+        )}
 
         <button
           onClick={onReceipt}
@@ -397,6 +397,232 @@ function Header({
         </button>
       </div>
     </header>
+  )
+}
+
+function RowActions({
+  itemId,
+  itemName,
+  onEdit,
+  onDelete,
+}: {
+  itemId: number
+  itemName: string
+  onEdit: (id: number) => void
+  onDelete: (id: number) => void
+}) {
+  return (
+    <div className="flex justify-end gap-2">
+      <button
+        onClick={() => onEdit(itemId)}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#B9A88F] bg-[#FBF6EE] text-[#2E527F] transition hover:border-[#3E6594] hover:bg-[#EDF2F7]"
+        aria-label={`Edit ${itemName}`}
+      >
+        <Edit2 className="h-4 w-4" />
+      </button>
+      <button
+        onClick={() => onDelete(itemId)}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#E4B6B9] bg-[#FFF4F4] text-[#D62F3D] transition hover:bg-[#FDEBEC]"
+        aria-label={`Delete ${itemName}`}
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
+
+// Focused "what can I cook with right now" view: only items with real stock,
+// only the columns that matter for that question.
+function StockTable({
+  items,
+  onEdit,
+  onDelete,
+}: {
+  items: InventoryItem[]
+  onEdit: (id: number) => void
+  onDelete: (id: number) => void
+}) {
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-[#E4D8C9]">
+            <th className="px-4 py-3 text-left font-extrabold text-[#4B2B1D]">Display Name</th>
+            <th className="px-4 py-3 text-left font-extrabold text-[#4B2B1D]">Category</th>
+            <th className="px-4 py-3 text-left font-extrabold text-[#4B2B1D]">Store</th>
+            <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">Price/lb</th>
+            <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">Current Stock</th>
+            <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">Protein (g)</th>
+            <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">Carbs (g)</th>
+            <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">Fat (g)</th>
+            <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">Calories</th>
+            <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.id} className="border-b border-[#E4D8C9] hover:bg-[#F8F2E8] transition">
+              <td className="px-4 py-3 font-medium text-[#4B2B1D]">{item.name}</td>
+              <td className="px-4 py-3">
+                <span className="inline-flex items-center rounded-full bg-[#EDF2F7] px-2 py-1 text-xs font-bold text-[#2F5F98]">
+                  {item.category}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-[#755B4C] text-xs">{item.store || '-'}</td>
+              <td className="px-4 py-3 text-right text-[#755B4C]">
+                {item.unit_price_cents != null ? `$${(item.unit_price_cents / 100).toFixed(2)}` : '-'}
+              </td>
+              <td className="px-4 py-3 text-right text-[#755B4C]">
+                {item.current_stock_g != null ? `${parseFloat(String(item.current_stock_g)).toFixed(0)}g` : '-'}
+              </td>
+              <td className="px-4 py-3 text-center text-[#755B4C] text-sm">
+                {item.protein_per_100g ? parseFloat(String(item.protein_per_100g)).toFixed(1) : '-'}
+              </td>
+              <td className="px-4 py-3 text-center text-[#755B4C] text-sm">
+                {item.carbs_per_100g ? parseFloat(String(item.carbs_per_100g)).toFixed(1) : '-'}
+              </td>
+              <td className="px-4 py-3 text-center text-[#755B4C] text-sm">
+                {item.fat_per_100g ? parseFloat(String(item.fat_per_100g)).toFixed(1) : '-'}
+              </td>
+              <td className="px-4 py-3 text-center text-[#755B4C] text-sm">
+                {item.calories_per_100g ? parseFloat(String(item.calories_per_100g)).toFixed(0) : '-'}
+              </td>
+              <td className="px-4 py-3 text-right">
+                <RowActions itemId={item.id} itemName={item.name} onEdit={onEdit} onDelete={onDelete} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function SortableHeader({
+  label,
+  column,
+  align = 'left',
+  sortColumn,
+  sortDirection,
+  onSort,
+}: {
+  label: string
+  column: SortColumn
+  align?: 'left' | 'right' | 'center'
+  sortColumn: SortColumn | null
+  sortDirection: 'asc' | 'desc'
+  onSort: (col: SortColumn) => void
+}) {
+  const alignClass = align === 'right' ? 'text-right justify-end' : align === 'center' ? 'text-center justify-center' : 'text-left justify-start'
+  const active = sortColumn === column
+  return (
+    <th className={`px-4 py-3 font-extrabold text-[#4B2B1D] ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}`}>
+      <button
+        onClick={() => onSort(column)}
+        className={`inline-flex items-center gap-1 ${alignClass} hover:text-[#2E527F] transition`}
+      >
+        {label}
+        <span className="text-[10px] w-3 inline-block">
+          {active ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+        </span>
+      </button>
+    </th>
+  )
+}
+
+// The full master list -- every ingredient ever tracked, in or out of
+// stock, with every column sortable so it doubles as a reference sheet.
+function IngredientsTable({
+  items,
+  sortColumn,
+  sortDirection,
+  onSort,
+  onEdit,
+  onDelete,
+}: {
+  items: InventoryItem[]
+  sortColumn: SortColumn | null
+  sortDirection: 'asc' | 'desc'
+  onSort: (col: SortColumn) => void
+  onEdit: (id: number) => void
+  onDelete: (id: number) => void
+}) {
+  const headerProps = { sortColumn, sortDirection, onSort }
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-[#E4D8C9]">
+            <SortableHeader label="Name" column="name" {...headerProps} />
+            <SortableHeader label="Category" column="category" {...headerProps} />
+            <SortableHeader label="Store" column="store" {...headerProps} />
+            <SortableHeader label="Grade" column="grade" {...headerProps} />
+            <SortableHeader label="Price/lb" column="price" align="right" {...headerProps} />
+            <SortableHeader label="Serving Size" column="serving_size" align="right" {...headerProps} />
+            <SortableHeader label="Current Stock" column="stock" align="right" {...headerProps} />
+            <SortableHeader label="Status" column="status" align="center" {...headerProps} />
+            <SortableHeader label="Protein (g)" column="protein" align="center" {...headerProps} />
+            <SortableHeader label="Carbs (g)" column="carbs" align="center" {...headerProps} />
+            <SortableHeader label="Fat (g)" column="fat" align="center" {...headerProps} />
+            <SortableHeader label="Calories" column="calories" align="center" {...headerProps} />
+            <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.id} className="border-b border-[#E4D8C9] hover:bg-[#F8F2E8] transition">
+              <td className="px-4 py-3 font-medium text-[#4B2B1D]">{item.name}</td>
+              <td className="px-4 py-3">
+                <span className="inline-flex items-center rounded-full bg-[#EDF2F7] px-2 py-1 text-xs font-bold text-[#2F5F98]">
+                  {item.category}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-[#755B4C] text-xs">{item.store || '-'}</td>
+              <td className="px-4 py-3 text-[#755B4C] text-xs">{item.grade || '-'}</td>
+              <td className="px-4 py-3 text-right text-[#755B4C]">
+                {item.unit_price_cents != null ? `$${(item.unit_price_cents / 100).toFixed(2)}` : '-'}
+              </td>
+              <td className="px-4 py-3 text-right text-[#755B4C]">
+                {item.serving_size_g != null && item.serving_size_g !== '' && !isNaN(parseFloat(String(item.serving_size_g)))
+                  ? item.category === 'Protein'
+                    ? `${(parseFloat(String(item.serving_size_g)) / 28.3495).toFixed(1)}oz`
+                    : `${parseFloat(String(item.serving_size_g)).toFixed(1)}g`
+                  : '-'}
+              </td>
+              <td className="px-4 py-3 text-right text-[#755B4C]">
+                {item.current_stock_g != null ? `${parseFloat(String(item.current_stock_g)).toFixed(0)}g` : '-'}
+              </td>
+              <td className="px-4 py-3 text-center">
+                {(item.current_stock_g ?? 0) > 0 ? (
+                  <span className="inline-flex items-center rounded-full bg-[#EAF5EC] px-2 py-1 text-xs font-bold text-[#16834A]">
+                    In Stock
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center rounded-full bg-[#F1EAE0] px-2 py-1 text-xs font-bold text-[#9A7E6F]">
+                    Not in Stock
+                  </span>
+                )}
+              </td>
+              <td className="px-4 py-3 text-center text-[#755B4C] text-sm">
+                {item.protein_per_100g ? parseFloat(String(item.protein_per_100g)).toFixed(1) : '-'}
+              </td>
+              <td className="px-4 py-3 text-center text-[#755B4C] text-sm">
+                {item.carbs_per_100g ? parseFloat(String(item.carbs_per_100g)).toFixed(1) : '-'}
+              </td>
+              <td className="px-4 py-3 text-center text-[#755B4C] text-sm">
+                {item.fat_per_100g ? parseFloat(String(item.fat_per_100g)).toFixed(1) : '-'}
+              </td>
+              <td className="px-4 py-3 text-center text-[#755B4C] text-sm">
+                {item.calories_per_100g ? parseFloat(String(item.calories_per_100g)).toFixed(0) : '-'}
+              </td>
+              <td className="px-4 py-3 text-right">
+                <RowActions itemId={item.id} itemName={item.name} onEdit={onEdit} onDelete={onDelete} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
