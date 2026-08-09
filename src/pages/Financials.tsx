@@ -123,6 +123,8 @@ interface PendingReceiptItem {
   productName: string
   displayName: string
   price: number
+  itemCount: number
+  gramWeight: number | null
   quantity: number
   unit: string
   category: string
@@ -1432,23 +1434,28 @@ function FinancialsPage() {
                               </div>
                               <p className="text-xs font-bold text-[#4B2B1D] text-right">${item.amount.toFixed(2)}</p>
                             </div>
-                            <div className="grid grid-cols-[1fr_1fr_1fr] gap-2 items-end">
+                            <div className="grid grid-cols-[1fr_1.2fr_1fr] gap-2 items-end">
                               <div>
-                                <p className="text-[10px] text-[#9A7E6F]">Quantity</p>
+                                <p className="text-[10px] text-[#9A7E6F]" title="How many discrete units this price covers">Item count (@ price above)</p>
                                 <input
                                   type="number"
-                                  step="any"
-                                  value={item.quantity}
-                                  onChange={(e) => updatePendingItemField(ri, ii, 'quantity', parseFloat(e.target.value) || 0)}
+                                  min={1}
+                                  step="1"
+                                  value={item.itemCount}
+                                  onChange={(e) => updatePendingItemField(ri, ii, 'itemCount', parseInt(e.target.value, 10) || 1)}
                                   className="w-full h-8 rounded border border-[#B9A88F] bg-[#FBF6EE] px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#3E6594]"
                                 />
                               </div>
                               <div>
-                                <p className="text-[10px] text-[#9A7E6F]">Unit</p>
+                                <p className="text-[10px] font-bold text-[#16A34A]" title="Total grams added to food inventory for this line">Grams → inventory</p>
                                 <input
-                                  value={item.unit}
-                                  onChange={(e) => updatePendingItemField(ri, ii, 'unit', e.target.value)}
-                                  className="w-full h-8 rounded border border-[#B9A88F] bg-[#FBF6EE] px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                                  type="number"
+                                  min={0}
+                                  step="any"
+                                  value={item.gramWeight ?? ''}
+                                  placeholder="not tracked"
+                                  onChange={(e) => updatePendingItemField(ri, ii, 'gramWeight', e.target.value === '' ? null : parseFloat(e.target.value) || 0)}
+                                  className="w-full h-8 rounded border border-[#86EFAC] bg-[#F0FDF4] px-2 text-xs font-bold text-[#15803D] outline-none focus:border-[#16A34A]"
                                 />
                               </div>
                               <div>
@@ -1464,6 +1471,9 @@ function FinancialsPage() {
                                 </select>
                               </div>
                             </div>
+                            {item.gramWeight == null && item.category === 'food_cogs' && (
+                              <p className="text-[10px] font-semibold text-[#D62F3D]">⚠ No gram weight — this item won't add to inventory stock unless you enter one</p>
+                            )}
                           </div>
                         ))}
                       </div>
