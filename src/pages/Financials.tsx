@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { DollarSign, TrendingUp, Activity, ChevronDown, ChevronUp, Plus, Trash2, Edit2, Check, X, Upload, Loader } from 'lucide-react'
+import { DollarSign, TrendingUp, Activity, ChevronDown, ChevronUp, Plus, X, Upload, Loader } from 'lucide-react'
 // Removed Tesseract - using GoHighLevel API instead
 
 // Error Boundary
@@ -205,7 +205,6 @@ function FinancialsPage() {
   const [receipts, setReceipts] = useState<ReceiptSummary[]>([])
   const [receiptsLoading, setReceiptsLoading] = useState(true)
 
-  const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState<Partial<Expense>>({
     date: new Date().toISOString().split('T')[0],
     vendor: '',
@@ -321,12 +320,6 @@ function FinancialsPage() {
     labor: { bg: '#D4AF37', text: 'white', label: 'Labor' },
     utilities: { bg: '#755B4C', text: 'white', label: 'Utilities' },
     other: { bg: '#9A7E6F', text: 'white', label: 'Other' },
-  }
-
-  const statusColors: Record<string, string> = {
-    pending: 'bg-yellow-100 text-yellow-800',
-    approved: 'bg-blue-100 text-blue-800',
-    reconciled: 'bg-green-100 text-green-800',
   }
 
   // Standard inventory units
@@ -1009,47 +1002,6 @@ function FinancialsPage() {
     } catch (err) {
       console.error('Error adding expense:', err)
       alert(`Error: ${err instanceof Error ? err.message : 'Failed to add expense'}`)
-    }
-  }
-
-  const updateExpense = async (id: string, updates: Partial<Expense>) => {
-    try {
-      const token = localStorage.getItem('token')
-      const apiUrl = import.meta.env.VITE_API_BASE_URL
-      const response = await fetch(`${apiUrl}/api/admin/expenses/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify(updates)
-      })
-      if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.error || 'Failed to update expense')
-      }
-      await fetchExpenses()
-      setEditingId(null)
-    } catch (err) {
-      console.error('Error updating expense:', err)
-      alert(`Error: ${err instanceof Error ? err.message : 'Failed to update expense'}`)
-    }
-  }
-
-  const deleteExpense = async (id: string) => {
-    if (!confirm('Delete this expense?')) return
-    try {
-      const token = localStorage.getItem('token')
-      const apiUrl = import.meta.env.VITE_API_BASE_URL
-      const response = await fetch(`${apiUrl}/api/admin/expenses/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.error || 'Failed to delete expense')
-      }
-      await fetchExpenses()
-    } catch (err) {
-      console.error('Error deleting expense:', err)
-      alert(`Error: ${err instanceof Error ? err.message : 'Failed to delete expense'}`)
     }
   }
 
@@ -2107,85 +2059,6 @@ function FinancialsPage() {
               </div>
             </Section>
 
-            {/* Expense List */}
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {expenses.map(expense => (
-                <div key={expense.id} className="rounded-lg border border-[#E8DCC8] p-4 bg-white hover:bg-[#FDFBF7] transition">
-                  {editingId === expense.id ? (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <input
-                          type="text"
-                          value={expense.vendor}
-                          onChange={(e) => updateExpense(expense.id, { vendor: e.target.value })}
-                          className="px-2 py-1 border border-[#E8DCC8] rounded text-sm"
-                        />
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={expense.amount}
-                          onChange={(e) => updateExpense(expense.id, { amount: parseFloat(e.target.value) })}
-                          className="px-2 py-1 border border-[#E8DCC8] rounded text-sm"
-                        />
-                      </div>
-                      <select
-                        value={expense.status}
-                        onChange={(e) => updateExpense(expense.id, { status: e.target.value as any })}
-                        className="w-full px-2 py-1 border border-[#E8DCC8] rounded text-sm"
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="approved">Approved</option>
-                        <option value="reconciled">Reconciled</option>
-                      </select>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setEditingId(null)}
-                          className="flex-1 bg-green-500 text-white py-1 rounded text-sm flex items-center justify-center gap-1 hover:bg-green-600"
-                        >
-                          <Check className="h-4 w-4" /> Save
-                        </button>
-                        <button
-                          onClick={() => setEditingId(null)}
-                          className="flex-1 bg-gray-500 text-white py-1 rounded text-sm flex items-center justify-center gap-1 hover:bg-gray-600"
-                        >
-                          <X className="h-4 w-4" /> Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs px-2 py-1 rounded text-white" style={{ backgroundColor: categoryColors[expense.category]?.bg }}>
-                            {categoryColors[expense.category]?.label}
-                          </span>
-                          <span className={`text-xs px-2 py-1 rounded ${statusColors[expense.status]}`}>
-                            {expense.status}
-                          </span>
-                        </div>
-                        <p className="font-semibold text-[#4B2B1D]">{expense.vendor}</p>
-                        <p className="text-xs text-[#755B4C]">{expense.description} • {expense.date}</p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="font-bold text-[#4B2B1D] text-lg">${(expense.amount || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
-                        <button
-                          onClick={() => setEditingId(expense.id)}
-                          className="p-2 hover:bg-[#FBF7F0] rounded text-[#8B6F47]"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => deleteExpense(expense.id)}
-                          className="p-2 hover:bg-red-50 rounded text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
           </div>
         </Section>
 
