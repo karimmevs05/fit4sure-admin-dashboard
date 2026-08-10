@@ -74,11 +74,16 @@ type InsightsData = {
 
 type Tab = 'this-week' | 'packing-sheet' | 'history' | 'insights'
 
-type MenuPlate = {
-  id: number
-  name: string
+type MenuFormat = {
+  id: string
+  label: string
   price: number
-  large: { id: number; price: number } | null
+}
+
+type RecipePlanItem = {
+  recipeId: number
+  name: string
+  formats: MenuFormat[]
 }
 
 type BreakfastItem = {
@@ -89,8 +94,8 @@ type BreakfastItem = {
 
 type WeeklyMenu = {
   weekStart: string
-  monday: MenuPlate[]
-  thursday: MenuPlate[]
+  monday: RecipePlanItem[]
+  thursday: RecipePlanItem[]
   breakfast: BreakfastItem[]
   menuReady: boolean
 }
@@ -574,7 +579,7 @@ function ThisWeekTab({
 }
 
 function PackingSheetTab({ orders }: { orders: OrderLine[] }) {
-  const CATEGORY_ORDER = ['Regular', 'Large', 'Breakfast', 'By The LB']
+  const CATEGORY_ORDER = ['Regular', 'Large', 'High Protein', 'Low Carb', '1 Pound', 'Breakfast', 'By The LB']
 
   // Unique dishes, grouped by category in a consistent order
   const dishes = useMemo(() => {
@@ -1142,29 +1147,23 @@ function AddOrderModal({
                 weeklyMenu[day].length === 0 ? null : (
                   <div key={day}>
                     <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#755B4C] mb-1.5">{day} Delivery</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {weeklyMenu[day].map((plate) => (
-                        <div key={plate.id} className="rounded-lg border border-[#E4D8C9] bg-white p-2">
-                          <p className="text-xs font-semibold text-[#4B2B1D] mb-1.5 truncate" title={plate.name}>
-                            {plate.name}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {weeklyMenu[day].map((recipe) => (
+                        <div key={recipe.recipeId} className="rounded-lg border border-[#E4D8C9] bg-white p-2">
+                          <p className="text-xs font-semibold text-[#4B2B1D] mb-1.5 truncate" title={recipe.name}>
+                            {recipe.name}
                           </p>
-                          <div className="flex gap-1">
-                            <button
-                              type="button"
-                              onClick={() => addFromMenu(plate.name, 'Regular', day)}
-                              className="flex-1 rounded-md bg-[#EAF1F8] px-1.5 py-1 text-[10px] font-bold text-[#2E527F] hover:bg-[#DCE8F5] transition"
-                            >
-                              Reg ${Number(plate.price).toFixed(2)}
-                            </button>
-                            {plate.large && (
+                          <div className="flex flex-wrap gap-1">
+                            {recipe.formats.map((f) => (
                               <button
+                                key={f.id}
                                 type="button"
-                                onClick={() => addFromMenu(plate.name, 'Large', day)}
-                                className="flex-1 rounded-md bg-[#F3E8D8] px-1.5 py-1 text-[10px] font-bold text-[#8A5A1E] hover:bg-[#EADCC4] transition"
+                                onClick={() => addFromMenu(recipe.name, f.label, day)}
+                                className="rounded-md bg-[#EAF1F8] px-1.5 py-1 text-[10px] font-bold text-[#2E527F] hover:bg-[#DCE8F5] transition"
                               >
-                                Lg ${Number(plate.large.price).toFixed(2)}
+                                {f.label} ${f.price.toFixed(2)}
                               </button>
-                            )}
+                            ))}
                           </div>
                         </div>
                       ))}
