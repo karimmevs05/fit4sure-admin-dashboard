@@ -80,6 +80,22 @@ type Plate = {
 
 type LastWeekMenu = { monday: string[]; thursday: string[] }
 
+type PrepIngredient = {
+  name: string
+  category: string
+  neededG: number
+  shortfallG: number
+  unitPriceCents: number
+  currentStockG: number
+}
+
+type BlockFinancials = { costCents: number; lb: number; recipeCount: number }
+
+type PrepAndFinancials = {
+  ingredients: PrepIngredient[]
+  financials: { monday: BlockFinancials; thursday: BlockFinancials; combined: BlockFinancials }
+}
+
 // A recipe being added to the plate builder. `servings` is what actually
 // gets sent to the backend (it's the scale factor computeYieldCorrectedRecipe
 // expects), but the user edits `servingSizeG` -- the real cooked-weight
@@ -168,6 +184,10 @@ export default function MenuPlannerPage() {
   const [plates, setPlates] = useState<Plate[]>([])
   const [weekStart, setWeekStart] = useState<{ sunday?: string; monday?: string; thursday?: string }>({})
   const [lastWeekMenu, setLastWeekMenu] = useState<LastWeekMenu>({ monday: [], thursday: [] })
+  const [prepFinancials, setPrepFinancials] = useState<PrepAndFinancials>({
+    ingredients: [],
+    financials: { monday: { costCents: 0, lb: 0, recipeCount: 0 }, thursday: { costCents: 0, lb: 0, recipeCount: 0 }, combined: { costCents: 0, lb: 0, recipeCount: 0 } },
+  })
   const [loading, setLoading] = useState(true)
   const [buildingDay, setBuildingDay] = useState<'monday' | 'thursday' | null>(null)
   const [editingPlateId, setEditingPlateId] = useState<number | null>(null)
@@ -191,11 +211,12 @@ export default function MenuPlannerPage() {
     setLoading(true)
     const headers = { Authorization: `Bearer ${token}` }
     try {
-      const [recipesRes, platesRes, lastWeekRes, nextWeekRes] = await Promise.all([
+      const [recipesRes, platesRes, lastWeekRes, nextWeekRes, prepFinancialsRes] = await Promise.all([
         axios.get(`${apiUrl}/api/admin/recipes`, { headers }),
         axios.get(`${apiUrl}/api/admin/menu-planner/plates`, { headers }),
         axios.get(`${apiUrl}/api/admin/menu-planner/previous-week`, { headers }),
         axios.get(`${apiUrl}/api/admin/menu-planner/next-week`, { headers }),
+        axios.get(`${apiUrl}/api/admin/menu-planner/prep-and-financials`, { headers }),
       ])
 
       const published = (recipesRes.data.data || []).filter((r: Recipe) => r.category !== 'prepared_meal')
@@ -203,10 +224,35 @@ export default function MenuPlannerPage() {
       setPlates(platesRes.data.data?.plates || [])
       setLastWeekMenu(lastWeekRes.data.data || { monday: [], thursday: [] })
       setWeekStart(nextWeekRes.data.data || {})
+      setPrepFinancials(
+        prepFinancialsRes.data.data || {
+          ingredients: [],
+          financials: { monday: { costCents: 0, lb: 0, recipeCount: 0 }, thursday: { costCents: 0, lb: 0, recipeCount: 0 }, combined: { costCents: 0, lb: 0, recipeCount: 0 } },
+        }
+      )
     } catch (error) {
       console.error('Error fetching menu planner data:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Called after the Weekly Recipe Plan saves a block -- prep/financials are
+  // derived from that plan, so they'd otherwise go stale until a full page
+  // reload. Refetches just this one endpoint rather than everything.
+  const fetchPrepFinancials = async () => {
+    try {
+      const res = await axios.get(`${apiUrl}/api/admin/menu-planner/prep-and-financials`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      setPrepFinancials(
+        res.data.data || {
+          ingredients: [],
+          financials: { monday: { costCents: 0, lb: 0, recipeCount: 0 }, thursday: { costCents: 0, lb: 0, recipeCount: 0 }, combined: { costCents: 0, lb: 0, recipeCount: 0 } },
+        }
+      )
+    } catch (error) {
+      console.error('Error fetching prep and financials:', error)
     }
   }
 
@@ -419,7 +465,7 @@ export default function MenuPlannerPage() {
         </div>
       </div>
 
-      <RecipePlanSection />
+      <RecipePlanSection onSaved={fetchPrepFinancials} />
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Last Week's Menu (real data) */}
@@ -463,6 +509,12 @@ export default function MenuPlannerPage() {
           </div>
         </div>
 
+        <PrepInfoColumn ingredients={prepFinancials.ingredients} />
+
+        <FinancialsColumn financials={prepFinancials.financials} />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
         {/* Monday Delivery */}
         <DeliveryColumn
           day="monday"
@@ -728,6 +780,77 @@ export default function MenuPlannerPage() {
         </div>
       </div>
     </main>
+  )
+}
+
+// Per-ingredient shopping/prep list scaled from the Weekly Recipe Plan's
+// forecasted lb across both blocks -- one number per ingredient, not one per
+// recipe, since prep happens in bulk across whatever recipes share it.
+function PrepInfoColumn({ ingredients }: { ingredients: PrepIngredient[] }) {
+  const formatLb = (g: number) => (g / GRAMS_PER_POUND).toFixed(1)
+
+  return (
+    <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+      <h2 className="mb-1 text-lg font-extrabold text-[#4B2B1D]">Prep Info</h2>
+      <p className="mb-4 text-xs text-[#755B4C]">Needed per ingredient, from this week's recipe plan</p>
+
+      {ingredients.length === 0 ? (
+        <p className="text-xs text-[#755B4C] italic">No recipes planned yet</p>
+      ) : (
+        <div className="max-h-[420px] overflow-y-auto space-y-1.5">
+          {ingredients.map((ing) => (
+            <div key={ing.name} className="flex items-center gap-2 rounded-lg border border-[#E4D8C9] bg-white px-3 py-2">
+              <p className="flex-1 truncate text-sm font-medium text-[#4B2B1D]">{ing.name}</p>
+              <p className="text-xs text-[#755B4C] flex-shrink-0">{formatLb(ing.neededG)} lb</p>
+              {ing.shortfallG > 0 && (
+                <span className="flex-shrink-0 rounded-full bg-[#FEF2F2] px-2 py-0.5 text-[10px] font-bold text-[#D62F3D]">
+                  short {formatLb(ing.shortfallG)} lb
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Cost rollup for the same recipe plan, split by block so the chef can see
+// what Mon-Wed vs Thu-Sun is actually going to cost before it's committed.
+function FinancialsColumn({ financials }: { financials: PrepAndFinancials['financials'] }) {
+  const rows: { label: string; color: string; data: BlockFinancials }[] = [
+    { label: 'Block 1 (Mon–Wed)', color: '#16A34A', data: financials.monday },
+    { label: 'Block 2 (Thu–Sun)', color: '#D97706', data: financials.thursday },
+  ]
+
+  return (
+    <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+      <h2 className="mb-1 text-lg font-extrabold text-[#4B2B1D]">Financials</h2>
+      <p className="mb-4 text-xs text-[#755B4C]">Forecasted ingredient cost, from this week's recipe plan</p>
+
+      <div className="space-y-3">
+        {rows.map((row) => (
+          <div key={row.label} className="rounded-lg border border-[#E4D8C9] bg-white px-3 py-2.5">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: row.color }}></div>
+              <p className="text-xs font-bold text-[#4B2B1D]">{row.label}</p>
+            </div>
+            <div className="flex items-center justify-between">
+              <p className="text-xl font-extrabold" style={{ color: row.color }}>${(row.data.costCents / 100).toFixed(2)}</p>
+              <p className="text-xs text-[#9A8774]">{row.data.recipeCount} recipe{row.data.recipeCount === 1 ? '' : 's'} · {row.data.lb} lb</p>
+            </div>
+          </div>
+        ))}
+
+        <div className="rounded-lg bg-[#4B2B1D] px-3 py-2.5">
+          <p className="text-xs font-bold text-[#E9DFD0] mb-1">Combined</p>
+          <div className="flex items-center justify-between">
+            <p className="text-xl font-extrabold text-white">${(financials.combined.costCents / 100).toFixed(2)}</p>
+            <p className="text-xs text-[#CDBDA8]">{financials.combined.recipeCount} recipes · {financials.combined.lb} lb</p>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 

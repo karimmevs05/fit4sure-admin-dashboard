@@ -38,7 +38,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 // roughly how much of it to expect, which drives what operations buys and
 // preps in bulk. It's intentionally separate from the plate builder below:
 // no combining recipes into named dishes here, just recipe + volume.
-export default function RecipePlanSection() {
+export default function RecipePlanSection({ onSaved }: { onSaved?: () => void }) {
   const [rows, setRows] = useState<Record<Block, PlanRecipeRow[]>>({ monday: [], thursday: [] })
   const [weekStart, setWeekStart] = useState<string | undefined>()
   const [loading, setLoading] = useState(true)
@@ -125,6 +125,7 @@ export default function RecipePlanSection() {
         { headers: { Authorization: `Bearer ${token}` } }
       )
       setDirty((d) => ({ ...d, [block]: false }))
+      onSaved?.()
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to save recipe plan')
     } finally {
