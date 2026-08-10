@@ -106,6 +106,19 @@ interface Expense {
   receiptId?: string
 }
 
+// One row per actual receipt (a Drive scan, manual entry, or screenshot
+// entry) -- as opposed to Expense, which is one row per line item on it.
+interface ReceiptSummary {
+  id: number
+  vendor: string
+  receiptDate: string
+  totalAmountCents: number | null
+  driveViewLink: string | null
+  lowConfidence: boolean
+  itemCount: number
+  itemsTotal: number
+}
+
 interface ReceiptItem {
   description: string
   amount: number
@@ -184,10 +197,13 @@ function FinancialsPage() {
     details: false,
     expenseForm: false,
     receiptScanner: false,
+    receiptHistory: true,
   })
 
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [expensesLoading, setExpensesLoading] = useState(true)
+  const [receipts, setReceipts] = useState<ReceiptSummary[]>([])
+  const [receiptsLoading, setReceiptsLoading] = useState(true)
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState<Partial<Expense>>({
@@ -252,6 +268,38 @@ function FinancialsPage() {
       console.error('Error fetching expenses:', err)
     } finally {
       setExpensesLoading(false)
+    }
+    fetchReceiptsSummary()
+  }
+
+  // One row per receipt (Drive scan, manual entry, or screenshot entry) --
+  // whatever produced expense line items also produces one of these, so this
+  // refreshes alongside fetchExpenses everywhere that already calls it.
+  const fetchReceiptsSummary = async () => {
+    try {
+      setReceiptsLoading(true)
+      const token = localStorage.getItem('token')
+      const apiUrl = import.meta.env.VITE_API_BASE_URL
+      const response = await fetch(`${apiUrl}/api/admin/expenses/receipts`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (!response.ok) throw new Error('Failed to fetch receipts')
+      const data = await response.json()
+      const rows: ReceiptSummary[] = (data.data || []).map((row: any) => ({
+        id: row.id,
+        vendor: row.vendor,
+        receiptDate: row.receipt_date,
+        totalAmountCents: row.total_amount_cents,
+        driveViewLink: row.drive_view_link,
+        lowConfidence: row.low_confidence,
+        itemCount: parseInt(row.item_count, 10) || 0,
+        itemsTotal: parseFloat(row.items_total) || 0,
+      }))
+      setReceipts(rows)
+    } catch (err) {
+      console.error('Error fetching receipt summary:', err)
+    } finally {
+      setReceiptsLoading(false)
     }
   }
 
@@ -1947,6 +1995,64 @@ function FinancialsPage() {
                 </div>
               )}
             </div>
+
+            {/* Receipt History -- one row per receipt (not per line item),
+                with a direct link back to the source image */}
+            <Section id="receiptHistory" title={`Receipt History (${receipts.length})`} expandedSections={expandedSections} toggleSection={toggleSection}>
+              {receiptsLoading ? (
+                <p className="text-sm text-[#755B4C]">Loading...</p>
+              ) : receipts.length === 0 ? (
+                <p className="text-sm text-[#755B4C]">No receipts recorded yet.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-[#E8DCC8]">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[#E8DCC8] bg-[#FDFBF7]">
+                        <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Date</th>
+                        <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Vendor</th>
+                        <th className="px-3 py-2 text-right font-bold text-[#4B2B1D]">Amount</th>
+                        <th className="px-3 py-2 text-center font-bold text-[#4B2B1D]">Items</th>
+                        <th className="px-3 py-2 text-center font-bold text-[#4B2B1D]">Receipt</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {receipts.map((r) => {
+                        const amount = r.totalAmountCents != null ? r.totalAmountCents / 100 : r.itemsTotal
+                        return (
+                          <tr key={r.id} className="border-b border-[#E8DCC8] hover:bg-[#FDFBF7]">
+                            <td className="px-3 py-2 text-[#755B4C]">
+                              {r.receiptDate ? new Date(r.receiptDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '-'}
+                            </td>
+                            <td className="px-3 py-2 font-semibold text-[#4B2B1D]">
+                              {r.vendor}
+                              {r.lowConfidence && (
+                                <span className="ml-2 text-xs font-bold text-[#D62F3D]" title="Item total didn't match the printed receipt total -- worth double-checking">⚠</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right font-bold text-[#16813D]">${amount.toFixed(2)}</td>
+                            <td className="px-3 py-2 text-center text-[#755B4C]">{r.itemCount}</td>
+                            <td className="px-3 py-2 text-center">
+                              {r.driveViewLink ? (
+                                <a
+                                  href={r.driveViewLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs font-bold text-[#2E527F] underline underline-offset-2"
+                                >
+                                  View
+                                </a>
+                              ) : (
+                                <span className="text-xs text-[#9A7E6F]">No image</span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Section>
 
             {/* Add Expense Form */}
             <Section id="expenseForm" title="Add New Expense" expandedSections={expandedSections} toggleSection={toggleSection}>

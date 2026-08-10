@@ -8,9 +8,7 @@ import {
   Trash2,
   ChevronDown,
   Package,
-  Receipt,
 } from 'lucide-react'
-import { ReceiptScanner } from '../components/ReceiptScanner'
 
 type InventoryItem = {
   id: number
@@ -58,7 +56,6 @@ export default function InventoryPage() {
   const [activeTab, setActiveTab] = useState<'stock' | 'ingredients'>('stock')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
-  const [receiptScannerOpen, setReceiptScannerOpen] = useState(false)
   const [storeFilter, setStoreFilter] = useState<string>('ALL')
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'OUT'>('ALL')
   const [sortColumn, setSortColumn] = useState<SortColumn | null>(null)
@@ -180,7 +177,6 @@ export default function InventoryPage() {
             setEditingId(null)
             setDrawerOpen(true)
           }}
-          onReceipt={() => setReceiptScannerOpen(true)}
         />
 
         {error && (
@@ -264,15 +260,6 @@ export default function InventoryPage() {
           fetchInventory()
         }}
       />
-
-      <ReceiptScanner
-        open={receiptScannerOpen}
-        onClose={() => {
-          setReceiptScannerOpen(false)
-          fetchInventory()
-        }}
-        inventoryItems={items}
-      />
     </main>
   )
 }
@@ -289,7 +276,6 @@ function Header({
   setStatusFilter,
   showStatusFilter,
   onAdd,
-  onReceipt,
 }: {
   search: string
   setSearch: (value: string) => void
@@ -302,7 +288,6 @@ function Header({
   setStatusFilter: (value: 'ALL' | 'IN_STOCK' | 'OUT') => void
   showStatusFilter: boolean
   onAdd: () => void
-  onReceipt: () => void
 }) {
   return (
     <header className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
@@ -379,14 +364,6 @@ function Header({
             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" />
           </div>
         )}
-
-        <button
-          onClick={onReceipt}
-          className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#16813D] px-5 text-sm font-bold text-white shadow-[0_8px_18px_rgba(22,129,61,0.18)] transition hover:bg-[#0d6a2d] active:scale-[0.98]"
-        >
-          <Receipt className="h-5 w-5" />
-          Log Receipt
-        </button>
 
         <button
           onClick={onAdd}
