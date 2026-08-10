@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
 import { Plus, Pencil, Trash2, X, AlertTriangle } from 'lucide-react'
+import RecipePlanSection from '../components/RecipePlanSection'
 
 type Recipe = {
   recipe_id: number
@@ -417,6 +418,8 @@ export default function MenuPlannerPage() {
           </p>
         </div>
       </div>
+
+      <RecipePlanSection />
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Last Week's Menu (real data) */}
