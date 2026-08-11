@@ -1,6 +1,8 @@
 import React, { useMemo, useState, useEffect } from "react";
 import axios from "axios";
 import { IngredientPicker, PickedIngredient } from "../components/IngredientPicker";
+import { RecipeImportPanel } from "../components/RecipeImportPanel";
+import { RecipeStepsEditor, RecipeStep } from "../components/RecipeStepsEditor";
 import {
   BookOpen,
   ChevronDown,
@@ -38,6 +40,7 @@ type Recipe = {
   category: Category;
   image?: string;
   instructions?: string;
+  steps?: { id: number; step_number: number; title: string | null; description: string; time_estimate_minutes: number | null }[];
   calories: number;
   protein_g: string;
   carbs_g: string;
@@ -615,10 +618,10 @@ function AddRecipeDrawer({
     servings: 1,
     prep_time_minutes: 30,
     image: "",
-    instructions: "",
   });
 
   const [ingredients, setIngredients] = useState<RecipeFormIngredient[]>([]);
+  const [steps, setSteps] = useState<RecipeStep[]>([]);
 
   // Calories/macros are never hand-entered -- the backend recalculates them
   // live from ingredients on every read (see adminRecipes.js), so an
@@ -689,6 +692,13 @@ function AddRecipeDrawer({
             quantity_g: ing.quantity_g,
             unit_price_cents: ing.unit_price_cents ?? undefined,
           })),
+          steps: steps.map((s, i) => ({
+            id: i,
+            step_number: i + 1,
+            title: s.title || null,
+            description: s.description,
+            time_estimate_minutes: s.time_estimate_minutes,
+          })),
         };
         onDraftSave([...draftRecipes, newDraft]);
       } else {
@@ -704,12 +714,12 @@ function AddRecipeDrawer({
             protein_g: computedMacros.protein_g,
             carbs_g: computedMacros.carbs_g,
             fat_g: computedMacros.fat_g,
-            instructions: form.instructions || null,
             image: form.image || null,
             ingredients: ingredients.map((ing) => ({
               inventory_id: ing.inventory_id,
               quantity_g: ing.quantity_g,
             })),
+            steps: steps.map((s) => ({ title: s.title, description: s.description, time_estimate_minutes: s.time_estimate_minutes })),
           },
           {
             headers: { Authorization: `Bearer ${token}` },
@@ -723,8 +733,8 @@ function AddRecipeDrawer({
         servings: 1,
         prep_time_minutes: 30,
         image: "",
-        instructions: "",
       });
+      setSteps([]);
 
       onClose();
     } catch (err: any) {
@@ -779,6 +789,23 @@ function AddRecipeDrawer({
                 required
               />
             </Field>
+
+            <RecipeImportPanel
+              onApply={(imported) => {
+                setForm((current) => ({
+                  ...current,
+                  name: imported.name,
+                  category: imported.category as Category,
+                  servings: imported.servings,
+                  prep_time_minutes: imported.prep_time_minutes ?? current.prep_time_minutes,
+                }));
+                setIngredients((prev) => [
+                  ...prev,
+                  ...imported.ingredients.map((ing) => ({ id: Date.now().toString() + Math.random(), ...ing })),
+                ]);
+                setSteps((prev) => [...prev, ...imported.steps]);
+              }}
+            />
 
             <Field label="Category">
               <div className="grid grid-cols-4 gap-1.5">
@@ -876,13 +903,8 @@ function AddRecipeDrawer({
               </div>
             </Field>
 
-            <Field label="Instructions">
-              <textarea
-                value={form.instructions}
-                onChange={(event) => update("instructions", event.target.value)}
-                placeholder="Cooking instructions..."
-                className="min-h-24 w-full resize-none rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 py-3 text-sm font-medium text-[#4B2B1D] outline-none transition placeholder:text-[#9A8774] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
-              />
+            <Field label="Prep steps">
+              <RecipeStepsEditor steps={steps} onChange={setSteps} />
             </Field>
 
             <Field label="Recipe Image URL">
@@ -996,7 +1018,6 @@ function EditRecipeDrawer({
     category: recipe.category || ("beef" as Category),
     servings: recipe.servings || 1,
     prep_time_minutes: recipe.prep_time_minutes || 0,
-    instructions: recipe.instructions || "",
     image: recipe.image || "",
   });
 
@@ -1011,6 +1032,14 @@ function EditRecipeDrawer({
       carbs_per_100g: ing.carbs_per_100g ?? null,
       fat_per_100g: ing.fat_per_100g ?? null,
       calories_per_100g: ing.calories_per_100g ?? null,
+    })) || []
+  );
+  const [steps, setSteps] = useState<RecipeStep[]>(
+    recipe.steps?.map((s) => ({
+      id: s.id?.toString() || Date.now().toString(),
+      title: s.title || "",
+      description: s.description,
+      time_estimate_minutes: s.time_estimate_minutes ?? null,
     })) || []
   );
 
@@ -1084,12 +1113,12 @@ function EditRecipeDrawer({
       protein_g: computedMacros.protein_g,
       carbs_g: computedMacros.carbs_g,
       fat_g: computedMacros.fat_g,
-      instructions: form.instructions || null,
       image: form.image || null,
       ingredients: ingredients.map((ing) => ({
         inventory_id: ing.inventory_id,
         quantity_g: ing.quantity_g,
       })),
+      steps: steps.map((s) => ({ title: s.title, description: s.description, time_estimate_minutes: s.time_estimate_minutes })),
     };
 
     try {
@@ -1220,13 +1249,8 @@ function EditRecipeDrawer({
               </Field>
             </div>
 
-            <Field label="Instructions">
-              <textarea
-                value={form.instructions}
-                onChange={(event) => update("instructions", event.target.value)}
-                placeholder="Cooking instructions..."
-                className="min-h-20 w-full resize-none rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 py-3 text-sm font-medium text-[#4B2B1D] outline-none transition placeholder:text-[#9A8774] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
-              />
+            <Field label="Prep steps">
+              <RecipeStepsEditor steps={steps} onChange={setSteps} />
             </Field>
 
             <Field label="Ingredients">
@@ -1469,14 +1493,32 @@ function RecipeDetailsDrawer({
             </div>
           )}
 
-          {recipe.instructions && (
+          {recipe.steps && recipe.steps.length > 0 ? (
+            <div className="rounded-xl bg-[#F5F0E8] p-4 border border-[#E4D8C9]">
+              <p className="text-xs text-[#755B4C] font-bold mb-3">PREP STEPS</p>
+              <div className="space-y-3">
+                {recipe.steps.map((step, i) => (
+                  <div key={step.id} className="flex gap-2">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#2E527F] text-[10px] font-extrabold text-white">
+                      {i + 1}
+                    </span>
+                    <div>
+                      {step.title && <p className="text-sm font-bold text-[#4B2B1D]">{step.title}</p>}
+                      <p className="text-sm text-[#755B4C]">
+                        {step.description}
+                        {step.time_estimate_minutes ? ` (${step.time_estimate_minutes} min)` : ""}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : recipe.instructions ? (
             <div className="rounded-xl bg-[#F5F0E8] p-4 border border-[#E4D8C9]">
               <p className="text-xs text-[#755B4C] font-bold mb-2">INSTRUCTIONS</p>
-              <p className="text-sm text-[#4B2B1D] leading-relaxed">
-                {recipe.instructions}
-              </p>
+              <p className="text-sm text-[#4B2B1D] leading-relaxed">{recipe.instructions}</p>
             </div>
-          )}
+          ) : null}
 
           {/* Decision Making Helpers */}
           <div className="grid grid-cols-2 gap-3 border-t border-[#D8CDBE] pt-4">
