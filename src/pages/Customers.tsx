@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
-import { Search, Plus, Mail, Phone, MapPin, Edit, Trash2, X, Home, DollarSign, Users, Briefcase, Target, AlertCircle, Heart, Utensils, TrendingUp, MessageCircle, Clock, Zap, ArrowRight } from 'lucide-react'
+import { Search, Plus, Mail, Phone, MapPin, Edit, Trash2, X, Home, DollarSign, Users, Briefcase, Target, AlertCircle, Heart, Utensils, TrendingUp, MessageCircle, Clock, Zap } from 'lucide-react'
+import { CustomerActivityPanel } from '../components/CustomerActivityPanel'
 
 type Customer = {
   id: number
@@ -62,6 +63,8 @@ export default function CustomersPage() {
     engagement_score: 0,
   })
   const [showCustomerDetail, setShowCustomerDetail] = useState(false)
+  const [recentActivity, setRecentActivity] = useState<any[]>([])
+  const [templates, setTemplates] = useState<any[]>([])
 
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
@@ -69,6 +72,24 @@ export default function CustomersPage() {
   useEffect(() => {
     fetchCustomers()
   }, [])
+
+  useEffect(() => {
+    if (activeTab !== 'activities') return
+    const fetchActivityData = async () => {
+      try {
+        const [activityRes, templatesRes] = await Promise.all([
+          axios.get(`${apiUrl}/api/admin/activities/recent`, { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get(`${apiUrl}/api/admin/communication-templates`, { headers: { Authorization: `Bearer ${token}` } }),
+        ])
+        setRecentActivity(activityRes.data.data || [])
+        setTemplates(templatesRes.data.data || [])
+      } catch (error) {
+        console.error('Error fetching activity tab data:', error)
+      }
+    }
+    fetchActivityData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
 
   const fetchCustomers = async () => {
     try {
@@ -526,45 +547,38 @@ export default function CustomersPage() {
         </div>
       ) : activeTab === 'activities' ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Outreach Templates */}
+          {/* Templates -- read-only here, actually used from each customer's own detail modal */}
           <div className="md:col-span-2 rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
-            <h3 className="font-extrabold text-[#4B2B1D] mb-4 flex items-center gap-2">
-              <MessageCircle className="h-5 w-5" /> Quick Outreach
+            <h3 className="font-extrabold text-[#4B2B1D] mb-1 flex items-center gap-2">
+              <MessageCircle className="h-5 w-5" /> Templates
             </h3>
-            <div className="space-y-3">
-              {[
-                { label: 'Check-in', icon: '📞', color: 'bg-[#E3F3FF]' },
-                { label: 'Trial Offer', icon: '🎁', color: 'bg-[#FFF0E6]' },
-                { label: 'Win-Back', icon: '💪', color: 'bg-[#FFE6EC]' },
-                { label: 'Testimonial Request', icon: '⭐', color: 'bg-[#FFF9E6]' },
-              ].map((template) => (
-                <button
-                  key={template.label}
-                  className={`w-full flex items-center justify-between rounded-lg ${template.color} px-4 py-3 text-sm font-bold text-[#4B2B1D] hover:shadow-md transition border border-[#CDBDA8]`}
-                >
-                  <span>{template.icon} {template.label}</span>
-                  <ArrowRight className="h-4 w-4" />
-                </button>
+            <p className="text-xs text-[#755B4C] mb-4">Sent from an individual customer's profile, where there's a specific email/phone to send to.</p>
+            <div className="space-y-2">
+              {templates.map((t) => (
+                <div key={t.id} className="rounded-lg bg-white px-4 py-3 border border-[#E4D8C9]">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold text-[#4B2B1D]">{t.name}</p>
+                    <span className="text-[10px] font-bold uppercase text-[#755B4C] bg-[#F5F0E8] px-2 py-0.5 rounded-full">{t.channel}</span>
+                  </div>
+                  <p className="text-xs text-[#755B4C] mt-1 truncate">{t.body}</p>
+                </div>
               ))}
             </div>
           </div>
 
-          {/* Activity Log */}
+          {/* Real Activity Log, org-wide */}
           <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
             <h3 className="font-extrabold text-[#4B2B1D] mb-4">Recent Activity</h3>
-            <div className="space-y-3 text-sm">
-              <div className="bg-white rounded-lg p-3">
-                <p className="font-bold text-[#4B2B1D]">Email Sent</p>
-                <p className="text-xs text-[#755B4C]">2 hours ago</p>
-              </div>
-              <div className="bg-white rounded-lg p-3">
-                <p className="font-bold text-[#4B2B1D]">Order Placed</p>
-                <p className="text-xs text-[#755B4C]">1 day ago</p>
-              </div>
-              <div className="bg-white rounded-lg p-3">
-                <p className="font-bold text-[#4B2B1D]">Call Logged</p>
-                <p className="text-xs text-[#755B4C]">3 days ago</p>
-              </div>
+            <div className="space-y-3 text-sm max-h-96 overflow-y-auto">
+              {recentActivity.length === 0 && <p className="text-xs text-[#9A7E6F]">No activity logged yet.</p>}
+              {recentActivity.map((a) => (
+                <div key={a.id} className="bg-white rounded-lg p-3">
+                  <p className="font-bold text-[#4B2B1D] text-xs">
+                    {a.customer_name} -- {a.type === 'stage_change' ? 'Stage changed' : a.subject || a.type}
+                  </p>
+                  <p className="text-xs text-[#755B4C]">{new Date(a.created_at).toLocaleString()}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -1015,6 +1029,13 @@ export default function CustomersPage() {
                   </div>
                 </div>
               )}
+
+              {/* Communication -- real send + activity feed */}
+              <CustomerActivityPanel
+                customerId={selectedCustomer.id}
+                customerEmail={selectedCustomer.email}
+                customerPhone={selectedCustomer.phone}
+              />
 
               {/* Actions */}
               <div className="flex gap-3 pt-4 border-t border-[#E4D8C9]">
