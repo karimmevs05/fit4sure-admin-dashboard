@@ -239,7 +239,12 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
           </p>
           <div className="max-h-44 space-y-1 overflow-y-auto">
             {draft.ingredients.map((ing, idx) => {
-              const state = ing.match ? (ing.low_confidence ? 'warn' : 'ok') : 'missing'
+              // 'warn' covers two independent uncertainties: the LLM wasn't
+              // sure about the quantity/unit it read, or the inventory match
+              // itself is only a partial/loose token overlap (confidence
+              // 'low') rather than an exact or clearly-contained name.
+              const matchUncertain = ing.match?.confidence === 'low'
+              const state = ing.match ? (ing.low_confidence || matchUncertain ? 'warn' : 'ok') : 'missing'
               return (
                 <div
                   key={idx}
@@ -253,7 +258,7 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
                     <p className="font-semibold text-[#4B2B1D]">{ing.raw_text}</p>
                     <p className="text-[9px] text-[#9A7E6F]">
                       {ing.match
-                        ? `matched: ${ing.match.name}${ing.low_confidence ? ' -- check quantity' : ''}`
+                        ? `matched: ${ing.match.name}${matchUncertain ? ' -- check this is the right item' : ''}${ing.low_confidence ? ' -- check quantity' : ''}`
                         : 'no inventory match -- add manually below after importing'}
                     </p>
                   </div>
