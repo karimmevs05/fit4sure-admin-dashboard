@@ -798,6 +798,7 @@ function AddRecipeDrawer({
                   category: imported.category as Category,
                   servings: imported.servings,
                   prep_time_minutes: imported.prep_time_minutes ?? current.prep_time_minutes,
+                  image: imported.image || current.image,
                 }));
                 setIngredients((prev) => [
                   ...prev,
