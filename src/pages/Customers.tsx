@@ -404,11 +404,11 @@ export default function CustomersPage() {
                         </span>
                       )}
                       <span className={`text-xs px-2 py-1 rounded font-bold ${
-                        customer.weeks_active && customer.weeks_active > 0
+                        customer.sales_pipeline_stage === 'active'
                           ? 'bg-[#EAF5EC] text-[#16A34A]'
                           : 'bg-[#F5F5F5] text-[#9CA3AF]'
                       }`}>
-                        {customer.weeks_active && customer.weeks_active > 0 ? '✓ Active' : '⏸️ Inactive'}
+                        {customer.sales_pipeline_stage === 'active' ? '✓ Active' : '⏸️ Inactive'}
                       </span>
                     </div>
                   </div>
