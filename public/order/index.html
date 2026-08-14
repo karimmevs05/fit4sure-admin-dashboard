@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FIT4SURE — This Week's Menu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800;900&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#EFE3D0;
+    --page-bg:#CE711B;
+    --header-bg:#E7D5BB;
+    --card:#FBF5EA;
+    --border:#3D5A78;
+    --border-soft:#DDC9A8;
+    --ink:#3B2A1E;
+    --ink-soft:#6B5842;
+    --ink-muted:#9C8C77;
+    --navy:#3D5A78;
+    --navy-dark:#2C4359;
+    --orange:#E3922E;
+    --coral:#EFA695;
+    --green-bg:#EAF3EA;
+    --green:#3E7A4C;
+    --red:#B3443C;
+    --red-bg:#F7E8E6;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{
+    margin:0;background:var(--page-bg);color:var(--ink);
+    font-family:'Poppins',-apple-system,BlinkMacSystemFont,sans-serif;
+  }
+  .phone{
+    max-width:420px;margin:0 auto;min-height:100vh;
+    position:relative;padding-bottom:98px;
+    background:var(--bg);
+  }
+
+  /* header */
+  .header{background:var(--card);padding:6px 20px;border-radius:0 0 18px 18px;}
+  .header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+  .logo{height:44px;overflow:hidden;display:flex;align-items:flex-start;}
+  .logo img{height:116px;display:block;margin:-36px 0 0 0;}
+  .tag-row{display:flex;gap:7px;overflow-x:auto;padding-bottom:2px;justify-content:center;}
+  .tag-pill{
+    flex-shrink:0;background:var(--card);border:1.5px solid var(--navy);
+    color:var(--ink);font-weight:600;font-size:11px;padding:7px 12px;
+    border-radius:999px;white-space:nowrap;
+  }
+  .header-text{text-align:right;padding:1px 0;}
+  .header-meta{margin-top:3px;font-size:11px;color:var(--ink-soft);font-weight:500;}
+  .header-headline{font-family:'Poppins',sans-serif;font-weight:600;font-size:16px;line-height:1.15;color:var(--ink);}
+
+  .hero{padding:16px 20px 6px;}
+  .hero-note{
+    background:var(--card);border:1.5px solid var(--border-soft);
+    border-radius:12px;padding:10px 14px;font-size:12px;color:var(--ink-soft);
+  }
+
+  .status-msg{margin:18px 16px;padding:14px 16px;background:var(--card);border:1.5px solid var(--border-soft);border-radius:14px;font-size:13px;color:var(--ink-soft);text-align:center;}
+
+  /* customer info card */
+  .info-card{
+    margin:18px 16px 4px;background:var(--card);border:1.5px solid var(--border-soft);
+    border-radius:18px;padding:16px;
+  }
+  .info-title{font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.03em;color:var(--ink);margin-bottom:10px;}
+  .info-row{margin-bottom:10px;}
+  .info-row:last-child{margin-bottom:0;}
+  .info-row label{display:block;font-size:11px;color:var(--ink-muted);font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:.03em;}
+  .info-row input{
+    width:100%;border:1.5px solid var(--border-soft);border-radius:10px;
+    background:var(--bg);padding:10px 12px;font-size:14px;font-family:'Poppins',sans-serif;
+    color:var(--ink);font-weight:500;outline:none;
+  }
+  .info-row input:focus{border-color:var(--navy);}
+  .info-row input.invalid{border-color:var(--red);}
+
+  /* delivery day accordion */
+  .day-section{
+    margin:18px 16px 14px;background:var(--card);border:1.5px solid var(--border-soft);
+    border-radius:18px;overflow:hidden;
+  }
+  .day-header{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;cursor:pointer;}
+  .day-title{font-weight:600;font-size:14px;color:var(--ink);text-transform:uppercase;letter-spacing:-0.01em;}
+  .day-sub{font-size:11px;color:var(--ink-muted);margin-top:2px;font-weight:500;}
+  .day-chevron{font-size:20px;color:var(--navy);transition:transform .2s ease;}
+  .day-chevron.open{transform:rotate(90deg);}
+  .day-body{display:none;padding:0 16px 16px;}
+  .day-body.open{display:block;}
+
+  .meals{padding:0;}
+  .meal{
+    background:var(--card);border:1.5px solid var(--border-soft);border-radius:18px;
+    margin-bottom:14px;overflow:hidden;
+  }
+  .meal-body{padding:16px;}
+  .meal-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .meal-name{font-weight:500;font-size:15px;color:var(--ink);text-transform:uppercase;letter-spacing:-0.01em;}
+  .meal-macros{font-size:11px;color:var(--ink-muted);margin-top:6px;font-weight:500;}
+
+  .options{margin-top:12px;border-top:1.5px solid var(--border-soft);padding-top:12px;}
+  .opt-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-muted);font-weight:500;margin-bottom:7px;}
+
+  .format-list{margin-bottom:14px;}
+  .format-row{display:grid;gap:6px 8px;margin-bottom:6px;grid-template-columns:repeat(3,1fr);}
+  .format-option{
+    cursor:pointer;color:var(--ink-soft);font-size:12px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    padding:6px 8px;border-radius:8px;text-align:center;border:1.5px solid var(--border-soft);
+  }
+  .format-option .format-name{font-weight:500;letter-spacing:.01em;display:block;}
+  .format-option .format-price{font-size:10px;opacity:.85;}
+  .format-option.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+  .format-option.active .format-name{font-weight:700;}
+  .format-option.active .format-price{opacity:1;}
+
+  .notes-wrap{margin-top:2px;}
+  .notes-input{
+    width:100%;border:1.5px solid var(--border-soft);border-radius:10px;
+    background:var(--bg);padding:9px 12px;font-size:12.5px;font-family:'Poppins',sans-serif;
+    color:var(--ink);font-weight:500;outline:none;
+  }
+  .notes-input::placeholder{color:var(--ink-muted);}
+  .notes-input:focus{border-color:var(--navy);}
+
+  .qty-row{display:flex;align-items:center;justify-content:space-between;margin-top:14px;}
+  .stepper{display:flex;align-items:center;border:1.5px solid var(--navy);border-radius:999px;overflow:hidden;}
+  .stepper button{width:32px;height:32px;border:none;background:var(--bg);color:var(--navy);font-size:16px;font-weight:600;cursor:pointer;}
+  .stepper .qty-val{width:30px;text-align:center;font-weight:500;font-size:14px;color:var(--ink);}
+  .add-btn{padding:9px 18px;border-radius:999px;border:none;background:var(--navy);color:#fff;font-size:12.5px;font-weight:500;cursor:pointer;letter-spacing:.01em;}
+  .add-btn.added{background:var(--green);}
+  .add-btn:disabled{background:var(--ink-muted);cursor:not-allowed;}
+
+  .order-bar{
+    position:fixed;bottom:0;left:50%;transform:translateX(-50%);
+    width:100%;max-width:420px;background:var(--card);
+    border-top:1.5px solid var(--border-soft);box-shadow:0 -6px 20px rgba(59,42,30,0.10);
+    border-radius:18px 18px 0 0;padding:10px 18px 12px;
+  }
+  .order-summary{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;cursor:pointer;}
+  .order-summary .items{font-size:11.5px;color:var(--ink-muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
+  .order-summary .items .chev{display:inline-block;margin-left:4px;transition:transform .2s ease;}
+  .order-summary .items .chev.open{transform:rotate(180deg);}
+  .order-summary .total{font-family:'Poppins',sans-serif;font-weight:600;font-size:20px;color:var(--ink);}
+
+  .order-review{max-height:0;overflow-y:auto;transition:max-height .25s ease;}
+  .order-review.open{max-height:200px;margin-bottom:8px;}
+  .review-row{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-soft);}
+  .review-row:first-child{border-top:1px solid var(--border-soft);}
+  .review-row-left{font-size:12px;color:var(--ink);font-weight:600;}
+  .review-row-sub{font-size:10.5px;color:var(--ink-muted);font-weight:500;margin-top:2px;}
+  .review-row-price{font-size:12px;color:var(--navy);font-weight:600;white-space:nowrap;}
+  .review-row-remove{background:none;border:none;color:var(--red);font-size:11px;font-weight:600;cursor:pointer;padding:0;margin-top:2px;}
+  .review-empty{font-size:11.5px;color:var(--ink-muted);padding:10px 0;text-align:center;}
+  .submit-btn{
+    width:100%;padding:11px;border:none;border-radius:999px;background:var(--orange);
+    color:#fff;font-size:14.5px;font-weight:500;cursor:pointer;text-transform:uppercase;letter-spacing:.02em;
+  }
+  .submit-btn:active{background:#C97C1E;}
+  .submit-btn:disabled{background:var(--ink-muted);cursor:not-allowed;}
+  .submit-caption{text-align:center;font-size:11px;color:var(--ink-muted);margin-top:6px;font-weight:500;}
+  .submit-error{text-align:center;font-size:11.5px;color:var(--red);margin-top:6px;font-weight:600;}
+
+  .confirm{position:fixed;inset:0;background:rgba(59,42,30,0.55);display:none;align-items:center;justify-content:center;padding:24px;z-index:10;}
+  .confirm.show{display:flex;}
+  .confirm-card{background:var(--card);border-radius:20px;padding:28px 24px;max-width:340px;text-align:center;border:1.5px solid var(--border-soft);}
+  .confirm-icon{width:56px;height:56px;border-radius:50%;background:var(--green-bg);color:var(--green);display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 14px;border:1.5px solid var(--green);}
+  .confirm-card h2{font-family:'Poppins',sans-serif;font-weight:500;font-size:19px;margin:0 0 8px;color:var(--ink);text-transform:uppercase;}
+  .confirm-card p{font-size:13px;color:var(--ink-soft);line-height:1.6;margin:0 0 4px;font-weight:500;}
+  .confirm-total{font-size:13px;color:var(--ink-muted);margin-top:10px;font-weight:600;}
+  .confirm-close{margin-top:16px;padding:10px 22px;border-radius:999px;border:1.5px solid var(--navy);background:transparent;color:var(--navy);font-size:12.5px;font-weight:600;cursor:pointer;}
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <div class="header">
+    <div class="header-top">
+      <div class="logo"><img src="/order/logo.png" alt="Fit For Sure"></div>
+      <div class="header-text">
+        <div class="header-headline">This Week's Menu</div>
+        <div class="header-meta" id="weekMeta">Loading week…</div>
+      </div>
+    </div>
+    <div class="tag-row">
+      <div class="tag-pill">High protein</div>
+      <div class="tag-pill">Seed oil free</div>
+      <div class="tag-pill">Tampa made</div>
+    </div>
+  </div>
+
+  <div class="hero">
+    <div class="hero-note">Pick your protein, choose a plate format, then add it to your order below. We'll text you to confirm.</div>
+  </div>
+
+  <div id="statusArea"></div>
+
+  <div class="info-card">
+    <div class="info-title">Your Info</div>
+    <form id="contactForm" autocomplete="on">
+      <div class="info-row">
+        <label for="custName">Name</label>
+        <input type="text" id="custName" name="name" placeholder="Full name" autocomplete="name">
+      </div>
+      <div class="info-row">
+        <label for="custPhone">Phone</label>
+        <input type="tel" id="custPhone" name="tel" placeholder="(813) 555-0123" autocomplete="tel">
+      </div>
+      <div class="info-row">
+        <label for="custEmail">Email (optional)</label>
+        <input type="email" id="custEmail" name="email" placeholder="you@email.com" autocomplete="email">
+      </div>
+      <div class="info-row">
+        <label for="custAddress">Delivery Address</label>
+        <input type="text" id="custAddress" name="street-address" placeholder="123 Main St, Tampa, FL" autocomplete="street-address">
+      </div>
+    </form>
+  </div>
+
+  <div id="menuArea"></div>
+
+  <div class="order-bar">
+    <div class="order-summary" id="orderSummary">
+      <div class="items" id="orderItemsLabel">0 items <span class="chev" id="reviewChev">&#9662;</span></div>
+      <div class="total" id="orderTotal">$0.00</div>
+    </div>
+    <div class="order-review" id="orderReview"></div>
+    <button class="submit-btn" id="submitBtn" disabled>Submit Order</button>
+    <div class="submit-caption">We'll text you to confirm your order and arrange payment.</div>
+    <div class="submit-error" id="submitError" style="display:none;"></div>
+  </div>
+
+  <div class="confirm" id="confirmOverlay">
+    <div class="confirm-card">
+      <div class="confirm-icon">&#10003;</div>
+      <h2>Order Submitted</h2>
+      <p>Thanks! We've got your order. We'll text you shortly to confirm details and arrange payment.</p>
+      <div class="confirm-total" id="confirmTotal"></div>
+      <button class="confirm-close" id="confirmClose">Done</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API_BASE = 'https://fit4surebackend-production.up.railway.app';
+
+// day::recipeName::formatId -> { day, recipeName, formatLabel, price, qty, notes }
+const cart = {};
+let menuData = null;
+let reviewOpen = false;
+
+function money(n){ return '$' + Number(n).toFixed(2); }
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+async function loadMenu(){
+  const statusArea = document.getElementById('statusArea');
+  try {
+    const res = await fetch(`${API_BASE}/api/public/menu`);
+    if (!res.ok) throw new Error('bad status');
+    const body = await res.json();
+    menuData = body.data;
+  } catch (err) {
+    statusArea.innerHTML = `<div class="status-msg">Sorry, we couldn't load this week's menu. Please try again in a bit, or text us directly.</div>`;
+    document.getElementById('weekMeta').textContent = '';
+    return;
+  }
+
+  if (!menuData.menuReady) {
+    statusArea.innerHTML = `<div class="status-msg">This week's menu isn't posted yet — check back soon!</div>`;
+    document.getElementById('weekMeta').textContent = '';
+    return;
+  }
+
+  const weekStart = new Date(menuData.weekStart + 'T00:00:00');
+  const fmt = (d) => d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  document.getElementById('weekMeta').textContent = `Week of ${fmt(weekStart)}`;
+
+  renderDay('monday', 'Monday Deliveries', menuData.monday);
+  renderDay('thursday', 'Thursday Deliveries', menuData.thursday);
+}
+
+function renderDay(dayKey, title, recipes){
+  const menuArea = document.getElementById('menuArea');
+  if (!recipes || recipes.length === 0) return;
+
+  const section = document.createElement('div');
+  section.className = 'day-section';
+  section.innerHTML = `
+    <div class="day-header" data-day="${dayKey}">
+      <div class="day-left">
+        <div class="day-title">${title}</div>
+        <div class="day-sub">Tap to see available menu</div>
+      </div>
+      <div class="day-chevron">&rsaquo;</div>
+    </div>
+    <div class="day-body"><div class="meals"></div></div>
+  `;
+  menuArea.appendChild(section);
+
+  const mealsEl = section.querySelector('.meals');
+  recipes.forEach((recipe) => {
+    mealsEl.appendChild(buildMealCard(dayKey, recipe));
+  });
+
+  section.querySelector('.day-header').addEventListener('click', () => {
+    const chevron = section.querySelector('.day-chevron');
+    const body = section.querySelector('.day-body');
+    chevron.classList.toggle('open');
+    body.classList.toggle('open');
+  });
+}
+
+function buildMealCard(dayKey, recipe){
+  const meal = document.createElement('div');
+  meal.className = 'meal';
+
+  const macrosLine = recipe.perPound
+    ? `${recipe.perPound.protein_g}g protein · ${recipe.perPound.calories} cal per lb`
+    : '';
+
+  const cartKey = (formatId) => `${dayKey}::${recipe.name}::${formatId}`;
+
+  meal.innerHTML = `
+    <div class="meal-body">
+      <div class="meal-top">
+        <div class="meal-name">${escapeHtml(recipe.name)}</div>
+      </div>
+      ${macrosLine ? `<div class="meal-macros">${macrosLine}</div>` : ''}
+      <div class="options">
+        <div class="opt-label">Plate Format</div>
+        <div class="format-list">
+          <div class="format-row"></div>
+        </div>
+        <div class="notes-wrap">
+          <input type="text" class="notes-input" placeholder="Notes for this item (optional)" maxlength="200">
+        </div>
+        <div class="qty-row">
+          <div class="stepper">
+            <button type="button" class="qty-dec">&minus;</button>
+            <div class="qty-val">1</div>
+            <button type="button" class="qty-inc">+</button>
+          </div>
+          <button type="button" class="add-btn" disabled>Select a format</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const formatRow = meal.querySelector('.format-row');
+  let selectedFormat = null;
+
+  recipe.formats.forEach((format) => {
+    const opt = document.createElement('div');
+    opt.className = 'format-option';
+    opt.innerHTML = `<span class="format-name">${escapeHtml(format.label)}</span><span class="format-price">${money(format.price)}</span>`;
+    opt.addEventListener('click', () => {
+      formatRow.querySelectorAll('.format-option').forEach((el) => el.classList.remove('active'));
+      opt.classList.add('active');
+      selectedFormat = format;
+      addBtn.disabled = false;
+      addBtn.textContent = 'Add';
+      addBtn.classList.remove('added');
+    });
+    formatRow.appendChild(opt);
+  });
+
+  const qtyValEl = meal.querySelector('.qty-val');
+  const addBtn = meal.querySelector('.add-btn');
+  const notesEl = meal.querySelector('.notes-input');
+  let qty = 1;
+
+  meal.querySelector('.qty-dec').addEventListener('click', () => {
+    if (qty > 1) { qty -= 1; qtyValEl.textContent = qty; }
+  });
+  meal.querySelector('.qty-inc').addEventListener('click', () => {
+    qty += 1; qtyValEl.textContent = qty;
+  });
+
+  addBtn.addEventListener('click', () => {
+    if (!selectedFormat) return;
+    const key = cartKey(selectedFormat.id);
+    cart[key] = {
+      day: dayKey,
+      dayLabel: dayKey === 'monday' ? 'Monday' : 'Thursday',
+      recipeName: recipe.name,
+      format: selectedFormat.label,
+      price: selectedFormat.price,
+      qty,
+      notes: notesEl.value.trim(),
+    };
+    addBtn.textContent = 'Added';
+    addBtn.classList.add('added');
+    updateOrderBar();
+  });
+
+  return meal;
+}
+
+function updateOrderBar(){
+  const items = Object.values(cart);
+  const itemCount = items.reduce((sum, it) => sum + it.qty, 0);
+  const total = items.reduce((sum, it) => sum + it.price * it.qty, 0);
+
+  document.getElementById('orderItemsLabel').innerHTML = `${itemCount} item${itemCount === 1 ? '' : 's'} <span class="chev ${reviewOpen ? 'open' : ''}" id="reviewChev">&#9662;</span>`;
+  document.getElementById('orderTotal').textContent = money(total);
+  document.getElementById('submitBtn').disabled = items.length === 0;
+
+  const reviewEl = document.getElementById('orderReview');
+  if (items.length === 0) {
+    reviewEl.innerHTML = `<div class="review-empty">Nothing added yet</div>`;
+  } else {
+    reviewEl.innerHTML = Object.keys(cart).map((key) => {
+      const it = cart[key];
+      return `
+        <div class="review-row">
+          <div>
+            <div class="review-row-left">${it.qty}&times; ${escapeHtml(it.recipeName)} — ${escapeHtml(it.format)}</div>
+            <div class="review-row-sub">${it.dayLabel}${it.notes ? ' · ' + escapeHtml(it.notes) : ''}</div>
+            <button type="button" class="review-row-remove" data-key="${escapeHtml(key)}">Remove</button>
+          </div>
+          <div class="review-row-price">${money(it.price * it.qty)}</div>
+        </div>
+      `;
+    }).join('');
+    reviewEl.querySelectorAll('.review-row-remove').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        delete cart[btn.dataset.key];
+        updateOrderBar();
+      });
+    });
+  }
+}
+
+document.getElementById('orderSummary').addEventListener('click', () => {
+  reviewOpen = !reviewOpen;
+  document.getElementById('orderReview').classList.toggle('open', reviewOpen);
+  updateOrderBar();
+});
+
+document.getElementById('contactForm').addEventListener('submit', (e) => e.preventDefault());
+
+function validateContact(){
+  const nameEl = document.getElementById('custName');
+  const phoneEl = document.getElementById('custPhone');
+  const name = nameEl.value.trim();
+  const phone = phoneEl.value.trim();
+  const phoneDigits = phone.replace(/\D/g, '');
+
+  nameEl.classList.toggle('invalid', name.length === 0);
+  phoneEl.classList.toggle('invalid', phoneDigits.length < 10);
+
+  return name.length > 0 && phoneDigits.length >= 10;
+}
+
+document.getElementById('submitBtn').addEventListener('click', async () => {
+  const errorEl = document.getElementById('submitError');
+  errorEl.style.display = 'none';
+
+  if (Object.keys(cart).length === 0) return;
+  if (!validateContact()) {
+    errorEl.textContent = 'Please enter your name and a valid phone number.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  const submitBtn = document.getElementById('submitBtn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Submitting…';
+
+  const payload = {
+    customerName: document.getElementById('custName').value.trim(),
+    phone: document.getElementById('custPhone').value.trim(),
+    email: document.getElementById('custEmail').value.trim(),
+    address: document.getElementById('custAddress').value.trim(),
+    items: Object.values(cart).map((it) => ({
+      day: it.day,
+      recipeName: it.recipeName,
+      format: it.format,
+      quantity: it.qty,
+      notes: it.notes || undefined,
+    })),
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/api/public/orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Failed to submit order');
+
+    document.getElementById('confirmTotal').textContent = `Total: ${money(body.data.total)}`;
+    document.getElementById('confirmOverlay').classList.add('show');
+
+    Object.keys(cart).forEach((key) => delete cart[key]);
+    updateOrderBar();
+    reviewOpen = false;
+    document.getElementById('orderReview').classList.remove('open');
+  } catch (err) {
+    errorEl.textContent = err.message || 'Something went wrong submitting your order. Please try again.';
+    errorEl.style.display = 'block';
+  } finally {
+    submitBtn.disabled = Object.keys(cart).length === 0;
+    submitBtn.textContent = 'Submit Order';
+  }
+});
+
+document.getElementById('confirmClose').addEventListener('click', () => {
+  document.getElementById('confirmOverlay').classList.remove('show');
+});
+
+updateOrderBar();
+loadMenu();
+</script>
+</body>
+</html>
