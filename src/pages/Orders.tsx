@@ -161,12 +161,18 @@ export default function OrdersPage() {
     }
   }
 
-  const currentWeekLabel = useMemo(() => {
+  // ISO date (YYYY-MM-DD) for the Sunday that starts "this week" -- same
+  // Sunday-anchored boundary the backend uses everywhere (adminOrders.js,
+  // adminPrep.js), so Weekly Prep always opens on the same week Orders is
+  // already showing.
+  const currentWeekStart = useMemo(() => {
     const now = new Date()
     const day = now.getDay() // 0 = Sunday
-    const sunday = new Date(now)
-    sunday.setDate(now.getDate() - day)
-    return `Week of ${sunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+    const sunday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day)
+    const y = sunday.getFullYear()
+    const m = String(sunday.getMonth() + 1).padStart(2, '0')
+    const d = String(sunday.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
   }, [])
 
   const deleteLine = async (line: OrderLine) => {
@@ -204,7 +210,7 @@ export default function OrdersPage() {
   }
 
   if (showPrepPage) {
-    return <WeeklyPrepPage week={currentWeekLabel} onBack={() => setShowPrepPage(false)} />
+    return <WeeklyPrepPage week={currentWeekStart} onBack={() => setShowPrepPage(false)} />
   }
 
   return (
