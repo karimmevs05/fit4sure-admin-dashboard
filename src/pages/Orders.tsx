@@ -20,6 +20,8 @@ type OrderLine = {
   id: number
   customer_id: number
   customer_name: string
+  dietary_restrictions: string | null
+  address: string | null
   menu_id: number
   menu_name: string
   category: string | null
@@ -39,6 +41,14 @@ type MenuTotal = {
   regular_count: number
   large_count: number
   total_count: number
+  revenue: number | null
+  status: 'ready' | 'blocked' | 'unlinked'
+}
+
+type StockAlert = {
+  ingredient: string
+  short_lb: number
+  affected: string[]
 }
 
 type Summary = {
@@ -49,6 +59,9 @@ type Summary = {
   total_customers: number
   form_customers: number
   manual_customers: number
+  monday_meals_last_week: number
+  thursday_meals_last_week: number
+  known_margin_pct: number | null
 }
 
 type NonResponder = {
@@ -61,6 +74,7 @@ type ThisWeekData = {
   orders: OrderLine[]
   menuTotals: MenuTotal[]
   summary: Summary
+  alerts: StockAlert[]
   nonResponders: NonResponder[]
 }
 
@@ -405,7 +419,7 @@ function ThisWeekTab({
   onEditLine: (line: OrderLine) => void
   onDeleteLine: (line: OrderLine) => void
 }) {
-  const { orders, menuTotals, summary, nonResponders } = data
+  const { orders, menuTotals, summary, alerts, nonResponders } = data
 
   const filteredOrders = useMemo(
     () => orders.filter((o) => o.customer_name.toLowerCase().includes(searchCustomer.toLowerCase())),
@@ -414,17 +428,78 @@ function ThisWeekTab({
 
   // Group order lines by customer for a cleaner table
   const byCustomer = useMemo(() => {
-    const map = new Map<number, { name: string; lines: OrderLine[] }>()
+    const map = new Map<number, { name: string; dietary_restrictions: string | null; address: string | null; lines: OrderLine[] }>()
     for (const o of filteredOrders) {
-      if (!map.has(o.customer_id)) map.set(o.customer_id, { name: o.customer_name, lines: [] })
+      if (!map.has(o.customer_id)) {
+        map.set(o.customer_id, { name: o.customer_name, dietary_restrictions: o.dietary_restrictions, address: o.address, lines: [] })
+      }
       map.get(o.customer_id)!.lines.push(o)
     }
     return Array.from(map.values())
   }, [filteredOrders])
 
+  const mondayItems = menuTotals.filter((m) => m.day_of_week?.toLowerCase() === 'monday')
+  const thursdayItems = menuTotals.filter((m) => m.day_of_week?.toLowerCase() === 'thursday')
+  const otherItems = menuTotals.filter((m) => !['monday', 'thursday'].includes((m.day_of_week || '').toLowerCase()))
+
+  const monDelta = summary.monday_meals - summary.monday_meals_last_week
+  const thuDelta = summary.thursday_meals - summary.thursday_meals_last_week
+
+  const statusBadge = (status: MenuTotal['status']) =>
+    status === 'ready' ? (
+      <span className="rounded-md bg-[#EAF5EC] px-2 py-0.5 text-[10px] font-bold text-[#16834A]">Ready</span>
+    ) : status === 'blocked' ? (
+      <span className="rounded-md bg-[#FDEBEC] px-2 py-0.5 text-[10px] font-bold text-[#D62F3D]">Blocked</span>
+    ) : (
+      <span className="rounded-md bg-[#F3F4F6] px-2 py-0.5 text-[10px] font-bold text-[#6B7280]">No recipe</span>
+    )
+
+  const PlateColumn = ({ label, color, items }: { label: string; color: string; items: MenuTotal[] }) => (
+    <div className="rounded-xl border border-[#E4D8C9] bg-white p-3.5">
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-wide" style={{ color }}>
+        {label}
+      </p>
+      {items.length === 0 ? (
+        <p className="text-xs text-[#9A7E6F] py-1">Nothing planned yet</p>
+      ) : (
+        items.map((m) => (
+          <div key={`${m.id}-${m.day_of_week}`} className="border-b border-[#F0EAE0] py-1.5 last:border-0">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-[#4B2B1D]">{m.name}</span>
+              {statusBadge(m.status)}
+            </div>
+            <p className="mt-0.5 text-[10.5px] text-[#9A7E6F]">
+              {m.category || 'Uncategorized'} × {m.total_count}
+              {m.regular_count > 0 || m.large_count > 0 ? ` — Reg ${m.regular_count} · Lg ${m.large_count}` : ''}
+            </p>
+          </div>
+        ))
+      )}
+    </div>
+  )
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* Low-stock alerts, real ingredient need vs current stock for recipe-linked items */}
+      {alerts.length > 0 && (
+        <div className="space-y-2">
+          {alerts.map((a) => (
+            <div
+              key={a.ingredient}
+              className="flex items-center justify-between gap-4 rounded-lg border border-[#F0C5B8] bg-[#FFF4F0] px-3.5 py-2.5"
+            >
+              <span className="text-xs font-medium text-[#B8571F]">
+                {a.ingredient} short {a.short_lb} lb — {a.affected.join(', ')}
+              </span>
+              <Link to="/inventory" className="shrink-0 text-[11px] font-bold text-[#B8571F] underline">
+                Order more
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="relative w-full sm:w-[290px]">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#4B2B1D]" />
           <input
@@ -438,15 +513,36 @@ function ThisWeekTab({
         <div className="flex gap-6 text-right">
           <div>
             <p className="text-xs text-[#16A34A] font-bold">Monday</p>
-            <p className="text-lg font-extrabold text-[#16A34A]">{summary.monday_meals}</p>
+            <p className="text-lg font-extrabold text-[#16A34A]">
+              {summary.monday_meals}
+              {monDelta !== 0 && (
+                <span className="ml-1 text-[10px] font-semibold text-[#9A7E6F]">
+                  {monDelta > 0 ? `↑${monDelta}` : `↓${Math.abs(monDelta)}`}
+                </span>
+              )}
+            </p>
           </div>
           <div>
             <p className="text-xs text-[#D97706] font-bold">Thursday</p>
-            <p className="text-lg font-extrabold text-[#D97706]">{summary.thursday_meals}</p>
+            <p className="text-lg font-extrabold text-[#D97706]">
+              {summary.thursday_meals}
+              {thuDelta !== 0 && (
+                <span className="ml-1 text-[10px] font-semibold text-[#9A7E6F]">
+                  {thuDelta > 0 ? `↑${thuDelta}` : `↓${Math.abs(thuDelta)}`}
+                </span>
+              )}
+            </p>
           </div>
           <div>
             <p className="text-xs text-[#0EA5E9] font-bold">Breakfast</p>
             <p className="text-lg font-extrabold text-[#0EA5E9]">{summary.breakfast_meals}</p>
+          </div>
+          <div className="border-l border-[#D8CDBE] pl-6">
+            <p className="text-xs font-bold text-[#755B4C]">Margin</p>
+            <p className="text-lg font-extrabold text-[#2E527F]">
+              {summary.known_margin_pct != null ? `${summary.known_margin_pct}%` : '—'}
+            </p>
+            {summary.known_margin_pct != null && <p className="text-[10px] text-[#9A7E6F]">recipe-linked items only</p>}
           </div>
           <div className="border-l border-[#D8CDBE] pl-6">
             <p className="text-sm font-bold text-[#4B2B1D]">
@@ -506,64 +602,69 @@ function ThisWeekTab({
         </div>
       )}
 
-      {/* Menu Overview */}
+      {/* Plates by day */}
       <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
-        <h3 className="mb-3 font-bold text-[#4B2B1D]">This Week's Menu</h3>
+        <h3 className="mb-3 font-bold text-[#4B2B1D]">Plates by day</h3>
         {menuTotals.length === 0 ? (
           <p className="text-sm text-[#9A7E6F]">No orders yet this week.</p>
         ) : (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {menuTotals.map((m) => (
-              <div key={`${m.id}-${m.day_of_week}`} className="rounded-lg border border-[#E4D8C9] bg-white p-3">
-                <p className="font-semibold text-[#2E527F] text-sm">{m.name}</p>
-                <div className="mt-2 flex items-center justify-between">
-                  <span className="rounded-full px-3 py-1 text-xs font-bold text-white bg-[#6B7280]">
-                    {m.day_of_week || 'Unassigned'}
-                  </span>
-                  <span className="text-lg font-extrabold text-[#2E527F]">{m.total_count}</span>
-                </div>
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <PlateColumn label="Monday" color="#16A34A" items={mondayItems} />
+              <PlateColumn label="Thursday" color="#D97706" items={thursdayItems} />
+            </div>
+            {otherItems.length > 0 && (
+              <div className="mt-3">
+                <PlateColumn label="Other (breakfast / unassigned)" color="#0EA5E9" items={otherItems} />
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* Customer Orders */}
+      {/* Individual Orders */}
       <div className="space-y-2">
-        <h3 className="font-bold text-[#4B2B1D]">Customer Orders</h3>
+        <h3 className="font-bold text-[#4B2B1D]">Individual orders</h3>
         <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[#E4D8C9]">
+              <tr className="border-b border-[#E4D8C9] bg-[#F8F2E8]">
                 <th className="px-4 py-3 text-left font-extrabold text-[#4B2B1D]">Customer</th>
-                <th className="px-4 py-3 text-left font-extrabold text-[#4B2B1D]">Items</th>
+                <th className="px-4 py-3 text-left font-extrabold text-[#4B2B1D]">Plates</th>
+                <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">Area</th>
+                <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">Payment</th>
                 <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">Source</th>
               </tr>
             </thead>
             <tbody>
               {byCustomer.map((c) => (
                 <tr key={c.name} className="border-b border-[#E4D8C9] hover:bg-[#F8F2E8] transition align-top">
-                  <td className="px-4 py-3 font-medium text-[#4B2B1D]">{c.name}</td>
+                  <td className="px-4 py-3 font-medium text-[#4B2B1D]">
+                    {c.name}
+                    {c.dietary_restrictions && (
+                      <div className="mt-0.5 text-[10px] font-bold text-[#D62F3D]">⚠ {c.dietary_restrictions}</div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-[#755B4C]">
                     {c.lines.map((l) => (
                       <div key={l.id} className="text-xs flex items-center gap-2 py-0.5">
                         <span>
                           {l.menu_name} × {l.quantity} {l.day_of_week ? `(${l.day_of_week})` : ''}
                         </span>
-                        <button
-                          onClick={() => onEditLine(l)}
-                          className="text-[#2E527F] hover:underline font-bold"
-                        >
+                        <button onClick={() => onEditLine(l)} className="text-[#2E527F] hover:underline font-bold">
                           Edit
                         </button>
-                        <button
-                          onClick={() => onDeleteLine(l)}
-                          className="text-[#D62F3D] hover:underline font-bold"
-                        >
+                        <button onClick={() => onDeleteLine(l)} className="text-[#D62F3D] hover:underline font-bold">
                           Delete
                         </button>
                       </div>
                     ))}
+                  </td>
+                  <td className="px-4 py-3 text-center text-xs text-[#755B4C] max-w-[160px] truncate" title={c.address || undefined}>
+                    {c.address || '—'}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className="rounded-full bg-[#F3F4F6] px-2 py-1 text-[10px] font-bold text-[#6B7280]">Not tracked yet</span>
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span
@@ -571,7 +672,7 @@ function ThisWeekTab({
                         c.lines[0]?.source === 'form' ? 'bg-[#16A34A]' : 'bg-[#D97706]'
                       }`}
                     >
-                      {c.lines[0]?.source === 'form' ? 'Form' : 'Manual'}
+                      {c.lines[0]?.source === 'form' ? 'Order page' : 'Staff entry'}
                     </span>
                   </td>
                 </tr>
