@@ -2,6 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
 import { Search, Plus, Mail, Phone, MapPin, Edit, Trash2, X, Home, DollarSign, Users, Briefcase, Target, AlertCircle, Heart, Utensils, TrendingUp, MessageCircle, Clock, Zap } from 'lucide-react'
 import { CustomerActivityPanel } from '../components/CustomerActivityPanel'
+import { AutomationBuilder } from '../components/AutomationBuilder'
+import { BulkActionBar, ListsTab } from '../components/CustomerListsAndBulkActions'
+import { TasksPanel } from '../components/TasksPanel'
 
 type Customer = {
   id: number
@@ -31,7 +34,7 @@ type Customer = {
   engagement_score?: number
 }
 
-type Tab = 'pipeline' | 'active' | 'prospects' | 'at_risk' | 'insights' | 'activities'
+type Tab = 'pipeline' | 'active' | 'prospects' | 'at_risk' | 'insights' | 'activities' | 'automations' | 'lists' | 'tasks'
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -65,6 +68,11 @@ export default function CustomersPage() {
   const [showCustomerDetail, setShowCustomerDetail] = useState(false)
   const [recentActivity, setRecentActivity] = useState<any[]>([])
   const [templates, setTemplates] = useState<any[]>([])
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+
+  const toggleSelected = (id: number) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
 
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
@@ -242,6 +250,9 @@ export default function CustomersPage() {
           { id: 'at_risk' as Tab, label: 'Lost Prospects', icon: '🟡' },
           { id: 'insights' as Tab, label: 'Insights', icon: '📈' },
           { id: 'activities' as Tab, label: 'Activities', icon: '💬' },
+          { id: 'automations' as Tab, label: 'Automations', icon: '⚡' },
+          { id: 'lists' as Tab, label: 'Lists', icon: '👥' },
+          { id: 'tasks' as Tab, label: 'Tasks', icon: '☑️' },
         ].map(tab => (
           <button
             key={tab.id}
@@ -268,6 +279,10 @@ export default function CustomersPage() {
           className="w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] pl-12 pr-4 py-3 text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
         />
       </div>
+
+      {(activeTab === 'pipeline' || activeTab === 'active' || activeTab === 'prospects' || activeTab === 'at_risk') && (
+        <BulkActionBar selectedIds={selectedIds} onClear={() => setSelectedIds([])} />
+      )}
 
       {/* Tab Content */}
       {activeTab === 'pipeline' ? (
@@ -302,6 +317,13 @@ export default function CustomersPage() {
                   className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4 hover:shadow-md transition cursor-pointer"
                 >
                   <div className="grid grid-cols-1 md:grid-cols-8 gap-4 items-start">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(customer.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => toggleSelected(customer.id)}
+                      className="mt-1 h-4 w-4"
+                    />
                     {/* Name & Stage */}
                     <div className="md:col-span-2">
                       <h3 className="font-extrabold text-[#4B2B1D] text-lg">{customer.name}</h3>
@@ -395,6 +417,13 @@ export default function CustomersPage() {
                 className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4 hover:shadow-md transition cursor-pointer"
               >
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-start">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(customer.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => toggleSelected(customer.id)}
+                    className="mt-1 h-4 w-4"
+                  />
                   <div className="md:col-span-2">
                     <h3 className="font-extrabold text-[#4B2B1D] text-lg">{customer.name}</h3>
                     <div className="mt-2 flex flex-wrap gap-2">
@@ -582,6 +611,12 @@ export default function CustomersPage() {
             </div>
           </div>
         </div>
+      ) : activeTab === 'automations' ? (
+        <AutomationBuilder />
+      ) : activeTab === 'lists' ? (
+        <ListsTab />
+      ) : activeTab === 'tasks' ? (
+        <TasksPanel />
       ) : null}
 
       {/* Add/Edit Customer Modal */}
