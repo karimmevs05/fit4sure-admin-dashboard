@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
+import { formatIngredientWeight } from '../utils/unitConversion'
 
 export type PickedIngredient = {
   inventory_id: number
   name: string
+  category: string
   quantity_g: number
   unit_price_cents: number | null
   protein_per_100g: number | null
@@ -105,6 +107,7 @@ export function IngredientPicker({ onAdd }: { onAdd: (ingredient: PickedIngredie
     onAdd({
       inventory_id: selected.id,
       name: selected.name,
+      category: selected.category,
       quantity_g: qty,
       unit_price_cents: selected.unit_price_cents,
       protein_per_100g: selected.protein_per_100g,
@@ -157,7 +160,7 @@ export function IngredientPicker({ onAdd }: { onAdd: (ingredient: PickedIngredie
                       inStock ? 'bg-[#EAF5EC] text-[#16834A]' : 'bg-[#F1EAE0] text-[#9A7E6F]'
                     }`}
                   >
-                    {inStock ? `In Stock · ${Math.round(opt.current_stock_g!)}g` : 'Not in Stock'}
+                    {inStock ? `In Stock · ${formatIngredientWeight(opt.current_stock_g!, opt.category)}` : 'Not in Stock'}
                   </span>
                 </button>
               )

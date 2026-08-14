@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import RecipePlanSection from '../components/RecipePlanSection'
+import { formatIngredientWeight } from '../utils/unitConversion'
 
 const GRAMS_PER_POUND = 455
 
@@ -160,6 +161,8 @@ export default function MenuPlannerPage() {
 // recipe, since prep happens in bulk across whatever recipes share it.
 function PrepInfoColumn({ ingredients }: { ingredients: PrepIngredient[] }) {
   const formatLb = (g: number) => (g / GRAMS_PER_POUND).toFixed(1)
+  const formatNeeded = (ing: PrepIngredient, g: number) =>
+    ing.category?.toLowerCase() === 'protein' ? formatIngredientWeight(g, ing.category) : `${formatLb(g)} lb`
 
   return (
     <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
@@ -173,10 +176,10 @@ function PrepInfoColumn({ ingredients }: { ingredients: PrepIngredient[] }) {
           {ingredients.map((ing) => (
             <div key={ing.name} className="flex items-center gap-2 rounded-lg border border-[#E4D8C9] bg-white px-3 py-2">
               <p className="flex-1 truncate text-sm font-medium text-[#4B2B1D]">{ing.name}</p>
-              <p className="text-xs text-[#755B4C] flex-shrink-0">{formatLb(ing.neededG)} lb</p>
+              <p className="text-xs text-[#755B4C] flex-shrink-0">{formatNeeded(ing, ing.neededG)}</p>
               {ing.shortfallG > 0 && (
                 <span className="flex-shrink-0 rounded-full bg-[#FEF2F2] px-2 py-0.5 text-[10px] font-bold text-[#D62F3D]">
-                  short {formatLb(ing.shortfallG)} lb
+                  short {formatNeeded(ing, ing.shortfallG)}
                 </span>
               )}
             </div>

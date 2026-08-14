@@ -64,3 +64,28 @@ export function formatQuantityInGrams(grams: number): string {
   }
   return `${grams.toFixed(1)} g`
 }
+
+// Protein ingredients are always weighed/ordered in lb:oz in the kitchen
+// (butcher-style), never plain grams -- "2 lb 5 oz", not "1050g". Every
+// other category keeps grams. Handles the 16oz-rounds-up-to-a-pound edge
+// case so it never prints "3 lb 16 oz".
+export function formatLbOz(grams: number): string {
+  const totalOz = Math.round((Math.abs(grams) / 453.592) * 16)
+  let lb = Math.floor(totalOz / 16)
+  let oz = totalOz % 16
+  const sign = grams < 0 ? '-' : ''
+  if (lb === 0) return `${sign}${oz} oz`
+  if (oz === 0) return `${sign}${lb} lb`
+  return `${sign}${lb} lb ${oz} oz`
+}
+
+export function isProteinCategory(category: string | null | undefined): boolean {
+  return (category || '').trim().toLowerCase() === 'protein'
+}
+
+// Display helper for any ingredient weight: lb:oz for Protein, grams
+// (rounded) for everything else.
+export function formatIngredientWeight(grams: number, category: string | null | undefined): string {
+  if (isProteinCategory(category)) return formatLbOz(grams)
+  return `${Math.round(grams)}g`
+}

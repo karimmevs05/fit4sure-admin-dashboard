@@ -26,6 +26,7 @@ type ExtractedIngredient = {
   match: {
     inventory_id: number
     name: string
+    category: string
     confidence: 'exact' | 'high' | 'low'
     unit_price_cents: number | null
     protein_per_100g: number | null
@@ -122,6 +123,7 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
           ? {
               inventory_id: ing.match.inventory_id,
               name: ing.match.name,
+              category: ing.match.category,
               quantity_g: ing.quantity_g,
               unit_price_cents: ing.match.unit_price_cents,
               protein_per_100g: ing.match.protein_per_100g,

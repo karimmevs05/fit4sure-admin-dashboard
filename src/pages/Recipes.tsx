@@ -3,6 +3,7 @@ import axios from "axios";
 import { IngredientPicker, PickedIngredient } from "../components/IngredientPicker";
 import { RecipeImportPanel } from "../components/RecipeImportPanel";
 import { RecipeStepsEditor, RecipeStep } from "../components/RecipeStepsEditor";
+import { formatIngredientWeight } from "../utils/unitConversion";
 import {
   BookOpen,
   ChevronDown,
@@ -25,6 +26,7 @@ type RecipeIngredient = {
   id: number;
   inventory_id: number;
   name: string;
+  category?: string | null;
   quantity_g: number;
   unit_price_cents?: number;
   ingredient_cost_cents?: number;
@@ -604,6 +606,7 @@ function AddRecipeDrawer({
     id: string;
     inventory_id: number;
     name: string;
+    category?: string;
     quantity_g: number;
     unit_price_cents: number | null;
     protein_per_100g: number | null;
@@ -886,7 +889,7 @@ function AddRecipeDrawer({
                           <div className="flex-1">
                             <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
                             <p className="text-[10px] text-[#755B4C]">
-                              {ing.quantity_g}g{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
+                              {formatIngredientWeight(ing.quantity_g, ing.category)}{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
                             </p>
                           </div>
                           <button
@@ -1006,6 +1009,7 @@ function EditRecipeDrawer({
     id: string;
     inventory_id: number;
     name: string;
+    category?: string;
     quantity_g: number;
     unit_price_cents: number | null;
     protein_per_100g: number | null;
@@ -1459,7 +1463,7 @@ function RecipeDetailsDrawer({
                   <div key={ing.id} className="flex justify-between items-center py-2 border-b border-[#E4D8C9] last:border-0">
                     <div className="flex-1">
                       <p className="text-sm font-medium text-[#4B2B1D]">{ing.name}</p>
-                      <p className="text-xs text-[#755B4C]">{ing.quantity_g}g</p>
+                      <p className="text-xs text-[#755B4C]">{formatIngredientWeight(ing.quantity_g, ing.category)}</p>
                     </div>
                     <div className="text-right ml-3">
                       {ing.ingredient_cost_cents !== undefined && ing.ingredient_cost_cents !== null && ing.ingredient_cost_cents > 0 ? (

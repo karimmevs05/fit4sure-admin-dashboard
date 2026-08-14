@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { ChevronLeft, AlertCircle, Package, DollarSign, TrendingUp, CheckCircle2, Link2, Link2Off } from 'lucide-react'
+import { formatIngredientWeight } from '../utils/unitConversion'
 
 type MenuItemRow = {
   menu_id: number
@@ -337,8 +338,8 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
                     <tr key={idx} className="border-b border-[#E4D8C9] hover:bg-[#F8F2E8] transition">
                       <td className="px-4 py-3 font-medium text-[#4B2B1D]">{ing.name}</td>
                       <td className="px-4 py-3 text-right text-[#755B4C]">{ing.category || '—'}</td>
-                      <td className="px-4 py-3 text-right text-[#755B4C]">{ing.needed_g.toFixed(0)}g</td>
-                      <td className="px-4 py-3 text-right text-[#755B4C]">{ing.available_g.toFixed(0)}g</td>
+                      <td className="px-4 py-3 text-right text-[#755B4C]">{formatIngredientWeight(ing.needed_g, ing.category)}</td>
+                      <td className="px-4 py-3 text-right text-[#755B4C]">{formatIngredientWeight(ing.available_g, ing.category)}</td>
                       <td className="px-4 py-3 text-right">
                         {enough ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-[#EAF5EC] px-3 py-1 text-xs font-bold text-[#16834A]">
@@ -348,7 +349,7 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
                         ) : (
                           <span className="inline-flex items-center gap-1 rounded-full bg-[#FDEBEC] px-3 py-1 text-xs font-bold text-[#D62F3D]">
                             <AlertCircle className="h-4 w-4" />
-                            Short {(ing.needed_g - ing.available_g).toFixed(0)}g
+                            Short {formatIngredientWeight(ing.needed_g - ing.available_g, ing.category)}
                           </span>
                         )}
                       </td>
@@ -501,7 +502,7 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
                                 <tr key={idx} className="border-b border-[#E4D8C9] hover:bg-[#F8F2E8] transition">
                                   <td className="px-4 py-3 font-medium text-[#4B2B1D]">{ing.name}</td>
                                   <td className="px-4 py-3 text-right text-[#755B4C] text-xs">{ing.category || '—'}</td>
-                                  <td className="px-4 py-3 text-right text-[#755B4C]">{ing.quantity_g.toFixed(0)}g</td>
+                                  <td className="px-4 py-3 text-right text-[#755B4C]">{formatIngredientWeight(ing.quantity_g, ing.category)}</td>
                                   <td className="px-4 py-3 text-right text-[#755B4C]">
                                     {ing.unit_price_cents > 0 ? `$${(ing.unit_price_cents / 100).toFixed(2)}` : '—'}
                                   </td>

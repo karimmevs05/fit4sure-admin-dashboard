@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Package,
 } from 'lucide-react'
+import { formatIngredientWeight } from '../utils/unitConversion'
 
 type InventoryItem = {
   id: number
@@ -450,7 +451,7 @@ function StockTable({
                 {item.unit_price_cents != null ? `$${(item.unit_price_cents / 100).toFixed(2)}` : '-'}
               </td>
               <td className="px-4 py-3 text-right text-[#755B4C]">
-                {item.current_stock_g != null ? `${parseFloat(String(item.current_stock_g)).toFixed(0)}g` : '-'}
+                {item.current_stock_g != null ? formatIngredientWeight(parseFloat(String(item.current_stock_g)), item.category) : '-'}
               </td>
               <td className="px-4 py-3 text-center text-[#755B4C] text-sm">
                 {item.protein_per_100g ? parseFloat(String(item.protein_per_100g)).toFixed(1) : '-'}
@@ -561,13 +562,11 @@ function IngredientsTable({
               </td>
               <td className="px-4 py-3 text-right text-[#755B4C]">
                 {item.serving_size_g != null && item.serving_size_g !== '' && !isNaN(parseFloat(String(item.serving_size_g)))
-                  ? item.category === 'Protein'
-                    ? `${(parseFloat(String(item.serving_size_g)) / 28.3495).toFixed(1)}oz`
-                    : `${parseFloat(String(item.serving_size_g)).toFixed(1)}g`
+                  ? formatIngredientWeight(parseFloat(String(item.serving_size_g)), item.category)
                   : '-'}
               </td>
               <td className="px-4 py-3 text-right text-[#755B4C]">
-                {item.current_stock_g != null ? `${parseFloat(String(item.current_stock_g)).toFixed(0)}g` : '-'}
+                {item.current_stock_g != null ? formatIngredientWeight(parseFloat(String(item.current_stock_g)), item.category) : '-'}
               </td>
               <td className="px-4 py-3 text-center">
                 {(item.current_stock_g ?? 0) > 0 ? (

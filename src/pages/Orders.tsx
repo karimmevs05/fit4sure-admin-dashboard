@@ -15,6 +15,7 @@ import {
   Phone,
 } from 'lucide-react'
 import WeeklyPrepPage from './WeeklyPrep'
+import { formatIngredientWeight } from '../utils/unitConversion'
 
 type OrderLine = {
   id: number
@@ -47,7 +48,8 @@ type MenuTotal = {
 
 type StockAlert = {
   ingredient: string
-  short_lb: number
+  category: string | null
+  short_g: number
   affected: string[]
 }
 
@@ -489,7 +491,7 @@ function ThisWeekTab({
               className="flex items-center justify-between gap-4 rounded-lg border border-[#F0C5B8] bg-[#FFF4F0] px-3.5 py-2.5"
             >
               <span className="text-xs font-medium text-[#B8571F]">
-                {a.ingredient} short {a.short_lb} lb — {a.affected.join(', ')}
+                {a.ingredient} short {formatIngredientWeight(a.short_g, a.category)} — {a.affected.join(', ')}
               </span>
               <Link to="/inventory" className="shrink-0 text-[11px] font-bold text-[#B8571F] underline">
                 Order more
