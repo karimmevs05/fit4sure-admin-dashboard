@@ -316,14 +316,15 @@ export default function CustomersPage() {
                   }}
                   className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4 hover:shadow-md transition cursor-pointer"
                 >
-                  <div className="grid grid-cols-1 md:grid-cols-8 gap-4 items-start">
+                  <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
                       checked={selectedIds.includes(customer.id)}
                       onClick={(e) => e.stopPropagation()}
                       onChange={() => toggleSelected(customer.id)}
-                      className="mt-1 h-4 w-4"
+                      className="mt-1.5 h-4 w-4 shrink-0"
                     />
+                    <div className="grid grid-cols-1 md:grid-cols-8 gap-4 items-start flex-1 min-w-0">
                     {/* Name & Stage */}
                     <div className="md:col-span-2">
                       <h3 className="font-extrabold text-[#4B2B1D] text-lg">{customer.name}</h3>
@@ -394,6 +395,7 @@ export default function CustomersPage() {
                         ></div>
                       </div>
                     </div>
+                    </div>
                   </div>
                 </div>
               )
@@ -416,14 +418,15 @@ export default function CustomersPage() {
                 }}
                 className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4 hover:shadow-md transition cursor-pointer"
               >
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-start">
+                <div className="flex items-start gap-3">
                   <input
                     type="checkbox"
                     checked={selectedIds.includes(customer.id)}
                     onClick={(e) => e.stopPropagation()}
                     onChange={() => toggleSelected(customer.id)}
-                    className="mt-1 h-4 w-4"
+                    className="mt-1.5 h-4 w-4 shrink-0"
                   />
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-start flex-1 min-w-0">
                   <div className="md:col-span-2">
                     <h3 className="font-extrabold text-[#4B2B1D] text-lg">{customer.name}</h3>
                     <div className="mt-2 flex flex-wrap gap-2">
@@ -473,6 +476,7 @@ export default function CustomersPage() {
                     <p className="text-xl font-extrabold text-[#16A34A]">
                       ${getLifetimeValue(customer.lifetime_value_cents || 0)}
                     </p>
+                  </div>
                   </div>
                 </div>
               </div>
