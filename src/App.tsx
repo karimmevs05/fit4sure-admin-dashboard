@@ -13,6 +13,7 @@ import ReportsPage from './pages/Reports.tsx'
 import SettingsPage from './pages/Settings.tsx'
 import TestPage from './pages/Test.tsx'
 import { Navigation } from './components/Navigation'
+import { KitchenConverter } from './components/KitchenConverter'
 
 function MealPlan() {
   return <div style={{ padding: '2rem' }}><h1>Meal Plan</h1><p>Coming soon</p></div>
@@ -22,11 +23,17 @@ function App() {
   const token = localStorage.getItem('token') || (import.meta.env.DEV ? 'dev-mode' : null)
   const location = useLocation()
   const isLoginPage = location.pathname === '/login'
+  const [converterCollapsed, setConverterCollapsed] = React.useState(
+    () => localStorage.getItem('kitchenConverterCollapsed') === 'true'
+  )
+  const showChrome = token && !isLoginPage
+  const contentMarginLeft = showChrome ? 256 + (converterCollapsed ? 0 : 288) : 0
 
   return (
     <div>
-      {token && !isLoginPage && <Navigation />}
-      <div style={token && !isLoginPage ? { marginLeft: '256px' } : {}}>
+      {showChrome && <Navigation />}
+      {showChrome && <KitchenConverter collapsed={converterCollapsed} onCollapsedChange={setConverterCollapsed} />}
+      <div style={showChrome ? { marginLeft: `${contentMarginLeft}px`, transition: 'margin-left 0.15s ease' } : {}}>
         <Routes>
           <Route path="/test" element={<TestPage />} />
           <Route path="/login" element={<LoginPage />} />
