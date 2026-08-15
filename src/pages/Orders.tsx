@@ -1133,11 +1133,16 @@ function AddOrderModal({
   // old order (often for meals not even on this week's menu) next to the
   // live picker read as confusing clutter. Always start empty; build the
   // order by tapping this week's actual plates.
-  const [items, setItems] = useState<Array<{ mealName: string; category: string; quantity: string; dayOfWeek: string }>>([])
+  const [items, setItems] = useState<Array<{ mealName: string; category: string; quantity: string; dayOfWeek: string; price: number }>>([])
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [weeklyMenu, setWeeklyMenu] = useState<WeeklyMenu | null>(null)
   const [loadingMenu, setLoadingMenu] = useState(true)
+  const [openDay, setOpenDay] = useState<'monday' | 'thursday' | 'breakfast' | null>('monday')
+  const [reviewOpen, setReviewOpen] = useState(false)
+
+  const orderTotal = items.reduce((sum, it) => sum + it.price * (parseFloat(it.quantity) || 0), 0)
+  const orderCount = items.reduce((sum, it) => sum + (parseFloat(it.quantity) || 0), 0)
 
   useEffect(() => {
     const fetchMenu = async () => {
@@ -1157,7 +1162,7 @@ function AddOrderModal({
 
   // Tapping a tile adds it to this client's order, or bumps the quantity
   // if it's already on the list.
-  const addFromMenu = (mealName: string, category: string, dayOfWeek: string) => {
+  const addFromMenu = (mealName: string, category: string, dayOfWeek: string, price: number) => {
     setItems((prev) => {
       const idx = prev.findIndex((it) => it.mealName === mealName && it.category === category && it.dayOfWeek === dayOfWeek)
       if (idx >= 0) {
@@ -1165,11 +1170,11 @@ function AddOrderModal({
         next[idx] = { ...next[idx], quantity: String((parseFloat(next[idx].quantity) || 0) + 1) }
         return next
       }
-      return [...prev, { mealName, category, quantity: '1', dayOfWeek }]
+      return [...prev, { mealName, category, quantity: '1', dayOfWeek, price }]
     })
   }
 
-  const addManualItem = () => setItems([...items, { mealName: '', category: 'Regular', quantity: '1', dayOfWeek: '' }])
+  const addManualItem = () => setItems([...items, { mealName: '', category: 'Regular', quantity: '1', dayOfWeek: '', price: 0 }])
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx))
   const updateItem = (idx: number, field: string, value: string) => {
     setItems(items.map((it, i) => (i === idx ? { ...it, [field]: value } : it)))
@@ -1215,181 +1220,248 @@ function AddOrderModal({
     }
   }
 
+  // Same tap-to-add-count-badge idea the client page uses: show how many of
+  // this exact (name, format, day) combo are already in the cart, right on
+  // the format chip, instead of making staff scroll down to check.
+  const qtyInCart = (mealName: string, category: string, dayOfWeek: string) =>
+    items.find((it) => it.mealName === mealName && it.category === category && it.dayOfWeek === dayOfWeek)?.quantity
+
+  const namedItems = items.filter((it) => it.mealName)
+  const manualItems = items.map((it, idx) => ({ ...it, idx })).filter((it) => !it.mealName)
+
   return (
     <>
       <button onClick={onClose} className="fixed inset-0 z-40 bg-[#2A1A12]/30 backdrop-blur-[1px]" />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-2xl rounded-2xl bg-[#F8F2E8] p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-extrabold text-[#4B2B1D]">Add Manual Order</h2>
-            <button onClick={onClose} className="rounded-lg border border-[#B9A88F] p-2">
+        <div className="flex w-full max-w-md flex-col overflow-hidden rounded-2xl bg-[#EFE3D0] shadow-2xl" style={{ maxHeight: '90vh' }}>
+          {/* Header -- same layout as the client ordering page's header */}
+          <div className="flex flex-shrink-0 items-center justify-between rounded-b-2xl bg-[#FBF5EA] border-b border-[#DDC9A8] px-4 py-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <img src="/order/logo.png" alt="" className="h-8 w-8 object-contain flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-[#3B2A1E] leading-tight">This Week's Menu</p>
+                <p className="text-[10px] text-[#9C8C77] leading-tight">Building this order as staff, same menu the client sees</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="flex-shrink-0 text-[#6B5842] hover:text-[#3B2A1E]">
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          <label className="block text-xs font-bold text-[#4B2B1D] mb-1">Customer Name</label>
-          <input
-            value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
-            disabled={!!prefillCustomer}
-            className="w-full h-10 rounded-lg border border-[#B9A88F] bg-white px-3 text-sm text-[#4B2B1D] outline-none disabled:opacity-60 mb-4"
-          />
-
-          <p className="text-xs font-bold text-[#4B2B1D] mb-2">This Week's Menu — tap to add</p>
-          {loadingMenu ? (
-            <p className="text-xs text-[#9A7E6F] mb-4">Loading menu...</p>
-          ) : !weeklyMenu || (weeklyMenu.monday.length === 0 && weeklyMenu.thursday.length === 0 && weeklyMenu.breakfast.length === 0) ? (
-            <p className="text-xs text-[#9A7E6F] mb-4">
-              No plates built for this week yet in Menu Planner — use "+ add item not on the menu" below.
-            </p>
-          ) : (
-            <div className="space-y-3 mb-4">
-              {(['monday', 'thursday'] as const).map((day) =>
-                weeklyMenu[day].length === 0 ? null : (
-                  <div key={day}>
-                    <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#755B4C] mb-1.5">{day} Delivery</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {weeklyMenu[day].map((recipe) => (
-                        <div key={recipe.recipeId} className="rounded-lg border border-[#E4D8C9] bg-white p-2">
-                          <p className="text-xs font-semibold text-[#4B2B1D] mb-1.5 truncate" title={recipe.name}>
-                            {recipe.name}
-                          </p>
-                          <div className="flex flex-wrap gap-1">
-                            {recipe.formats.map((f) => (
-                              <button
-                                key={f.id}
-                                type="button"
-                                onClick={() => addFromMenu(recipe.name, f.label, day)}
-                                className="rounded-md bg-[#EAF1F8] px-1.5 py-1 text-[10px] font-bold text-[#2E527F] hover:bg-[#DCE8F5] transition"
-                              >
-                                {f.label} ${f.price.toFixed(2)}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )
-              )}
-              {weeklyMenu.breakfast.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#755B4C] mb-1.5">Breakfast</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {weeklyMenu.breakfast.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => addFromMenu(item.name, 'Breakfast', '')}
-                        className="rounded-lg border border-[#E4D8C9] bg-white p-2 text-left hover:bg-[#F8F2E8] transition"
-                      >
-                        <p className="text-xs font-semibold text-[#4B2B1D] truncate">{item.name}</p>
-                        <p className="text-[10px] text-[#755B4C]">${Number(item.price).toFixed(2)}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+          {/* Scrollable menu content */}
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+            <div className="rounded-xl border border-[#DDC9A8] bg-[#FBF5EA] px-3 py-2.5">
+              <label className="block text-[10px] font-bold uppercase tracking-wide text-[#9C8C77] mb-1">Customer</label>
+              <input
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                disabled={!!prefillCustomer}
+                placeholder="Full name"
+                className="w-full h-8 rounded-lg border border-[#DDC9A8] bg-white px-2.5 text-sm text-[#3B2A1E] outline-none disabled:opacity-60 focus:border-[#3D5A78]"
+              />
             </div>
-          )}
 
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-bold text-[#4B2B1D]">This Client's Order</p>
-            <button type="button" onClick={addManualItem} className="text-[10px] font-bold text-[#2E527F] hover:underline">
-              + add item not on the menu
+            {loadingMenu ? (
+              <p className="text-xs text-[#9C8C77] px-1">Loading menu...</p>
+            ) : !weeklyMenu || (weeklyMenu.monday.length === 0 && weeklyMenu.thursday.length === 0 && weeklyMenu.breakfast.length === 0) ? (
+              <p className="text-xs text-[#9C8C77] px-1">
+                No plates built for this week yet in Menu Planner — use "add an item not on the menu" below.
+              </p>
+            ) : (
+              <>
+                {(['monday', 'thursday'] as const).map((day) =>
+                  weeklyMenu[day].length === 0 ? null : (
+                    <div key={day} className="rounded-xl border border-[#DDC9A8] bg-[#FBF5EA] overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setOpenDay(openDay === day ? null : day)}
+                        className="flex w-full items-center justify-between px-3 py-2.5"
+                      >
+                        <span className="text-xs font-bold uppercase tracking-wide text-[#3B2A1E]">{day} Delivery</span>
+                        <span className={`text-[#3D5A78] transition-transform ${openDay === day ? 'rotate-90' : ''}`}>›</span>
+                      </button>
+                      {openDay === day && (
+                        <div className="px-3 pb-3 space-y-2">
+                          {weeklyMenu[day].map((recipe) => (
+                            <div key={recipe.recipeId} className="rounded-lg border border-[#DDC9A8] bg-white p-2.5">
+                              <p className="text-xs font-semibold uppercase tracking-tight text-[#3B2A1E] mb-1.5 truncate" title={recipe.name}>
+                                {recipe.name}
+                              </p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {recipe.formats.map((f) => {
+                                  const inCart = qtyInCart(recipe.name, f.label, day)
+                                  return (
+                                    <button
+                                      key={f.id}
+                                      type="button"
+                                      onClick={() => addFromMenu(recipe.name, f.label, day, f.price)}
+                                      className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
+                                        inCart ? 'bg-[#3D5A78] text-white' : 'bg-[#F5EFE0] text-[#3B2A1E] hover:bg-[#EFE3D0]'
+                                      }`}
+                                    >
+                                      {f.label} · ${f.price.toFixed(2)}
+                                      {inCart && <span className="ml-1 font-bold">×{inCart}</span>}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                )}
+
+                {weeklyMenu.breakfast.length > 0 && (
+                  <div className="rounded-xl border border-[#DDC9A8] bg-[#FBF5EA] overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setOpenDay(openDay === 'breakfast' ? null : 'breakfast')}
+                      className="flex w-full items-center justify-between px-3 py-2.5"
+                    >
+                      <span className="text-xs font-bold uppercase tracking-wide text-[#3B2A1E]">Breakfast</span>
+                      <span className={`text-[#3D5A78] transition-transform ${openDay === 'breakfast' ? 'rotate-90' : ''}`}>›</span>
+                    </button>
+                    {openDay === 'breakfast' && (
+                      <div className="px-3 pb-3 grid grid-cols-2 gap-1.5">
+                        {weeklyMenu.breakfast.map((item) => {
+                          const inCart = qtyInCart(item.name, 'Breakfast', '')
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => addFromMenu(item.name, 'Breakfast', '', Number(item.price))}
+                              className={`rounded-lg px-2 py-1.5 text-left text-[11px] font-medium transition ${
+                                inCart ? 'bg-[#3D5A78] text-white' : 'bg-white border border-[#DDC9A8] text-[#3B2A1E] hover:bg-[#F5EFE0]'
+                              }`}
+                            >
+                              <span className="block truncate">{item.name}</span>
+                              <span className="block opacity-80">
+                                ${Number(item.price).toFixed(2)}
+                                {inCart && <span className="ml-1 font-bold">×{inCart}</span>}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            <button type="button" onClick={addManualItem} className="text-[11px] font-semibold text-[#3D5A78] hover:underline px-1">
+              + add an item not on the menu
             </button>
-          </div>
 
-          {items.length === 0 && <p className="text-xs text-[#9A7E6F] mb-3">Tap items above to build this client's order.</p>}
-
-          <div className="space-y-2 mb-4">
-            {items.map((item, idx) =>
-              !item.mealName ? (
-                <div key={idx} className="grid grid-cols-12 gap-1 items-center">
-                  <input
-                    value={item.mealName}
-                    onChange={(e) => updateItem(idx, 'mealName', e.target.value)}
-                    placeholder="Meal name"
-                    className="col-span-5 h-9 rounded-lg border border-[#B9A88F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
-                  />
-                  <select
-                    value={item.category}
-                    onChange={(e) => updateItem(idx, 'category', e.target.value)}
-                    className="col-span-3 h-9 rounded-lg border border-[#B9A88F] bg-white px-1 text-xs text-[#4B2B1D] outline-none"
-                  >
-                    <option value="Regular">Regular</option>
-                    <option value="Large">Large</option>
-                    <option value="Breakfast">Breakfast</option>
-                    <option value="By The LB">By The LB</option>
-                  </select>
-                  <input
-                    type="number"
-                    value={item.quantity}
-                    onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
-                    className="col-span-2 h-9 rounded-lg border border-[#B9A88F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
-                  />
-                  <select
-                    value={item.dayOfWeek}
-                    onChange={(e) => updateItem(idx, 'dayOfWeek', e.target.value)}
-                    className="col-span-1 h-9 rounded-lg border border-[#B9A88F] bg-white px-1 text-xs text-[#4B2B1D] outline-none"
-                  >
-                    <option value="">-</option>
-                    <option value="monday">Mon</option>
-                    <option value="thursday">Thu</option>
-                  </select>
-                  <button onClick={() => removeItem(idx)} className="col-span-1 text-[#D62F3D] text-xs">
-                    ✕
-                  </button>
-                </div>
-              ) : (
-                <div key={idx} className="flex items-center justify-between rounded-lg border border-[#E4D8C9] bg-white px-3 py-2">
-                  <p className="text-xs font-semibold text-[#4B2B1D]">
-                    {item.mealName}{' '}
-                    <span className="text-[#9A7E6F] font-normal">
-                      ({item.category}
-                      {item.dayOfWeek ? `, ${item.dayOfWeek}` : ''})
-                    </span>
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => bumpQty(idx, -1)}
-                      className="h-6 w-6 rounded-md border border-[#B9A88F] text-xs font-bold text-[#4B2B1D]"
+            {manualItems.length > 0 && (
+              <div className="space-y-1.5">
+                {manualItems.map(({ idx, mealName, category, quantity, dayOfWeek }) => (
+                  <div key={idx} className="grid grid-cols-12 gap-1 items-center">
+                    <input
+                      value={mealName}
+                      onChange={(e) => updateItem(idx, 'mealName', e.target.value)}
+                      placeholder="Meal name"
+                      className="col-span-5 h-8 rounded-lg border border-[#DDC9A8] bg-white px-2 text-xs text-[#3B2A1E] outline-none"
+                    />
+                    <select
+                      value={category}
+                      onChange={(e) => updateItem(idx, 'category', e.target.value)}
+                      className="col-span-3 h-8 rounded-lg border border-[#DDC9A8] bg-white px-1 text-xs text-[#3B2A1E] outline-none"
                     >
-                      −
-                    </button>
-                    <span className="w-5 text-center text-xs font-bold text-[#4B2B1D]">{item.quantity}</span>
-                    <button
-                      type="button"
-                      onClick={() => bumpQty(idx, 1)}
-                      className="h-6 w-6 rounded-md border border-[#B9A88F] text-xs font-bold text-[#4B2B1D]"
+                      <option value="Regular">Regular</option>
+                      <option value="Large">Large</option>
+                      <option value="Breakfast">Breakfast</option>
+                      <option value="By The LB">By The LB</option>
+                    </select>
+                    <input
+                      type="number"
+                      value={quantity}
+                      onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
+                      className="col-span-2 h-8 rounded-lg border border-[#DDC9A8] bg-white px-2 text-xs text-[#3B2A1E] outline-none"
+                    />
+                    <select
+                      value={dayOfWeek}
+                      onChange={(e) => updateItem(idx, 'dayOfWeek', e.target.value)}
+                      className="col-span-1 h-8 rounded-lg border border-[#DDC9A8] bg-white px-1 text-xs text-[#3B2A1E] outline-none"
                     >
-                      +
-                    </button>
-                    <button onClick={() => removeItem(idx)} className="text-[#D62F3D] text-xs ml-1">
+                      <option value="">-</option>
+                      <option value="monday">Mon</option>
+                      <option value="thursday">Thu</option>
+                    </select>
+                    <button onClick={() => removeItem(idx)} className="col-span-1 text-[#B0242F] text-xs">
                       ✕
                     </button>
                   </div>
-                </div>
-              )
+                ))}
+              </div>
+            )}
+
+            {reviewOpen && (
+              <label className="block">
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-[#9C8C77] mb-1">Notes</span>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Allergies, substitutions, anything the kitchen should know"
+                  className="w-full rounded-lg border border-[#DDC9A8] bg-white px-3 py-2 text-sm text-[#3B2A1E] outline-none"
+                />
+              </label>
             )}
           </div>
 
-          <label className="block text-xs font-bold text-[#4B2B1D] mb-1">Notes</label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            className="w-full rounded-lg border border-[#B9A88F] bg-white px-3 py-2 text-sm text-[#4B2B1D] outline-none mb-4"
-          />
-
-          <button
-            onClick={submit}
-            disabled={submitting || items.length === 0}
-            className="w-full h-11 rounded-xl bg-[#2E527F] text-sm font-extrabold text-white hover:bg-[#24466E] disabled:opacity-50"
-          >
-            {submitting ? 'Saving...' : 'Save Order'}
-          </button>
+          {/* Sticky order bar -- same shape as the client page's bottom bar */}
+          <div className="flex-shrink-0 rounded-t-2xl bg-[#FBF5EA] border-t border-[#DDC9A8] px-4 pt-2.5 pb-3">
+            {reviewOpen && (
+              <div className="max-h-32 overflow-y-auto mb-2 space-y-1 border-b border-[#DDC9A8] pb-2">
+                {namedItems.length === 0 ? (
+                  <p className="text-[11px] text-[#9C8C77] text-center py-1">Nothing added yet</p>
+                ) : (
+                  items.map((item, idx) =>
+                    !item.mealName ? null : (
+                      <div key={idx} className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] text-[#3B2A1E] truncate">
+                          {item.mealName} <span className="text-[#9C8C77]">({item.category}{item.dayOfWeek ? `, ${item.dayOfWeek}` : ''})</span>
+                        </p>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <button type="button" onClick={() => bumpQty(idx, -1)} className="h-5 w-5 rounded border border-[#DDC9A8] text-[11px] font-bold text-[#3B2A1E]">
+                            −
+                          </button>
+                          <span className="w-4 text-center text-[11px] font-bold text-[#3B2A1E]">{item.quantity}</span>
+                          <button type="button" onClick={() => bumpQty(idx, 1)} className="h-5 w-5 rounded border border-[#DDC9A8] text-[11px] font-bold text-[#3B2A1E]">
+                            +
+                          </button>
+                          <button onClick={() => removeItem(idx)} className="text-[#B0242F] text-[11px] ml-0.5">
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  )
+                )}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setReviewOpen((v) => !v)}
+              className="flex w-full items-center justify-between mb-2"
+            >
+              <span className="text-[11px] font-bold uppercase tracking-wide text-[#9C8C77]">
+                {orderCount} item{orderCount === 1 ? '' : 's'}
+                <span className={`inline-block ml-1 transition-transform ${reviewOpen ? 'rotate-180' : ''}`}>▾</span>
+              </span>
+              <span className="text-lg font-bold text-[#3B2A1E]">${orderTotal.toFixed(2)}</span>
+            </button>
+            <button
+              onClick={submit}
+              disabled={submitting || items.length === 0 || !customerName.trim()}
+              className="w-full h-10 rounded-full bg-[#E3922E] text-xs font-bold uppercase tracking-wide text-white hover:bg-[#C97C1E] disabled:opacity-50 transition"
+            >
+              {submitting ? 'Saving...' : 'Submit Order'}
+            </button>
+          </div>
         </div>
       </div>
     </>
