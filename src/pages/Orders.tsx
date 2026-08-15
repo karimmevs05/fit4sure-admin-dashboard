@@ -69,7 +69,6 @@ type Summary = {
 type NonResponder = {
   id: number
   name: string
-  lastOrder: Array<{ menu_name: string; category: string | null; quantity: number; day_of_week: string | null }>
 }
 
 type ThisWeekData = {
@@ -581,22 +580,13 @@ function ThisWeekTab({
           <div className="space-y-2">
             {nonResponders.map((customer) => (
               <div key={customer.id} className="flex items-center justify-between rounded-lg bg-white p-3 border border-[#E4D8C9]">
-                <div>
-                  <p className="font-semibold text-[#4B2B1D] text-sm">{customer.name}</p>
-                  {(customer.lastOrder?.length ?? 0) > 0 ? (
-                    <p className="text-xs text-[#755B4C] mt-0.5">
-                      Last time: {customer.lastOrder.map((l) => `${l.menu_name} (${l.quantity})`).join(', ')}
-                    </p>
-                  ) : (
-                    <p className="text-xs text-[#9A7E6F] mt-0.5">No previous order on file</p>
-                  )}
-                </div>
+                <p className="font-semibold text-[#4B2B1D] text-sm">{customer.name}</p>
                 <button
                   onClick={() => onAddOrderFor(customer)}
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#2E527F] px-3 text-xs font-bold text-white hover:bg-[#24466E] transition"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  Add Their Order
+                  Add New Order
                 </button>
               </div>
             ))}
