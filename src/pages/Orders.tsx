@@ -572,21 +572,23 @@ function ThisWeekTab({
 
       {/* Non-Responders Worklist */}
       {nonResponders.length > 0 && (
-        <div className="rounded-2xl border border-[#F0C5B8] bg-[#FFF4F0] p-4">
-          <h3 className="mb-3 font-bold text-[#C97C34] flex items-center gap-2">
-            <Phone className="h-4 w-4" />
+        <div className="rounded-xl border border-[#E4D8C9] bg-[#FBF7F0]">
+          <p className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-[#9A8774]">
+            <Phone className="h-3 w-3" />
             Needs Follow-Up ({nonResponders.length})
-          </h3>
-          <div className="space-y-2">
-            {nonResponders.map((customer) => (
-              <div key={customer.id} className="flex items-center justify-between rounded-lg bg-white p-3 border border-[#E4D8C9]">
-                <p className="font-semibold text-[#4B2B1D] text-sm">{customer.name}</p>
+          </p>
+          <div className="border-t border-[#E4D8C9]">
+            {nonResponders.map((customer, idx) => (
+              <div
+                key={customer.id}
+                className={`flex items-center justify-between px-4 py-1.5 ${idx > 0 ? 'border-t border-[#F0EAE0]' : ''}`}
+              >
+                <p className="text-xs text-[#4B2B1D]">{customer.name}</p>
                 <button
                   onClick={() => onAddOrderFor(customer)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#2E527F] px-3 text-xs font-bold text-white hover:bg-[#24466E] transition"
+                  className="text-xs font-semibold text-[#2E527F] hover:underline"
                 >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add New Order
+                  + Add New Order
                 </button>
               </div>
             ))}
