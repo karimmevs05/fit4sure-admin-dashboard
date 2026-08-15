@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import RecipePlanSection from '../components/RecipePlanSection'
+import { PlateCostSimulator } from '../components/PlateCostSimulator'
 import { formatIngredientWeight } from '../utils/unitConversion'
 
 const GRAMS_PER_POUND = 455
@@ -103,6 +104,8 @@ export default function MenuPlannerPage() {
           </p>
         </div>
       </div>
+
+      <PlateCostSimulator />
 
       <RecipePlanSection onSaved={fetchPrepFinancials} />
 
