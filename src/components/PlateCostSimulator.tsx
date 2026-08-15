@@ -157,14 +157,16 @@ export function PlateCostSimulator() {
 
           {plate.length > 0 && (
             <div className="rounded-lg border border-[#E4D8C9] bg-white">
-              {plate.map((p, idx) => {
+              <div className="flex items-center justify-between px-3 py-2 bg-[#F8F2E8] rounded-t-lg">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-[#755B4C]">Plate total</span>
+                <span className="text-[11px] text-[#755B4C]">{macroLine(totals)}</span>
+                <span className="text-sm font-extrabold text-[#16A34A]">${(totals.cost_cents / 100).toFixed(2)}</span>
+              </div>
+              {plate.map((p) => {
                 const grams = parseFloat(p.servingSizeG) || 0
                 const m = macrosAtGrams(p.recipe, grams)
                 return (
-                  <div
-                    key={p.recipe.recipe_id}
-                    className={`flex items-center gap-2 px-3 py-1.5 ${idx > 0 ? 'border-t border-[#F0EAE0]' : ''}`}
-                  >
+                  <div key={p.recipe.recipe_id} className="flex items-center gap-2 px-3 py-1.5 border-t border-[#F0EAE0]">
                     <span className="flex-1 truncate text-xs font-medium text-[#4B2B1D]">{p.recipe.name}</span>
                     <span className="hidden md:inline text-[11px] text-[#9A8774] truncate">{macroLine(m)}</span>
                     <input
@@ -183,11 +185,6 @@ export function PlateCostSimulator() {
                   </div>
                 )
               })}
-              <div className="flex items-center justify-between px-3 py-2 border-t border-[#E4D8C9] bg-[#F8F2E8] rounded-b-lg">
-                <span className="text-[11px] font-bold uppercase tracking-wide text-[#755B4C]">Plate total</span>
-                <span className="text-[11px] text-[#755B4C]">{macroLine(totals)}</span>
-                <span className="text-sm font-extrabold text-[#16A34A]">${(totals.cost_cents / 100).toFixed(2)}</span>
-              </div>
             </div>
           )}
 
