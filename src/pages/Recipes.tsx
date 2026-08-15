@@ -29,6 +29,7 @@ type RecipeIngredient = {
   category?: string | null;
   quantity_g: number;
   unit_price_cents?: number;
+  priced_from_receipt?: boolean;
   ingredient_cost_cents?: number;
   protein_per_100g?: number | null;
   carbs_per_100g?: number | null;
@@ -1463,7 +1464,14 @@ function RecipeDetailsDrawer({
                   <div key={ing.id} className="flex justify-between items-center py-2 border-b border-[#E4D8C9] last:border-0">
                     <div className="flex-1">
                       <p className="text-sm font-medium text-[#4B2B1D]">{ing.name}</p>
-                      <p className="text-xs text-[#755B4C]">{formatIngredientWeight(ing.quantity_g, ing.category)}</p>
+                      <p className="text-xs text-[#755B4C]">
+                        {formatIngredientWeight(ing.quantity_g, ing.category)}
+                        {ing.priced_from_receipt && (
+                          <span className="ml-1.5 text-[#D97706]" title="No price set in Inventory — using the real price last paid on a scanned receipt">
+                            ≈ from receipt
+                          </span>
+                        )}
+                      </p>
                     </div>
                     <div className="text-right ml-3">
                       {ing.ingredient_cost_cents !== undefined && ing.ingredient_cost_cents !== null && ing.ingredient_cost_cents > 0 ? (
