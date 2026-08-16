@@ -106,6 +106,7 @@ interface Expense {
   amount: number
   status: 'pending' | 'approved' | 'reconciled' | 'rejected'
   receiptId?: string
+  receiptScanId?: number | null
   sourceType?: 'manual' | 'scan' | 'gdrive'
   approvedByName?: string | null
   approvedAt?: string | null
@@ -151,6 +152,7 @@ interface PendingBalance {
 
 interface Transaction {
   id: number
+  customer_id: number
   customer_name: string
   created_at: string
   total_price: number
@@ -316,6 +318,11 @@ function FinancialsPage() {
   const [overview, setOverview] = useState<FinancialsOverview | null>(null)
   const [overviewLoading, setOverviewLoading] = useState(true)
   const [trend, setTrend] = useState<TrendPoint[]>([])
+  const [expandedReceiptGroups, setExpandedReceiptGroups] = useState<Set<string>>(new Set())
+  const [selectedReceiptGroups, setSelectedReceiptGroups] = useState<Set<string>>(new Set())
+  const [groupActing, setGroupActing] = useState<string | null>(null)
+  const [expandedClientGroups, setExpandedClientGroups] = useState<Set<string>>(new Set())
+  const [clientCollecting, setClientCollecting] = useState<string | null>(null)
   const [ledgerCategoryFilter, setLedgerCategoryFilter] = useState('all')
   const [ledgerStatusFilter, setLedgerStatusFilter] = useState('all')
   const [ledgerSearch, setLedgerSearch] = useState('')
@@ -359,6 +366,7 @@ function FinancialsPage() {
         sourceType: row.source_type,
         approvedByName: row.approved_by_name,
         approvedAt: row.approved_at,
+        receiptScanId: row.receipt_scan_id,
       }))
       setExpenses(rows)
     } catch (err) {
@@ -522,6 +530,106 @@ function FinancialsPage() {
       await fetchExpenses()
     } finally {
       setBulkActing(false)
+    }
+  }
+
+  const bulkRejectSelected = async () => {
+    if (selectedExpenseIds.size === 0) return
+    setBulkActing(true)
+    try {
+      await fetch(`${apiUrl}/api/admin/expenses/bulk-reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ids: Array.from(selectedExpenseIds).map((id) => parseInt(id, 10)) }),
+      })
+      setSelectedExpenseIds(new Set())
+      await fetchExpenses()
+    } finally {
+      setBulkActing(false)
+    }
+  }
+
+  const toggleReceiptGroupExpanded = (key: string) => {
+    setExpandedReceiptGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const toggleReceiptGroupSelected = (key: string) => {
+    setSelectedReceiptGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  // The "linked edit" -- one action that approves/rejects every line item
+  // under a receipt at once, since they were captured together and are
+  // reviewed together.
+  const actOnReceiptGroup = async (key: string, ids: string[], action: 'approve' | 'reject') => {
+    setGroupActing(key)
+    try {
+      await fetch(`${apiUrl}/api/admin/expenses/bulk-${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ids: ids.map((id) => parseInt(id, 10)) }),
+      })
+      await fetchExpenses()
+    } finally {
+      setGroupActing(null)
+    }
+  }
+
+  const bulkActOnSelectedGroups = async (groups: { key: string; ids: string[] }[], action: 'approve' | 'reject') => {
+    if (selectedReceiptGroups.size === 0) return
+    setBulkActing(true)
+    try {
+      const ids = groups.filter((g) => selectedReceiptGroups.has(g.key)).flatMap((g) => g.ids)
+      await fetch(`${apiUrl}/api/admin/expenses/bulk-${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ids: ids.map((id) => parseInt(id, 10)) }),
+      })
+      setSelectedReceiptGroups(new Set())
+      await fetchExpenses()
+    } finally {
+      setBulkActing(false)
+    }
+  }
+
+  const toggleClientGroupExpanded = (key: string) => {
+    setExpandedClientGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  // The "linked edit" for a client group -- mark every one of their
+  // still-pending orders this month paid in a single action, since staff
+  // often collect from a client for several orders at once.
+  const markClientOrdersPaid = async (customerId: number, orderIds: number[]) => {
+    setClientCollecting(String(customerId))
+    try {
+      await Promise.all(
+        orderIds.map((id) =>
+          fetch(`${apiUrl}/api/admin/orders/${id}/mark-paid`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({}),
+          })
+        )
+      )
+      await fetchRevenue()
+      await fetchOverview()
+      await fetchPendingBalances()
+    } finally {
+      setClientCollecting(null)
     }
   }
 
@@ -1599,40 +1707,94 @@ function FinancialsPage() {
 
               <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
                 <div className="mb-3">
-                  <h3 className="text-base font-extrabold text-[#4B2B1D]">Transactions — {monthLong(selectedMonth)}</h3>
-                  <p className="text-xs text-[#9A7E6F]">Every order this month, straight from the real ledger — no separate payment processor feed yet</p>
+                  <h3 className="text-base font-extrabold text-[#4B2B1D]">Transactions by client — {monthLong(selectedMonth)}</h3>
+                  <p className="text-xs text-[#9A7E6F]">Every order this month, grouped by client, straight from the real ledger</p>
                 </div>
                 {revenueData.transactions.length === 0 ? (
                   <p className="text-sm text-[#9A7E6F]">No orders this month.</p>
                 ) : (
-                  <div className="overflow-x-auto rounded-lg border border-[#E8DCC8]">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-[#E8DCC8] bg-[#FDFBF7]">
-                          <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Customer</th>
-                          <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Date</th>
-                          <th className="px-3 py-2 text-right font-bold text-[#4B2B1D]">Amount</th>
-                          <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Method</th>
-                          <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {revenueData.transactions.map((t) => (
-                          <tr key={t.id} className="border-b border-[#E8DCC8] hover:bg-[#FDFBF7]">
-                            <td className="px-3 py-2 font-semibold text-[#4B2B1D]">{t.customer_name}</td>
-                            <td className="px-3 py-2 text-[#755B4C]">{new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td>
-                            <td className="px-3 py-2 text-right font-bold text-[#4B2B1D]">${t.total_price.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
-                            <td className="px-3 py-2 text-[#755B4C] capitalize">{t.payment_method || '—'}</td>
-                            <td className="px-3 py-2">
-                              <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${t.payment_status === 'paid' ? 'bg-[#EAF4EC] text-[#2F7A4D]' : 'bg-[#FBF2DE] text-[#B4831F]'}`}>
-                                {t.payment_status === 'paid' ? 'Paid' : 'Pending'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  (() => {
+                    const clientMap = new Map<number, Transaction[]>()
+                    for (const t of revenueData.transactions) {
+                      if (!clientMap.has(t.customer_id)) clientMap.set(t.customer_id, [])
+                      clientMap.get(t.customer_id)!.push(t)
+                    }
+                    const clientGroups = Array.from(clientMap.entries())
+                      .map(([customerId, txs]) => ({
+                        customerId,
+                        customerName: txs[0].customer_name,
+                        txs,
+                        total: txs.reduce((s, t) => s + t.total_price, 0),
+                        pendingIds: txs.filter((t) => t.payment_status === 'pending').map((t) => t.id),
+                      }))
+                      .sort((a, b) => b.total - a.total)
+
+                    return (
+                      <div className="rounded-lg border border-[#E8DCC8] divide-y divide-[#E8DCC8]">
+                        <div className="flex items-center gap-3 px-3 py-2 bg-[#FDFBF7] text-xs font-bold text-[#4B2B1D]">
+                          <span className="flex-1">Client</span>
+                          <span className="w-20 text-center">Orders</span>
+                          <span className="w-24 text-right">Total</span>
+                          <span className="w-28">Status</span>
+                          <span className="w-24"></span>
+                        </div>
+                        {clientGroups.map((g) => {
+                          const expanded = expandedClientGroups.has(String(g.customerId))
+                          const pendingCount = g.pendingIds.length
+                          return (
+                            <div key={g.customerId}>
+                              <div className="flex items-center gap-3 px-3 py-2.5 hover:bg-[#FDFBF7]">
+                                <button onClick={() => toggleClientGroupExpanded(String(g.customerId))} className="flex-1 flex items-center gap-2 text-left min-w-0">
+                                  {expanded ? <ChevronUp className="h-3.5 w-3.5 text-[#9A7E6F] flex-shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-[#9A7E6F] flex-shrink-0" />}
+                                  <span className="font-semibold text-[#4B2B1D] truncate">{g.customerName}</span>
+                                </button>
+                                <span className="w-20 text-center text-xs text-[#755B4C]">{g.txs.length}</span>
+                                <span className="w-24 text-right font-bold text-[#4B2B1D]">${g.total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+                                <span className="w-28">
+                                  {pendingCount === 0 ? (
+                                    <span className="inline-block rounded-full px-2 py-0.5 text-[11px] font-bold bg-[#EAF4EC] text-[#2F7A4D]">All paid</span>
+                                  ) : (
+                                    <span className="inline-block rounded-full px-2 py-0.5 text-[11px] font-bold bg-[#FBF2DE] text-[#B4831F]">{pendingCount} pending</span>
+                                  )}
+                                </span>
+                                <span className="w-24 flex justify-end">
+                                  {pendingCount > 0 && (
+                                    <button
+                                      onClick={() => markClientOrdersPaid(g.customerId, g.pendingIds)}
+                                      disabled={clientCollecting === String(g.customerId)}
+                                      className="rounded-lg border border-[#E8DCC8] bg-white px-2.5 py-1 text-[11px] font-bold text-[#2E527F] hover:bg-[#EAF0F7] disabled:opacity-50"
+                                    >
+                                      {clientCollecting === String(g.customerId) ? '...' : 'Mark all paid'}
+                                    </button>
+                                  )}
+                                </span>
+                              </div>
+                              {expanded && (
+                                <div className="bg-[#FDFBF7] px-3 py-2 pl-9">
+                                  <table className="w-full text-xs">
+                                    <tbody>
+                                      {g.txs.map((t) => (
+                                        <tr key={t.id} className="border-b border-[#F0EAE0] last:border-0">
+                                          <td className="py-1.5 pr-3 text-[#755B4C] whitespace-nowrap">{new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td>
+                                          <td className="py-1.5 pr-3 text-right font-bold text-[#4B2B1D] whitespace-nowrap">${t.total_price.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                                          <td className="py-1.5 pr-3 text-[#755B4C] capitalize">{t.payment_method || '—'}</td>
+                                          <td className="py-1.5">
+                                            <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${t.payment_status === 'paid' ? 'bg-[#EAF4EC] text-[#2F7A4D]' : 'bg-[#FBF2DE] text-[#B4831F]'}`}>
+                                              {t.payment_status === 'paid' ? 'Paid' : 'Pending'}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })()
                 )}
               </div>
             </>
@@ -2501,17 +2663,6 @@ function FinancialsPage() {
                   className="flex-1 min-w-[180px] rounded-lg border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs text-[#4B2B1D] outline-none"
                 />
               </div>
-              {selectedExpenseIds.size > 0 && (
-                <div className="flex items-center justify-between gap-3 rounded-xl bg-[#4B2B1D] text-white px-4 py-2.5 mb-3">
-                  <span className="text-sm font-bold">{selectedExpenseIds.size} selected</span>
-                  <div className="flex gap-2">
-                    <button onClick={bulkApproveSelected} disabled={bulkActing} className="inline-flex items-center gap-1.5 rounded-lg bg-[#2F7A4D] px-3 py-1.5 text-xs font-bold disabled:opacity-50">
-                      <Check className="h-3.5 w-3.5" /> Approve selected
-                    </button>
-                    <button onClick={() => setSelectedExpenseIds(new Set())} className="rounded-lg border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-bold">Cancel</button>
-                  </div>
-                </div>
-              )}
               {(() => {
                 const filteredExpenses = expenses.filter((e) => {
                   if (ledgerCategoryFilter !== 'all' && e.category !== ledgerCategoryFilter) return false
@@ -2522,78 +2673,147 @@ function FinancialsPage() {
                   }
                   return true
                 })
-                return expensesLoading ? (
-                <p className="text-sm text-[#755B4C]">Loading...</p>
-              ) : filteredExpenses.length === 0 ? (
-                <p className="text-sm text-[#755B4C]">No expenses match this filter.</p>
-              ) : (
-                <div className="overflow-x-auto rounded-lg border border-[#E8DCC8]">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-[#E8DCC8] bg-[#FDFBF7]">
-                        <th className="px-3 py-2 w-6">
+
+                // One row per receipt -- every line item captured together
+                // (Quick Entry batch, a scan, a Drive sync) shares a
+                // receipt_scan_id. Items without one (older single manual
+                // entries) are their own singleton group.
+                const groupsMap = new Map<string, Expense[]>()
+                for (const e of filteredExpenses) {
+                  const key = e.receiptScanId != null ? `r${e.receiptScanId}` : `single-${e.id}`
+                  if (!groupsMap.has(key)) groupsMap.set(key, [])
+                  groupsMap.get(key)!.push(e)
+                }
+                const groups = Array.from(groupsMap.entries())
+                  .map(([key, items]) => {
+                    const statuses = new Set(items.map((i) => i.status))
+                    return {
+                      key,
+                      items,
+                      date: items[0].date,
+                      vendor: items[0].vendor,
+                      sourceType: items[0].sourceType,
+                      total: items.reduce((s, i) => s + i.amount, 0),
+                      statusLabel: statuses.size === 1 ? items[0].status : 'mixed',
+                      anyPending: items.some((i) => i.status === 'pending'),
+                      pendingIds: items.filter((i) => i.status === 'pending').map((i) => i.id),
+                    }
+                  })
+                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                const selectableGroups = groups.filter((g) => g.anyPending)
+
+                return (
+                  <>
+                    {selectedReceiptGroups.size > 0 && (
+                      <div className="flex items-center justify-between gap-3 rounded-xl bg-[#4B2B1D] text-white px-4 py-2.5 mb-3">
+                        <span className="text-sm font-bold">{selectedReceiptGroups.size} receipt{selectedReceiptGroups.size === 1 ? '' : 's'} selected</span>
+                        <div className="flex gap-2">
+                          <button onClick={() => bulkActOnSelectedGroups(groups.map((g) => ({ key: g.key, ids: g.pendingIds })), 'approve')} disabled={bulkActing} className="inline-flex items-center gap-1.5 rounded-lg bg-[#2F7A4D] px-3 py-1.5 text-xs font-bold disabled:opacity-50">
+                            <Check className="h-3.5 w-3.5" /> Approve selected
+                          </button>
+                          <button onClick={() => bulkActOnSelectedGroups(groups.map((g) => ({ key: g.key, ids: g.pendingIds })), 'reject')} disabled={bulkActing} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 border border-white/30 px-3 py-1.5 text-xs font-bold disabled:opacity-50">
+                            <X className="h-3.5 w-3.5" /> Reject selected
+                          </button>
+                          <button onClick={() => setSelectedReceiptGroups(new Set())} className="rounded-lg border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-bold">Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                    {expensesLoading ? (
+                      <p className="text-sm text-[#755B4C]">Loading...</p>
+                    ) : groups.length === 0 ? (
+                      <p className="text-sm text-[#755B4C]">No expenses match this filter.</p>
+                    ) : (
+                      <div className="rounded-lg border border-[#E8DCC8] divide-y divide-[#E8DCC8]">
+                        <div className="flex items-center gap-3 px-3 py-2 bg-[#FDFBF7] text-xs font-bold text-[#4B2B1D]">
                           <input
                             type="checkbox"
-                            checked={selectedExpenseIds.size > 0 && selectedExpenseIds.size === filteredExpenses.filter((e) => e.status === 'pending').length}
-                            onChange={(e) => setSelectedExpenseIds(e.target.checked ? new Set(filteredExpenses.filter((x) => x.status === 'pending').map((x) => x.id)) : new Set())}
+                            checked={selectableGroups.length > 0 && selectedReceiptGroups.size === selectableGroups.length}
+                            onChange={(e) => setSelectedReceiptGroups(e.target.checked ? new Set(selectableGroups.map((g) => g.key)) : new Set())}
                           />
-                        </th>
-                        <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Date</th>
-                        <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Vendor</th>
-                        <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Category</th>
-                        <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Source</th>
-                        <th className="px-3 py-2 text-right font-bold text-[#4B2B1D]">Amount</th>
-                        <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Status</th>
-                        <th className="px-3 py-2"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredExpenses.map((e) => {
-                        const sourceIcon = e.sourceType === 'gdrive' ? <Cloud className="h-3 w-3" /> : e.sourceType === 'scan' ? <Camera className="h-3 w-3" /> : <Edit3 className="h-3 w-3" />
-                        const sourceLabel = e.sourceType === 'gdrive' ? 'Drive' : e.sourceType === 'scan' ? 'Scan' : 'Manual'
-                        const statusStyle =
-                          e.status === 'approved' || e.status === 'reconciled' ? 'bg-[#EAF4EC] text-[#2F7A4D]'
-                          : e.status === 'rejected' ? 'bg-[#FBEBE8] text-[#B4432F]'
-                          : 'bg-[#FBF2DE] text-[#B4831F]'
-                        return (
-                          <tr key={e.id} className="border-b border-[#E8DCC8] hover:bg-[#FDFBF7] align-top">
-                            <td className="px-3 py-2">
-                              {e.status === 'pending' && (
-                                <input type="checkbox" checked={selectedExpenseIds.has(e.id)} onChange={() => toggleExpenseSelected(e.id)} />
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-[#755B4C] whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</td>
-                            <td className="px-3 py-2 font-semibold text-[#4B2B1D]">{e.vendor}</td>
-                            <td className="px-3 py-2 text-[#755B4C]">{categoryColors[e.category]?.label || e.category}</td>
-                            <td className="px-3 py-2">
-                              <span className="inline-flex items-center gap-1 rounded-full bg-[#F0ECE3] text-[#755B4C] px-2 py-0.5 text-[11px] font-bold">{sourceIcon}{sourceLabel}</span>
-                            </td>
-                            <td className="px-3 py-2 text-right font-bold text-[#4B2B1D]">${e.amount.toFixed(2)}</td>
-                            <td className="px-3 py-2">
-                              <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-bold capitalize ${statusStyle}`}>{e.status}</span>
-                              {e.approvedByName && e.approvedAt && (
-                                <div className="mt-0.5 text-[10px] text-[#9A7E6F]">by {e.approvedByName} · {new Date(e.approvedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
-                              )}
-                            </td>
-                            <td className="px-3 py-2">
-                              {e.status === 'pending' && (
-                                <div className="flex gap-1">
-                                  <button onClick={() => approveExpense(e.id)} title="Approve" className="h-6 w-6 rounded border border-[#E8DCC8] flex items-center justify-center text-[#2F7A4D] hover:bg-[#EAF4EC]">
-                                    <Check className="h-3 w-3" />
-                                  </button>
-                                  <button onClick={() => rejectExpense(e.id)} title="Reject" className="h-6 w-6 rounded border border-[#E8DCC8] flex items-center justify-center text-[#B4432F] hover:bg-[#FBEBE8]">
-                                    <X className="h-3 w-3" />
-                                  </button>
+                          <span className="flex-1">Receipt</span>
+                          <span className="w-20 text-center">Items</span>
+                          <span className="w-24 text-right">Amount</span>
+                          <span className="w-24">Status</span>
+                          <span className="w-[92px]"></span>
+                        </div>
+                        {groups.map((g) => {
+                          const sourceIcon = g.sourceType === 'gdrive' ? <Cloud className="h-3 w-3" /> : g.sourceType === 'scan' ? <Camera className="h-3 w-3" /> : <Edit3 className="h-3 w-3" />
+                          const sourceLabel = g.sourceType === 'gdrive' ? 'Drive' : g.sourceType === 'scan' ? 'Scan' : 'Manual'
+                          const statusStyle =
+                            g.statusLabel === 'approved' || g.statusLabel === 'reconciled' ? 'bg-[#EAF4EC] text-[#2F7A4D]'
+                            : g.statusLabel === 'rejected' ? 'bg-[#FBEBE8] text-[#B4432F]'
+                            : g.statusLabel === 'mixed' ? 'bg-[#F0ECE3] text-[#755B4C]'
+                            : 'bg-[#FBF2DE] text-[#B4831F]'
+                          const expanded = expandedReceiptGroups.has(g.key)
+                          return (
+                            <div key={g.key}>
+                              <div className="flex items-center gap-3 px-3 py-2.5 hover:bg-[#FDFBF7]">
+                                {g.anyPending ? (
+                                  <input type="checkbox" checked={selectedReceiptGroups.has(g.key)} onChange={() => toggleReceiptGroupSelected(g.key)} />
+                                ) : (
+                                  <span className="w-[13px]" />
+                                )}
+                                <button onClick={() => toggleReceiptGroupExpanded(g.key)} className="flex-1 flex items-center gap-2 text-left min-w-0">
+                                  {expanded ? <ChevronUp className="h-3.5 w-3.5 text-[#9A7E6F] flex-shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-[#9A7E6F] flex-shrink-0" />}
+                                  <span className="text-xs text-[#755B4C] whitespace-nowrap">{new Date(g.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</span>
+                                  <span className="font-semibold text-[#4B2B1D] truncate">{g.vendor}</span>
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-[#F0ECE3] text-[#755B4C] px-2 py-0.5 text-[11px] font-bold flex-shrink-0">{sourceIcon}{sourceLabel}</span>
+                                </button>
+                                <span className="w-20 text-center text-xs text-[#755B4C]">{g.items.length} item{g.items.length === 1 ? '' : 's'}</span>
+                                <span className="w-24 text-right font-bold text-[#4B2B1D]">${g.total.toFixed(2)}</span>
+                                <span className="w-24">
+                                  <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-bold capitalize ${statusStyle}`}>{g.statusLabel}</span>
+                                </span>
+                                <span className="w-[92px] flex justify-end">
+                                  {g.anyPending && (
+                                    <div className="flex gap-1">
+                                      <button
+                                        onClick={() => actOnReceiptGroup(g.key, g.pendingIds, 'approve')}
+                                        disabled={groupActing === g.key}
+                                        title="Approve whole receipt"
+                                        className="h-6 w-6 rounded border border-[#E8DCC8] flex items-center justify-center text-[#2F7A4D] hover:bg-[#EAF4EC] disabled:opacity-50"
+                                      >
+                                        <Check className="h-3 w-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => actOnReceiptGroup(g.key, g.pendingIds, 'reject')}
+                                        disabled={groupActing === g.key}
+                                        title="Reject whole receipt"
+                                        className="h-6 w-6 rounded border border-[#E8DCC8] flex items-center justify-center text-[#B4432F] hover:bg-[#FBEBE8] disabled:opacity-50"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    </div>
+                                  )}
+                                </span>
+                              </div>
+                              {expanded && (
+                                <div className="bg-[#FDFBF7] px-3 py-2 pl-9">
+                                  <table className="w-full text-xs">
+                                    <tbody>
+                                      {g.items.map((item) => (
+                                        <tr key={item.id} className="border-b border-[#F0EAE0] last:border-0">
+                                          <td className="py-1.5 pr-3 text-[#4B2B1D]">{item.description || item.vendor}</td>
+                                          <td className="py-1.5 pr-3 text-[#755B4C]">{categoryColors[item.category]?.label || item.category}</td>
+                                          <td className="py-1.5 pr-3 text-right font-bold text-[#4B2B1D] whitespace-nowrap">${item.amount.toFixed(2)}</td>
+                                          <td className="py-1.5 text-[#9A7E6F] capitalize whitespace-nowrap">{item.status}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                  {g.items[0]?.approvedByName && g.items[0]?.approvedAt && (
+                                    <p className="mt-1.5 text-[10px] text-[#9A7E6F]">by {g.items[0].approvedByName} · {new Date(g.items[0].approvedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                                  )}
                                 </div>
                               )}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )})()}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
             </Section>
 
             {/* Receipt History -- one row per receipt (not per line item),
