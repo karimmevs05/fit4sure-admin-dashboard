@@ -64,6 +64,8 @@ export function PlateCostSimulator() {
   const [customerQuery, setCustomerQuery] = useState('')
   const [showCustomerMatches, setShowCustomerMatches] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [plateName, setPlateName] = useState('')
+  const [priceOverride, setPriceOverride] = useState('')
   const [assigning, setAssigning] = useState(false)
   const [assignMessage, setAssignMessage] = useState<string | null>(null)
 
@@ -127,21 +129,26 @@ export function PlateCostSimulator() {
     )
   }, [plate])
 
+  const autoName = plate.map((p) => p.recipe.name).join(' + ').slice(0, 120)
+
   // One-command "make this real for a real client": creates a real menu
-  // item priced at exactly what's shown here, and a real order for them --
-  // no separate modal, no day/format picker, just pick a customer and go.
+  // item priced at exactly what's shown here (or an edited name/price, for
+  // when this plate is meant to become a standing custom meal plan rather
+  // than just a cost estimate), and a real order for them -- no separate
+  // modal, no day/format picker, just pick a customer and go.
   const assignToClient = async () => {
     if (!selectedCustomer || plate.length === 0) return
     setAssigning(true)
     setAssignMessage(null)
     try {
-      const name = plate.map((p) => p.recipe.name).join(' + ').slice(0, 120)
+      const name = (plateName.trim() || autoName).slice(0, 120)
+      const priceCents = priceOverride.trim() ? Math.round(parseFloat(priceOverride) * 100) : totals.cost_cents
       await axios.post(
         `${apiUrl}/api/admin/orders/custom-plate`,
         {
           customerId: selectedCustomer.id,
           name,
-          priceCents: totals.cost_cents,
+          priceCents,
           notes: `Custom plate from simulator: ${plate.map((p) => `${p.recipe.name} (${p.servingSizeG}g)`).join(', ')}`,
         },
         { headers: { Authorization: `Bearer ${token}` } }
@@ -149,6 +156,8 @@ export function PlateCostSimulator() {
       setAssignMessage(`Added to ${selectedCustomer.name}'s order`)
       setSelectedCustomer(null)
       setCustomerQuery('')
+      setPlateName('')
+      setPriceOverride('')
     } catch (err: any) {
       setAssignMessage(err.response?.data?.error || 'Failed to assign')
     } finally {
@@ -236,51 +245,75 @@ export function PlateCostSimulator() {
                 )
               })}
 
-              {/* Simple command: pick a customer, one click makes this
-                  exact plate a real order for them -- no separate modal. */}
-              <div className="relative flex items-center gap-1.5 px-3 py-1.5 border-t border-[#E4D8C9] bg-[#F8F2E8] rounded-b-lg">
-                <input
-                  value={selectedCustomer ? selectedCustomer.name : customerQuery}
-                  onChange={(e) => {
-                    setSelectedCustomer(null)
-                    setCustomerQuery(e.target.value)
-                    setShowCustomerMatches(true)
-                  }}
-                  onFocus={() => setShowCustomerMatches(true)}
-                  onBlur={() => setTimeout(() => setShowCustomerMatches(false), 150)}
-                  placeholder="Assign to client..."
-                  className="h-7 flex-1 min-w-0 rounded-md border border-[#D8CDBE] bg-white px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#3E6594]"
-                />
-                <button
-                  onClick={assignToClient}
-                  disabled={!selectedCustomer || assigning}
-                  className="h-7 flex-shrink-0 rounded-md bg-[#16A34A] px-2.5 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#15873F] transition"
-                >
-                  {assigning ? '...' : 'Assign'}
-                </button>
-                {assignMessage && (
-                  <span className="flex items-center gap-1 text-[11px] font-medium text-[#755B4C] flex-shrink-0">
-                    <Check className="h-3 w-3 text-[#16A34A]" />
-                    {assignMessage}
-                  </span>
-                )}
-                {showCustomerMatches && customerMatches.length > 0 && (
-                  <div className="absolute left-3 right-3 top-full z-10 mt-1 rounded-md border border-[#D8CDBE] bg-white shadow-md max-h-40 overflow-y-auto">
-                    {customerMatches.map((c) => (
-                      <button
-                        key={c.id}
-                        onMouseDown={() => {
-                          setSelectedCustomer(c)
-                          setCustomerQuery('')
-                          setShowCustomerMatches(false)
-                        }}
-                        className="block w-full px-2.5 py-1.5 text-left text-xs text-[#4B2B1D] hover:bg-[#F8F2E8]"
-                      >
-                        {c.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
+              {/* Simple command: name it, price it, pick a customer, one
+                  click makes this plate a real custom meal plan for them --
+                  no separate modal. Name/price default to the computed
+                  combo but are editable, since a plan meant to stick around
+                  usually wants a real name and a set price, not the raw
+                  ingredient cost. */}
+              <div className="border-t border-[#E4D8C9] bg-[#F8F2E8] rounded-b-lg">
+                <div className="flex items-center gap-1.5 px-3 pt-1.5">
+                  <input
+                    value={plateName}
+                    onChange={(e) => setPlateName(e.target.value)}
+                    placeholder={autoName || 'Plate name'}
+                    className="h-7 flex-1 min-w-0 rounded-md border border-[#D8CDBE] bg-white px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                  />
+                  <span className="text-xs text-[#9A8774] flex-shrink-0">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={priceOverride}
+                    onChange={(e) => setPriceOverride(e.target.value)}
+                    placeholder={(totals.cost_cents / 100).toFixed(2)}
+                    className="h-7 w-16 flex-shrink-0 rounded-md border border-[#D8CDBE] bg-white px-1.5 text-xs text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                  />
+                </div>
+                <div className="relative flex items-center gap-1.5 px-3 py-1.5">
+                  <input
+                    value={selectedCustomer ? selectedCustomer.name : customerQuery}
+                    onChange={(e) => {
+                      setSelectedCustomer(null)
+                      setCustomerQuery(e.target.value)
+                      setShowCustomerMatches(true)
+                    }}
+                    onFocus={() => setShowCustomerMatches(true)}
+                    onBlur={() => setTimeout(() => setShowCustomerMatches(false), 150)}
+                    placeholder="Assign to client..."
+                    className="h-7 flex-1 min-w-0 rounded-md border border-[#D8CDBE] bg-white px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                  />
+                  <button
+                    onClick={assignToClient}
+                    disabled={!selectedCustomer || assigning}
+                    className="h-7 flex-shrink-0 rounded-md bg-[#16A34A] px-2.5 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#15873F] transition"
+                  >
+                    {assigning ? '...' : 'Assign'}
+                  </button>
+                  {assignMessage && (
+                    <span className="flex items-center gap-1 text-[11px] font-medium text-[#755B4C] flex-shrink-0">
+                      <Check className="h-3 w-3 text-[#16A34A]" />
+                      {assignMessage}
+                    </span>
+                  )}
+                  {showCustomerMatches && customerMatches.length > 0 && (
+                    <div className="absolute left-3 right-3 top-full z-10 mt-1 rounded-md border border-[#D8CDBE] bg-white shadow-md max-h-40 overflow-y-auto">
+                      {customerMatches.map((c) => (
+                        <button
+                          key={c.id}
+                          onMouseDown={() => {
+                            setSelectedCustomer(c)
+                            setCustomerQuery('')
+                            setShowCustomerMatches(false)
+                          }}
+                          className="block w-full px-2.5 py-1.5 text-left text-xs text-[#4B2B1D] hover:bg-[#F8F2E8]"
+                        >
+                          {c.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
