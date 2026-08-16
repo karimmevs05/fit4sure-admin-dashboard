@@ -1643,49 +1643,28 @@ function FinancialsPage() {
       {activeTab === 'expenses' && (
       <div className="space-y-4">
         {/* Receipt Scanner */}
-        <Section id="receiptScanner" title="📸 Log Receipts (Physical, Online & Google Drive)" expandedSections={expandedSections} toggleSection={toggleSection}>
-          {/* Tab Buttons */}
-          <div className="flex gap-2 mb-4 border-b border-[#E8DCC8] flex-wrap">
-            <button
-              onClick={() => setReceiptTab('manual')}
-              className={`px-4 py-2 font-semibold transition ${
-                receiptTab === 'manual'
-                  ? 'text-[#8B6F47] border-b-2 border-[#8B6F47]'
-                  : 'text-[#9A7E6F] hover:text-[#755B4C]'
-              }`}
-            >
-              ✏️ Manual Entry
-            </button>
-            <button
-              onClick={() => setReceiptTab('gdrive')}
-              className={`px-4 py-2 font-semibold transition ${
-                receiptTab === 'gdrive'
-                  ? 'text-[#8B6F47] border-b-2 border-[#8B6F47]'
-                  : 'text-[#9A7E6F] hover:text-[#755B4C]'
-              }`}
-            >
-              ☁️ Google Drive (Auto)
-            </button>
-            <button
-              onClick={() => setReceiptTab('scanner')}
-              className={`px-4 py-2 font-semibold transition ${
-                receiptTab === 'scanner'
-                  ? 'text-[#8B6F47] border-b-2 border-[#8B6F47]'
-                  : 'text-[#9A7E6F] hover:text-[#755B4C]'
-              }`}
-            >
-              📷 Physical Receipt
-            </button>
-            <button
-              onClick={() => setReceiptTab('screenshot')}
-              className={`px-4 py-2 font-semibold transition ${
-                receiptTab === 'screenshot'
-                  ? 'text-[#8B6F47] border-b-2 border-[#8B6F47]'
-                  : 'text-[#9A7E6F] hover:text-[#755B4C]'
-              }`}
-            >
-              📧 Online Order
-            </button>
+        <Section id="receiptScanner" title="Add Expense" expandedSections={expandedSections} toggleSection={toggleSection}>
+          <p className="text-xs text-[#9A7E6F] -mt-2 mb-4">One entry, one ledger — however you capture it, it lands in the same place</p>
+          {/* Method chooser -- Physical Receipt and Online Order retired per
+              the rebuild spec; Scan Receipt / Quick Entry supersede them. */}
+          <div className="flex gap-2.5 mb-4 flex-wrap">
+            {([
+              ['manual', Edit3, 'Quick Entry', 'Type vendor, amount, category'],
+              ['scanner', Camera, 'Scan Receipt', 'Photo → auto-filled, you confirm'],
+              ['gdrive', Cloud, 'Google Drive Sync', 'Auto-import from your folder'],
+            ] as [typeof receiptTab, any, string, string][]).map(([id, Icon, title, desc]) => (
+              <button
+                key={id}
+                onClick={() => setReceiptTab(id)}
+                className={`flex-1 min-w-[150px] rounded-xl border-[1.5px] p-3.5 text-left transition ${
+                  receiptTab === id ? 'border-[#C9692E] bg-[#FBEEE3]' : 'border-[#E8DCC8] bg-white hover:border-[#D8C8AE]'
+                }`}
+              >
+                <Icon className={`h-5 w-5 ${receiptTab === id ? 'text-[#C9692E]' : 'text-[#755B4C]'}`} />
+                <p className="mt-1.5 text-sm font-bold text-[#4B2B1D]">{title}</p>
+                <p className="mt-0.5 text-xs text-[#755B4C]">{desc}</p>
+              </button>
+            ))}
           </div>
 
           {/* Manual Entry Tab */}
