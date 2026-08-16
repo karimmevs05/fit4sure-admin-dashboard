@@ -1,5 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react'
-import { DollarSign, TrendingUp, Activity, ChevronDown, ChevronUp, Plus, X, Upload, Loader } from 'lucide-react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
+import {
+  DollarSign, TrendingUp, TrendingDown, Activity, ChevronDown, ChevronUp, Plus, X, Upload, Loader,
+  Package, Percent, RefreshCw, Camera, Cloud, Edit3, Check, AlertTriangle, Calendar, Link as LinkIcon,
+  BarChart3, FileText,
+} from 'lucide-react'
 // Removed Tesseract - using GoHighLevel API instead
 
 // Error Boundary
@@ -93,8 +97,6 @@ const enhanceImageQuality = async (base64Image: string): Promise<string> => {
   })
 }
 
-type Tab = 'overview' | 'revenue' | 'expenses' | 'profitability' | 'stripe' | 'reconciliation' | 'reports'
-
 interface Expense {
   id: string
   date: string
@@ -102,8 +104,40 @@ interface Expense {
   category: string
   description: string
   amount: number
-  status: 'pending' | 'approved' | 'reconciled'
+  status: 'pending' | 'approved' | 'reconciled' | 'rejected'
   receiptId?: string
+  sourceType?: 'manual' | 'scan' | 'gdrive'
+  approvedByName?: string | null
+  approvedAt?: string | null
+}
+
+type Tab = 'overview' | 'expenses' | 'reports'
+
+interface FinancialsOverview {
+  month: string
+  grossRevenue: number
+  totalExpenses: number
+  netOperatingProfit: number
+  marginPct: number
+  outstandingBalance: number
+  outstandingCount: number
+  compare: {
+    mom: { grossRevenuePct: number; totalExpensesPct: number; label: string }
+    yoy: { grossRevenuePct: number; totalExpensesPct: number; label: string }
+  }
+}
+
+interface TrendPoint { month: string; revenue: number; expenses: number }
+
+interface FinancialReportSnapshot {
+  id: number
+  period_start: string
+  period_end: string
+  gross_revenue_cents: number
+  total_expenses_cents: number
+  net_profit_cents: number
+  generated_at: string
+  snapshot_json: { expensesByCategory?: { category: string; amountCents: number }[] } | null
 }
 
 // One row per actual receipt (a Drive scan, manual entry, or screenshot
@@ -198,6 +232,7 @@ function FinancialsPage() {
     expenseForm: false,
     receiptScanner: false,
     receiptHistory: true,
+    ledger: true,
   })
 
   const [expenses, setExpenses] = useState<Expense[]>([])
@@ -243,6 +278,22 @@ function FinancialsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const screenshotInputRef = useRef<HTMLInputElement>(null)
 
+  const [activeTab, setActiveTab] = useState<Tab>('overview')
+  const [compareMode, setCompareMode] = useState<'mom' | 'yoy'>('mom')
+  const [overview, setOverview] = useState<FinancialsOverview | null>(null)
+  const [overviewLoading, setOverviewLoading] = useState(true)
+  const [trend, setTrend] = useState<TrendPoint[]>([])
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(new Set())
+  const [bulkActing, setBulkActing] = useState(false)
+  const [reports, setReports] = useState<FinancialReportSnapshot[]>([])
+  const [reportsLoading, setReportsLoading] = useState(true)
+  const [generatingReport, setGeneratingReport] = useState(false)
+  const [viewingReport, setViewingReport] = useState<FinancialReportSnapshot | null>(null)
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date>(new Date())
+
+  const token = localStorage.getItem('token')
+  const apiUrl = import.meta.env.VITE_API_BASE_URL
+
   const fetchExpenses = async () => {
     try {
       setExpensesLoading(true)
@@ -261,6 +312,9 @@ function FinancialsPage() {
         description: row.description,
         amount: parseFloat(row.amount),
         status: row.status,
+        sourceType: row.source_type,
+        approvedByName: row.approved_by_name,
+        approvedAt: row.approved_at,
       }))
       setExpenses(rows)
     } catch (err) {
@@ -269,6 +323,88 @@ function FinancialsPage() {
       setExpensesLoading(false)
     }
     fetchReceiptsSummary()
+  }
+
+  const fetchOverview = async () => {
+    try {
+      setOverviewLoading(true)
+      const [ovRes, trendRes] = await Promise.all([
+        fetch(`${apiUrl}/api/admin/financials/overview`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/admin/financials/trend?months=6`, { headers: { Authorization: `Bearer ${token}` } }),
+      ])
+      const ovData = await ovRes.json()
+      const trendData = await trendRes.json()
+      setOverview(ovData.data || null)
+      setTrend(trendData.data || [])
+      setLastSyncedAt(new Date())
+    } catch (err) {
+      console.error('Error fetching financials overview:', err)
+    } finally {
+      setOverviewLoading(false)
+    }
+  }
+
+  const fetchReports = async () => {
+    try {
+      setReportsLoading(true)
+      const res = await fetch(`${apiUrl}/api/admin/financials/reports`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      setReports(data.data || [])
+    } catch (err) {
+      console.error('Error fetching financial reports:', err)
+    } finally {
+      setReportsLoading(false)
+    }
+  }
+
+  const generateReport = async () => {
+    setGeneratingReport(true)
+    try {
+      await fetch(`${apiUrl}/api/admin/financials/reports/generate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      await fetchReports()
+    } catch (err) {
+      console.error('Error generating report:', err)
+    } finally {
+      setGeneratingReport(false)
+    }
+  }
+
+  const approveExpense = async (id: string) => {
+    await fetch(`${apiUrl}/api/admin/expenses/${id}/approve`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
+    fetchExpenses()
+  }
+
+  const rejectExpense = async (id: string) => {
+    await fetch(`${apiUrl}/api/admin/expenses/${id}/reject`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
+    fetchExpenses()
+  }
+
+  const toggleExpenseSelected = (id: string) => {
+    setSelectedExpenseIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const bulkApproveSelected = async () => {
+    if (selectedExpenseIds.size === 0) return
+    setBulkActing(true)
+    try {
+      await fetch(`${apiUrl}/api/admin/expenses/bulk-approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ids: Array.from(selectedExpenseIds).map((id) => parseInt(id, 10)) }),
+      })
+      setSelectedExpenseIds(new Set())
+      await fetchExpenses()
+    } finally {
+      setBulkActing(false)
+    }
   }
 
   // One row per receipt (Drive scan, manual entry, or screenshot entry) --
@@ -304,6 +440,8 @@ function FinancialsPage() {
 
   useEffect(() => {
     fetchExpenses()
+    fetchOverview()
+    fetchReports()
   }, [])
 
   const toggleSection = (section: string) => {
@@ -1014,95 +1152,175 @@ function FinancialsPage() {
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0)
   const pendingExpenses = expenses.filter(e => e.status === 'pending').reduce((sum, e) => sum + e.amount, 0)
 
-  // July 2026 actual meal count data
-  const week1 = {
-    week: 'Week of 7.5',
-    regularMeals: 27,
-    largeMeals: 23,
-    breakfastMeals: 8,
-  }
+  const compare = overview?.compare[compareMode]
+  const compareLabel = compare?.label || ''
 
-  const week2 = {
-    week: 'Week of 7.12',
-    regularMeals: 21,
-    largeMeals: 28,
-    breakfastMeals: 6,
-  }
-
-  // Calculate totals
-  const week1Revenue = (week1.regularMeals * 15) + (week1.largeMeals * 18) + (week1.breakfastMeals * 13)
-  const week2Revenue = (week2.regularMeals * 15) + (week2.largeMeals * 18) + (week2.breakfastMeals * 13)
-  const totalRevenue = week1Revenue + week2Revenue
-
-  const stripeFees = Math.round(totalRevenue * 0.0315 * 100) / 100
-  const netRevenue = totalRevenue - stripeFees
-
-  const totalMeals = week1.regularMeals + week1.largeMeals + week1.breakfastMeals + week2.regularMeals + week2.largeMeals + week2.breakfastMeals
-  const netOperatingProfit = netRevenue - totalExpenses
+  const trendMax = Math.max(1, ...trend.map((t) => Math.max(t.revenue, t.expenses)))
+  const chartW = 640
+  const chartH = 190
+  const chartPad = 40
+  const trendPoints = trend.map((t, i) => {
+    const x = trend.length > 1 ? chartPad + (i / (trend.length - 1)) * (chartW - chartPad) : chartW / 2
+    const yRev = chartH - (t.revenue / trendMax) * (chartH - 10)
+    const yExp = chartH - (t.expenses / trendMax) * (chartH - 10)
+    return { x, yRev, yExp, month: t.month, revenue: t.revenue, expenses: t.expenses }
+  })
+  const revPath = trendPoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.yRev.toFixed(1)}`).join(' ')
+  const expPath = trendPoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.yExp.toFixed(1)}`).join(' ')
+  const monthShort = (m: string) => new Date(m + '-02').toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
 
   return (
     <main className="space-y-6 bg-[#FDFBF7] p-8">
-      <div>
-        <h1 className="text-3xl font-extrabold text-[#4B2B1D]">Financials</h1>
-        <p className="mt-1 text-[#755B4C]">July 2026 Overview</p>
-      </div>
-
-      {/* KPI Cards - Always visible */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-[#755B4C]">Gross Revenue</p>
-              <p className="mt-2 text-2xl font-extrabold text-[#4B2B1D]">${totalRevenue.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
-              <p className="mt-1 text-xs text-[#9A7E6F]">From {totalMeals} meals</p>
-            </div>
-            <div className="rounded-lg bg-[#FBF7F0] p-3">
-              <DollarSign className="h-5 w-5 text-[#8B6F47]" />
-            </div>
-          </div>
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-3xl font-extrabold text-[#4B2B1D]">Financials</h1>
+          <p className="mt-1 text-[#755B4C]">
+            {overview ? new Date(overview.month + '-02').toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : '—'} overview
+          </p>
         </div>
-
-        <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-[#755B4C]">Total Expenses</p>
-              <p className="mt-2 text-2xl font-extrabold text-[#4B2B1D]">${totalExpenses.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
-              <p className="mt-1 text-xs text-[#9A7E6F]">{expenses.length} tracked expenses</p>
-            </div>
-            <div className="rounded-lg bg-[#FBF7F0] p-3">
-              <DollarSign className="h-5 w-5 text-[#8B6F47]" />
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-[#755B4C]">Net Revenue</p>
-              <p className="mt-2 text-2xl font-extrabold text-[#4B2B1D]">${netRevenue.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
-              <p className="mt-1 text-xs text-[#9A7E6F]">After fees</p>
-            </div>
-            <div className="rounded-lg bg-[#FBF7F0] p-3">
-              <DollarSign className="h-5 w-5 text-[#8B6F47]" />
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-[#755B4C]">Net Operating Profit</p>
-              <p className="mt-2 text-2xl font-extrabold text-[#4B2B1D]">${netOperatingProfit.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
-              <p className="mt-1 text-xs text-[#9A7E6F]">{((netOperatingProfit / totalRevenue) * 100).toFixed(1)}% margin</p>
-            </div>
-            <div className="rounded-lg bg-[#FBF7F0] p-3">
-              <Activity className="h-5 w-5 text-[#8B6F47]" />
-            </div>
-          </div>
+        <div className="flex items-center gap-2 text-xs text-[#9A7E6F]">
+          <RefreshCw className="h-3.5 w-3.5" />
+          <span>Synced with orders &amp; the expense ledger · {lastSyncedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+          <span className="opacity-50">·</span>
+          <button onClick={() => { fetchOverview(); fetchExpenses() }} className="font-bold text-[#2E527F] hover:underline">Refresh now</button>
         </div>
       </div>
 
-      {/* Collapsible Sections */}
+      <div className="flex gap-1 border-b border-[#E8DCC8]">
+        {([
+          ['overview', 'Overview'],
+          ['expenses', 'Expenses'],
+          ['reports', 'Reports'],
+        ] as [Tab, string][]).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            className={`px-4 py-2.5 text-sm font-bold transition border-b-2 -mb-px ${
+              activeTab === id ? 'border-[#2E527F] text-[#2E527F]' : 'border-transparent text-[#9A7E6F] hover:text-[#4B2B1D]'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'overview' && (
+        <div className="space-y-6">
+          {overviewLoading || !overview ? (
+            <p className="text-sm text-[#755B4C]">Loading...</p>
+          ) : (
+            <>
+              <div className="flex justify-end">
+                <select
+                  value={compareMode}
+                  onChange={(e) => setCompareMode(e.target.value as 'mom' | 'yoy')}
+                  className="rounded-xl border border-[#E8DCC8] bg-white px-3 py-2 text-sm font-semibold text-[#4B2B1D]"
+                >
+                  <option value="mom">Compare: Previous month</option>
+                  <option value="yoy">Compare: Same month last year</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm text-[#755B4C]">Gross Revenue</p>
+                      <p className="mt-2 text-2xl font-extrabold text-[#4B2B1D]">${overview.grossRevenue.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
+                      <p className={`mt-1 text-xs font-bold flex items-center gap-1 ${compare && compare.grossRevenuePct >= 0 ? 'text-[#16813D]' : 'text-[#D62F3D]'}`}>
+                        {compare && compare.grossRevenuePct >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                        {compare ? `${compare.grossRevenuePct >= 0 ? '+' : ''}${compare.grossRevenuePct}%` : ''}
+                        <span className="font-normal text-[#9A7E6F]">{compareLabel}</span>
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-[#EAF0F7] p-3"><DollarSign className="h-5 w-5 text-[#2E527F]" /></div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm text-[#755B4C]">Total Expenses</p>
+                      <p className="mt-2 text-2xl font-extrabold text-[#4B2B1D]">${overview.totalExpenses.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
+                      <p className={`mt-1 text-xs font-bold flex items-center gap-1 ${compare && compare.totalExpensesPct <= 0 ? 'text-[#16813D]' : 'text-[#D62F3D]'}`}>
+                        {compare && compare.totalExpensesPct <= 0 ? <TrendingDown className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
+                        {compare ? `${compare.totalExpensesPct >= 0 ? '+' : ''}${compare.totalExpensesPct}%` : ''}
+                        <span className="font-normal text-[#9A7E6F]">{compareLabel}</span>
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-[#FBEEE3] p-3"><Package className="h-5 w-5 text-[#C9692E]" /></div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm text-[#755B4C]">Net Operating Profit</p>
+                      <p className="mt-2 text-2xl font-extrabold text-[#4B2B1D]">${overview.netOperatingProfit.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
+                      <p className="mt-1 text-xs font-bold text-[#16813D]">{overview.marginPct}% margin</p>
+                    </div>
+                    <div className="rounded-lg bg-[#EAF4EC] p-3"><Activity className="h-5 w-5 text-[#2F7A4D]" /></div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6 cursor-pointer hover:shadow-md transition" onClick={() => setActiveTab('expenses')}>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm text-[#755B4C]">Outstanding Balance</p>
+                      <p className="mt-2 text-2xl font-extrabold text-[#4B2B1D]">${overview.outstandingBalance.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
+                      <p className="mt-1 text-xs text-[#9A7E6F]">{overview.outstandingCount} order{overview.outstandingCount === 1 ? '' : 's'} not yet marked paid</p>
+                    </div>
+                    <div className="rounded-lg bg-[#FBEBE8] p-3"><AlertTriangle className="h-5 w-5 text-[#B4432F]" /></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                <div className="mb-4">
+                  <h3 className="text-base font-extrabold text-[#4B2B1D]">Revenue vs. Expenses — last 6 months</h3>
+                  <p className="text-xs text-[#9A7E6F]">Computed from real orders and the expense ledger</p>
+                </div>
+                {trend.length === 0 ? (
+                  <p className="text-sm text-[#755B4C]">No data yet.</p>
+                ) : (
+                  <>
+                    <svg viewBox={`0 0 ${chartW + 50} ${chartH + 30}`} width="100%" style={{ overflow: 'visible' }}>
+                      {[0, 0.33, 0.66, 1].map((f, i) => (
+                        <line key={i} x1={chartPad} y1={10 + f * (chartH - 20)} x2={chartW} y2={10 + f * (chartH - 20)} stroke="#EFE7D8" strokeWidth={1} />
+                      ))}
+                      <path d={revPath} fill="none" stroke="#2E527F" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+                      <path d={expPath} fill="none" stroke="#C9692E" strokeWidth={2} strokeDasharray="5,4" strokeLinecap="round" strokeLinejoin="round" />
+                      {trendPoints.map((p, i) => (
+                        <g key={i}>
+                          <circle cx={p.x} cy={p.yRev} r={i === trendPoints.length - 1 ? 5 : 3} fill="#2E527F" stroke="#fff" strokeWidth={1.5} />
+                          <circle cx={p.x} cy={p.yExp} r={i === trendPoints.length - 1 ? 5 : 3} fill="#C9692E" stroke="#fff" strokeWidth={1.5} />
+                          <text x={p.x} y={chartH + 18} textAnchor="middle" fontSize={10} fill="#755B4C" fontWeight={600}>{monthShort(p.month)}</text>
+                        </g>
+                      ))}
+                    </svg>
+                    <div className="flex gap-6 mt-3 pt-3 border-t border-[#E8DCC8] text-xs text-[#755B4C]">
+                      <span className="flex items-center gap-1.5"><span className="inline-block w-3.5 h-0.5 bg-[#2E527F]" />Revenue <b className="text-[#4B2B1D]">${trend[trend.length - 1]?.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}</b></span>
+                      <span className="flex items-center gap-1.5"><span className="inline-block w-3.5 h-0.5 bg-[#C9692E]" style={{ borderTop: '2px dashed #C9692E' }} />Expenses <b className="text-[#4B2B1D]">${trend[trend.length - 1]?.expenses.toLocaleString('en-US', { maximumFractionDigits: 0 })}</b></span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {overview.outstandingCount > 0 && (
+                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="text-base font-extrabold text-[#4B2B1D]">Pending Balances</h3>
+                    <button onClick={() => setActiveTab('expenses')} className="text-xs font-bold text-[#2E527F] hover:underline">View in Expenses →</button>
+                  </div>
+                  <p className="text-xs text-[#9A7E6F]">{overview.outstandingCount} order{overview.outstandingCount === 1 ? '' : 's'} not yet marked paid — mark them paid as bank transfers, cash, Stripe, or however they actually came in from the order's row in the Expenses tab ledger.</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'expenses' && (
       <div className="space-y-4">
         {/* Receipt Scanner */}
         <Section id="receiptScanner" title="📸 Log Receipts (Physical, Online & Google Drive)" expandedSections={expandedSections} toggleSection={toggleSection}>
@@ -1948,6 +2166,94 @@ function FinancialsPage() {
               )}
             </div>
 
+            {/* Ledger -- one row per line item, with bulk + single-row
+                approve/reject and an audit trail of who acted and when */}
+            <Section id="ledger" title={`Ledger (${expenses.length})`} expandedSections={expandedSections} toggleSection={toggleSection}>
+              {selectedExpenseIds.size > 0 && (
+                <div className="flex items-center justify-between gap-3 rounded-xl bg-[#4B2B1D] text-white px-4 py-2.5 mb-3">
+                  <span className="text-sm font-bold">{selectedExpenseIds.size} selected</span>
+                  <div className="flex gap-2">
+                    <button onClick={bulkApproveSelected} disabled={bulkActing} className="inline-flex items-center gap-1.5 rounded-lg bg-[#2F7A4D] px-3 py-1.5 text-xs font-bold disabled:opacity-50">
+                      <Check className="h-3.5 w-3.5" /> Approve selected
+                    </button>
+                    <button onClick={() => setSelectedExpenseIds(new Set())} className="rounded-lg border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-bold">Cancel</button>
+                  </div>
+                </div>
+              )}
+              {expensesLoading ? (
+                <p className="text-sm text-[#755B4C]">Loading...</p>
+              ) : expenses.length === 0 ? (
+                <p className="text-sm text-[#755B4C]">No expenses logged yet.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-[#E8DCC8]">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-[#E8DCC8] bg-[#FDFBF7]">
+                        <th className="px-3 py-2 w-6">
+                          <input
+                            type="checkbox"
+                            checked={selectedExpenseIds.size > 0 && selectedExpenseIds.size === expenses.filter((e) => e.status === 'pending').length}
+                            onChange={(e) => setSelectedExpenseIds(e.target.checked ? new Set(expenses.filter((x) => x.status === 'pending').map((x) => x.id)) : new Set())}
+                          />
+                        </th>
+                        <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Date</th>
+                        <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Vendor</th>
+                        <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Category</th>
+                        <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Source</th>
+                        <th className="px-3 py-2 text-right font-bold text-[#4B2B1D]">Amount</th>
+                        <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Status</th>
+                        <th className="px-3 py-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {expenses.map((e) => {
+                        const sourceIcon = e.sourceType === 'gdrive' ? <Cloud className="h-3 w-3" /> : e.sourceType === 'scan' ? <Camera className="h-3 w-3" /> : <Edit3 className="h-3 w-3" />
+                        const sourceLabel = e.sourceType === 'gdrive' ? 'Drive' : e.sourceType === 'scan' ? 'Scan' : 'Manual'
+                        const statusStyle =
+                          e.status === 'approved' || e.status === 'reconciled' ? 'bg-[#EAF4EC] text-[#2F7A4D]'
+                          : e.status === 'rejected' ? 'bg-[#FBEBE8] text-[#B4432F]'
+                          : 'bg-[#FBF2DE] text-[#B4831F]'
+                        return (
+                          <tr key={e.id} className="border-b border-[#E8DCC8] hover:bg-[#FDFBF7] align-top">
+                            <td className="px-3 py-2">
+                              {e.status === 'pending' && (
+                                <input type="checkbox" checked={selectedExpenseIds.has(e.id)} onChange={() => toggleExpenseSelected(e.id)} />
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-[#755B4C] whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</td>
+                            <td className="px-3 py-2 font-semibold text-[#4B2B1D]">{e.vendor}</td>
+                            <td className="px-3 py-2 text-[#755B4C]">{categoryColors[e.category]?.label || e.category}</td>
+                            <td className="px-3 py-2">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-[#F0ECE3] text-[#755B4C] px-2 py-0.5 text-[11px] font-bold">{sourceIcon}{sourceLabel}</span>
+                            </td>
+                            <td className="px-3 py-2 text-right font-bold text-[#4B2B1D]">${e.amount.toFixed(2)}</td>
+                            <td className="px-3 py-2">
+                              <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-bold capitalize ${statusStyle}`}>{e.status}</span>
+                              {e.approvedByName && e.approvedAt && (
+                                <div className="mt-0.5 text-[10px] text-[#9A7E6F]">by {e.approvedByName} · {new Date(e.approvedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              {e.status === 'pending' && (
+                                <div className="flex gap-1">
+                                  <button onClick={() => approveExpense(e.id)} title="Approve" className="h-6 w-6 rounded border border-[#E8DCC8] flex items-center justify-center text-[#2F7A4D] hover:bg-[#EAF4EC]">
+                                    <Check className="h-3 w-3" />
+                                  </button>
+                                  <button onClick={() => rejectExpense(e.id)} title="Reject" className="h-6 w-6 rounded border border-[#E8DCC8] flex items-center justify-center text-[#B4432F] hover:bg-[#FBEBE8]">
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Section>
+
             {/* Receipt History -- one row per receipt (not per line item),
                 with a direct link back to the source image */}
             <Section id="receiptHistory" title={`Receipt History (${receipts.length})`} expandedSections={expandedSections} toggleSection={toggleSection}>
@@ -2061,66 +2367,107 @@ function FinancialsPage() {
 
           </div>
         </Section>
-
-        {/* Weekly Breakdown */}
-        <Section id="weekly" title="Weekly Breakdown" expandedSections={expandedSections} toggleSection={toggleSection}>
-          <div className="overflow-x-auto">
-            <div className="space-y-3 min-w-min">
-              {[week1, week2].map((week, idx) => (
-                <div key={idx} className="rounded-lg bg-[#FDFBF7] p-4 border border-[#E8DCC8] min-w-96">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-[#4B2B1D]">{week.week}</h3>
-                    <span className="text-xs bg-[#8B6F47] text-white px-3 py-1 rounded-full">
-                      {week.regularMeals + week.largeMeals + week.breakfastMeals} meals
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <p className="text-xs text-[#755B4C]">Revenue</p>
-                      <p className="mt-1 font-bold text-[#4B2B1D]">${(idx === 0 ? week1Revenue : week2Revenue).toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-[#755B4C]">Expenses</p>
-                      <p className="mt-1 font-bold text-[#4B2B1D]">${(totalExpenses / 2).toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-[#755B4C]">Net</p>
-                      <p className="mt-1 font-bold text-[#4B2B1D]">${((idx === 0 ? week1Revenue : week2Revenue) - (totalExpenses / 2)).toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Section>
-
-        {/* Meal Breakdown */}
-        <Section id="meals" title="Meal Breakdown by Type" expandedSections={expandedSections} toggleSection={toggleSection}>
-          <div className="overflow-x-auto">
-            <div className="space-y-3 min-w-min">
-              {[week1, week2].map((week, idx) => (
-                <div key={idx} className="rounded-lg bg-[#FDFBF7] p-4 border border-[#E8DCC8] min-w-96">
-                  <h3 className="font-semibold text-[#4B2B1D] mb-3">{week.week}</h3>
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[#755B4C]">Regular Meals ({week.regularMeals})</span>
-                      <span className="font-bold text-[#4B2B1D]">${(week.regularMeals * 15).toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[#755B4C]">Large Meals ({week.largeMeals})</span>
-                      <span className="font-bold text-[#4B2B1D]">${(week.largeMeals * 18).toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[#755B4C]">Breakfast ({week.breakfastMeals})</span>
-                      <span className="font-bold text-[#4B2B1D]">${(week.breakfastMeals * 13).toLocaleString()}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Section>
       </div>
+      )}
+
+      {activeTab === 'reports' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 rounded-xl bg-[#EAF0F7] text-[#2E527F] px-4 py-3 text-sm font-semibold">
+            <Calendar className="h-4 w-4 flex-shrink-0" />
+            Auto-generated on the 1st and 15th of every month, covering the prior half-month period.
+            <button onClick={generateReport} disabled={generatingReport} className="ml-auto rounded-lg bg-[#2E527F] text-white px-3 py-1.5 text-xs font-bold disabled:opacity-50 whitespace-nowrap">
+              {generatingReport ? 'Generating...' : 'Generate now'}
+            </button>
+          </div>
+
+          {reportsLoading ? (
+            <p className="text-sm text-[#755B4C]">Loading...</p>
+          ) : reports.length === 0 ? (
+            <p className="text-sm text-[#755B4C]">No reports generated yet.</p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {reports.map((r, idx) => {
+                const netProfit = r.net_profit_cents / 100
+                const prior = reports[idx + 1]
+                const priorNet = prior ? prior.net_profit_cents / 100 : null
+                const deltaPct = priorNet ? Math.round(((netProfit - priorNet) / Math.abs(priorNet)) * 1000) / 10 : null
+                return (
+                  <div key={r.id} className={`rounded-2xl border bg-white p-5 ${idx === 0 ? 'border-[#2E527F]' : 'border-[#E8DCC8]'}`}>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold uppercase tracking-wide text-[#9A7E6F]">
+                        {new Date(r.period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })} – {new Date(r.period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
+                      </p>
+                      {idx === 0 && <span className="rounded-full bg-[#EAF0F7] text-[#2E527F] px-2 py-0.5 text-[10px] font-bold">LATEST</span>}
+                    </div>
+                    <p className="mt-1 text-base font-extrabold text-[#4B2B1D]">Semi-monthly report</p>
+                    <div className="mt-3 flex gap-8">
+                      <div>
+                        <p className="text-[11px] text-[#9A7E6F]">Net profit</p>
+                        <p className="text-lg font-extrabold text-[#4B2B1D]">${netProfit.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
+                      </div>
+                      {deltaPct !== null && (
+                        <div>
+                          <p className="text-[11px] text-[#9A7E6F]">vs. prior period</p>
+                          <p className={`text-lg font-extrabold ${deltaPct >= 0 ? 'text-[#2F7A4D]' : 'text-[#B4432F]'}`}>{deltaPct >= 0 ? '▲' : '▼'} {Math.abs(deltaPct)}%</p>
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={() => setViewingReport(r)} className="mt-4 rounded-lg bg-[#2E527F] text-white px-3 py-1.5 text-xs font-bold hover:bg-[#24466E]">
+                      View report
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {viewingReport && (
+        <>
+          <button onClick={() => setViewingReport(null)} className="fixed inset-0 z-40 bg-black/30" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl max-h-[85vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-extrabold text-[#4B2B1D] flex items-center gap-2"><FileText className="h-4 w-4" />Semi-monthly report</h2>
+                  <p className="text-xs text-[#9A7E6F] mt-0.5">
+                    {new Date(viewingReport.period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })} – {new Date(viewingReport.period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
+                  </p>
+                </div>
+                <button onClick={() => setViewingReport(null)} className="rounded-lg border border-[#E8DCC8] p-2"><X className="h-4 w-4" /></button>
+              </div>
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="rounded-lg bg-[#FDFBF7] border border-[#E8DCC8] p-3">
+                  <p className="text-[11px] text-[#9A7E6F]">Gross Revenue</p>
+                  <p className="text-base font-extrabold text-[#4B2B1D]">${(viewingReport.gross_revenue_cents / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
+                </div>
+                <div className="rounded-lg bg-[#FDFBF7] border border-[#E8DCC8] p-3">
+                  <p className="text-[11px] text-[#9A7E6F]">Expenses</p>
+                  <p className="text-base font-extrabold text-[#4B2B1D]">${(viewingReport.total_expenses_cents / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
+                </div>
+                <div className="rounded-lg bg-[#FDFBF7] border border-[#E8DCC8] p-3">
+                  <p className="text-[11px] text-[#9A7E6F]">Net Profit</p>
+                  <p className="text-base font-extrabold text-[#2F7A4D]">${(viewingReport.net_profit_cents / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
+                </div>
+              </div>
+              {viewingReport.snapshot_json?.expensesByCategory && viewingReport.snapshot_json.expensesByCategory.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-[#4B2B1D] mb-2">Expenses by category</p>
+                  <div className="space-y-1.5">
+                    {viewingReport.snapshot_json.expensesByCategory.map((c) => (
+                      <div key={c.category} className="flex items-center justify-between text-sm">
+                        <span className="text-[#755B4C]">{categoryColors[c.category]?.label || c.category}</span>
+                        <span className="font-bold text-[#4B2B1D]">${(c.amountCents / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </main>
   )
 }
