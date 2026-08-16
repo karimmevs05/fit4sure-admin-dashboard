@@ -170,7 +170,7 @@ export function PlateCostSimulator() {
       <button onClick={() => setExpanded((v) => !v)} className="flex w-full items-center justify-between px-4 py-2.5">
         <div className="flex items-center gap-2">
           <Calculator className="h-3.5 w-3.5 text-[#9A8774]" />
-          <span className="text-xs font-bold text-[#4B2B1D]">Plate Cost Simulator</span>
+          <span className="text-xs font-bold text-[#4B2B1D]">Custom Plate Builder</span>
           <span className="hidden sm:inline text-[11px] text-[#9A8774]">test a combo before committing to a plate</span>
         </div>
         <div className="flex items-center gap-2.5">
