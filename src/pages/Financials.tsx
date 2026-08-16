@@ -402,7 +402,7 @@ function FinancialsPage() {
       setPendingBalancesLoading(true)
       const res = await fetch(`${apiUrl}/api/admin/financials/pending-balances`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
-      setPendingBalances(data.data?.balances || [])
+      setPendingBalances((data.data?.balances || []).map((b: any) => ({ ...b, total_price: parseFloat(b.total_price) || 0 })))
     } catch (err) {
       console.error('Error fetching pending balances:', err)
     } finally {
@@ -426,7 +426,14 @@ function FinancialsPage() {
       const m = month || selectedMonth
       const res = await fetch(`${apiUrl}/api/admin/financials/transactions?month=${m}`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
-      setRevenueData(data.data ? { transactions: data.data.transactions, summary: data.data.summary } : null)
+      setRevenueData(
+        data.data
+          ? {
+              transactions: (data.data.transactions || []).map((t: any) => ({ ...t, total_price: parseFloat(t.total_price) || 0 })),
+              summary: data.data.summary,
+            }
+          : null
+      )
     } catch (err) {
       console.error('Error fetching revenue transactions:', err)
     } finally {
