@@ -111,7 +111,7 @@ interface Expense {
   approvedAt?: string | null
 }
 
-type Tab = 'overview' | 'expenses' | 'reports'
+type Tab = 'overview' | 'revenue' | 'expenses' | 'reports'
 
 interface FinancialsOverview {
   month: string
@@ -138,6 +138,33 @@ interface FinancialReportSnapshot {
   net_profit_cents: number
   generated_at: string
   snapshot_json: { expensesByCategory?: { category: string; amountCents: number }[] } | null
+}
+
+interface PendingBalance {
+  order_id: number
+  customer_id: number
+  customer_name: string
+  total_price: number
+  created_at: string
+  days_outstanding: number
+}
+
+interface Transaction {
+  id: number
+  customer_name: string
+  created_at: string
+  total_price: number
+  payment_method: string | null
+  payment_status: 'paid' | 'pending'
+  source: string
+}
+
+interface RevenueSummary {
+  paidCount: number
+  paidTotal: number
+  outstandingCount: number
+  outstandingTotal: number
+  byMethod: { method: string; count: number; total: number }[]
 }
 
 // One row per actual receipt (a Drive scan, manual entry, or screenshot
@@ -186,6 +213,11 @@ interface PendingReceipt {
   receiptTotal: number | null
   lowConfidence: boolean
   items: PendingReceiptItem[]
+}
+
+function pctDeltaClient(current: number, prior: number): number {
+  if (!prior) return current > 0 ? 100 : 0
+  return Math.round(((current - prior) / prior) * 1000) / 10
 }
 
 function Section({
@@ -280,9 +312,13 @@ function FinancialsPage() {
 
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [compareMode, setCompareMode] = useState<'mom' | 'yoy'>('mom')
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7))
   const [overview, setOverview] = useState<FinancialsOverview | null>(null)
   const [overviewLoading, setOverviewLoading] = useState(true)
   const [trend, setTrend] = useState<TrendPoint[]>([])
+  const [ledgerCategoryFilter, setLedgerCategoryFilter] = useState('all')
+  const [ledgerStatusFilter, setLedgerStatusFilter] = useState('all')
+  const [ledgerSearch, setLedgerSearch] = useState('')
   const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(new Set())
   const [bulkActing, setBulkActing] = useState(false)
   const [reports, setReports] = useState<FinancialReportSnapshot[]>([])
@@ -290,6 +326,14 @@ function FinancialsPage() {
   const [generatingReport, setGeneratingReport] = useState(false)
   const [viewingReport, setViewingReport] = useState<FinancialReportSnapshot | null>(null)
   const [lastSyncedAt, setLastSyncedAt] = useState<Date>(new Date())
+  const [filterChip, setFilterChip] = useState<{ tab: Tab; label: string } | null>(null)
+  const [pendingBalances, setPendingBalances] = useState<PendingBalance[]>([])
+  const [pendingBalancesLoading, setPendingBalancesLoading] = useState(true)
+  const [automationRules, setAutomationRules] = useState<{ id: number; name: string }[]>([])
+  const [collectingCustomerId, setCollectingCustomerId] = useState<number | null>(null)
+  const [collectedCustomerIds, setCollectedCustomerIds] = useState<Set<number>>(new Set())
+  const [revenueData, setRevenueData] = useState<{ transactions: Transaction[]; summary: RevenueSummary } | null>(null)
+  const [revenueLoading, setRevenueLoading] = useState(true)
 
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
@@ -325,11 +369,12 @@ function FinancialsPage() {
     fetchReceiptsSummary()
   }
 
-  const fetchOverview = async () => {
+  const fetchOverview = async (month?: string) => {
     try {
       setOverviewLoading(true)
+      const m = month || selectedMonth
       const [ovRes, trendRes] = await Promise.all([
-        fetch(`${apiUrl}/api/admin/financials/overview`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${apiUrl}/api/admin/financials/overview?month=${m}`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${apiUrl}/api/admin/financials/trend?months=6`, { headers: { Authorization: `Bearer ${token}` } }),
       ])
       const ovData = await ovRes.json()
@@ -341,6 +386,79 @@ function FinancialsPage() {
       console.error('Error fetching financials overview:', err)
     } finally {
       setOverviewLoading(false)
+    }
+  }
+
+  const fetchPendingBalances = async () => {
+    try {
+      setPendingBalancesLoading(true)
+      const res = await fetch(`${apiUrl}/api/admin/financials/pending-balances`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      setPendingBalances(data.data?.balances || [])
+    } catch (err) {
+      console.error('Error fetching pending balances:', err)
+    } finally {
+      setPendingBalancesLoading(false)
+    }
+  }
+
+  const fetchAutomationRules = async () => {
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/automation-rules`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      setAutomationRules(data.data || data.rules || [])
+    } catch (err) {
+      console.error('Error fetching automation rules:', err)
+    }
+  }
+
+  const fetchRevenue = async (month?: string) => {
+    try {
+      setRevenueLoading(true)
+      const m = month || selectedMonth
+      const res = await fetch(`${apiUrl}/api/admin/financials/transactions?month=${m}`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      setRevenueData(data.data ? { transactions: data.data.transactions, summary: data.data.summary } : null)
+    } catch (err) {
+      console.error('Error fetching revenue transactions:', err)
+    } finally {
+      setRevenueLoading(false)
+    }
+  }
+
+  const shiftSelectedMonth = (delta: number) => {
+    const [y, m] = selectedMonth.split('-').map((n) => parseInt(n, 10))
+    const d = new Date(Date.UTC(y, m - 1 + delta, 1))
+    const next = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+    setSelectedMonth(next)
+    fetchOverview(next)
+    fetchRevenue(next)
+  }
+
+  const drillTo = (tab: Tab, label: string) => {
+    setActiveTab(tab)
+    setFilterChip({ tab, label })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // "Collect" enrolls the customer into whatever collection automation
+  // exists -- same endpoint the Customer list's bulk actions already use.
+  // Picks the first active rule rather than requiring a hardcoded name,
+  // since which rule is "the" collection one is a manual setup choice.
+  const collectFromBalance = async (customerId: number) => {
+    if (automationRules.length === 0) return
+    setCollectingCustomerId(customerId)
+    try {
+      await fetch(`${apiUrl}/api/admin/automation-rules/${automationRules[0].id}/enroll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ customer_ids: [customerId] }),
+      })
+      setCollectedCustomerIds((prev) => new Set(prev).add(customerId))
+    } catch (err) {
+      console.error('Error enrolling customer in collection automation:', err)
+    } finally {
+      setCollectingCustomerId(null)
     }
   }
 
@@ -442,6 +560,9 @@ function FinancialsPage() {
     fetchExpenses()
     fetchOverview()
     fetchReports()
+    fetchPendingBalances()
+    fetchAutomationRules()
+    fetchRevenue()
   }, [])
 
   const toggleSection = (section: string) => {
@@ -1167,34 +1288,70 @@ function FinancialsPage() {
   })
   const revPath = trendPoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.yRev.toFixed(1)}`).join(' ')
   const expPath = trendPoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.yExp.toFixed(1)}`).join(' ')
+  const revAreaPath = trendPoints.length > 0
+    ? `M${trendPoints[0].x.toFixed(1)},${chartH} ` + trendPoints.map((p) => `L${p.x.toFixed(1)},${p.yRev.toFixed(1)}`).join(' ') + ` L${trendPoints[trendPoints.length - 1].x.toFixed(1)},${chartH} Z`
+    : ''
   const monthShort = (m: string) => new Date(m + '-02').toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
+  const monthLong = (m: string) => new Date(m + '-02').toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+
+  const avgNetMarginPct = trend.length > 0
+    ? Math.round((trend.reduce((sum, t) => sum + (t.revenue > 0 ? (t.revenue - t.expenses) / t.revenue : 0), 0) / trend.length) * 1000) / 10
+    : 0
+  const bestMonth = trend.reduce((best, t) => (!best || t.revenue > best.revenue ? t : best), null as TrendPoint | null)
+  const trendPct = trend.length >= 2 ? pctDeltaClient(trend[trend.length - 1].revenue, trend[trend.length - 2].revenue) : 0
 
   return (
     <main className="space-y-6 bg-[#FDFBF7] p-8">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-3xl font-extrabold text-[#4B2B1D]">Financials</h1>
-          <p className="mt-1 text-[#755B4C]">
-            {overview ? new Date(overview.month + '-02').toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : '—'} overview
+          <p className="mt-1 text-[#755B4C] flex items-center gap-2">
+            Live view, auto-refreshes to the current month
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#EAF4EC] text-[#2F7A4D] px-2.5 py-0.5 text-xs font-bold">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#2F7A4D]" />LIVE
+            </span>
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs text-[#9A7E6F]">
-          <RefreshCw className="h-3.5 w-3.5" />
-          <span>Synced with orders &amp; the expense ledger · {lastSyncedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
-          <span className="opacity-50">·</span>
-          <button onClick={() => { fetchOverview(); fetchExpenses() }} className="font-bold text-[#2E527F] hover:underline">Refresh now</button>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <select
+            value={compareMode}
+            onChange={(e) => setCompareMode(e.target.value as 'mom' | 'yoy')}
+            className="rounded-xl border border-[#E8DCC8] bg-white px-3 py-2 text-sm font-semibold text-[#4B2B1D]"
+          >
+            <option value="mom">Compare: Previous month</option>
+            <option value="yoy">Compare: Same month last year</option>
+          </select>
+          <div className="flex items-center gap-1 rounded-xl border border-[#E8DCC8] bg-white px-1.5 py-1">
+            <button onClick={() => shiftSelectedMonth(-1)} className="h-8 w-8 rounded-lg flex items-center justify-center text-[#2E527F] hover:bg-[#EAF0F7]">‹</button>
+            <span className="min-w-[130px] text-center text-sm font-bold text-[#4B2B1D] flex items-center justify-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5" />{monthLong(selectedMonth)}
+            </span>
+            <button
+              onClick={() => shiftSelectedMonth(1)}
+              disabled={selectedMonth >= new Date().toISOString().slice(0, 7)}
+              className="h-8 w-8 rounded-lg flex items-center justify-center text-[#2E527F] hover:bg-[#EAF0F7] disabled:opacity-30 disabled:cursor-default"
+            >›</button>
+          </div>
         </div>
+      </div>
+
+      <div className="flex items-center gap-2 text-xs text-[#9A7E6F] -mt-2">
+        <RefreshCw className="h-3.5 w-3.5" />
+        <span>Synced with orders &amp; the expense ledger · {lastSyncedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+        <span className="opacity-50">·</span>
+        <button onClick={() => { fetchOverview(); fetchExpenses(); fetchRevenue() }} className="font-bold text-[#2E527F] hover:underline">Refresh now</button>
       </div>
 
       <div className="flex gap-1 border-b border-[#E8DCC8]">
         {([
           ['overview', 'Overview'],
+          ['revenue', 'Revenue & Payments'],
           ['expenses', 'Expenses'],
           ['reports', 'Reports'],
         ] as [Tab, string][]).map(([id, label]) => (
           <button
             key={id}
-            onClick={() => setActiveTab(id)}
+            onClick={() => { setActiveTab(id); setFilterChip(null) }}
             className={`px-4 py-2.5 text-sm font-bold transition border-b-2 -mb-px ${
               activeTab === id ? 'border-[#2E527F] text-[#2E527F]' : 'border-transparent text-[#9A7E6F] hover:text-[#4B2B1D]'
             }`}
@@ -1204,25 +1361,23 @@ function FinancialsPage() {
         ))}
       </div>
 
+      {filterChip && filterChip.tab === activeTab && (
+        <div className="flex items-center">
+          <span className="inline-flex items-center gap-2 rounded-full bg-[#EAF0F7] text-[#2E527F] px-3 py-1.5 text-sm font-bold">
+            {filterChip.label}
+            <button onClick={() => setFilterChip(null)} className="text-[#2E527F]"><X className="h-3.5 w-3.5" /></button>
+          </span>
+        </div>
+      )}
+
       {activeTab === 'overview' && (
         <div className="space-y-6">
           {overviewLoading || !overview ? (
             <p className="text-sm text-[#755B4C]">Loading...</p>
           ) : (
             <>
-              <div className="flex justify-end">
-                <select
-                  value={compareMode}
-                  onChange={(e) => setCompareMode(e.target.value as 'mom' | 'yoy')}
-                  className="rounded-xl border border-[#E8DCC8] bg-white px-3 py-2 text-sm font-semibold text-[#4B2B1D]"
-                >
-                  <option value="mom">Compare: Previous month</option>
-                  <option value="yoy">Compare: Same month last year</option>
-                </select>
-              </div>
-
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6 cursor-pointer hover:shadow-md transition" onClick={() => drillTo('revenue', `Period: ${monthLong(selectedMonth)}`)}>
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-[#755B4C]">Gross Revenue</p>
@@ -1237,7 +1392,7 @@ function FinancialsPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6 cursor-pointer hover:shadow-md transition" onClick={() => drillTo('expenses', `Period: ${monthLong(selectedMonth)}`)}>
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-[#755B4C]">Total Expenses</p>
@@ -1263,7 +1418,7 @@ function FinancialsPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6 cursor-pointer hover:shadow-md transition" onClick={() => setActiveTab('expenses')}>
+                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6 cursor-pointer hover:shadow-md transition" onClick={() => drillTo('revenue', 'Outstanding balances')}>
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-[#755B4C]">Outstanding Balance</p>
@@ -1275,46 +1430,211 @@ function FinancialsPage() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
-                <div className="mb-4">
-                  <h3 className="text-base font-extrabold text-[#4B2B1D]">Revenue vs. Expenses — last 6 months</h3>
-                  <p className="text-xs text-[#9A7E6F]">Computed from real orders and the expense ledger</p>
+              <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr] items-stretch">
+                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6 flex flex-col">
+                  <div className="mb-3">
+                    <h3 className="text-base font-extrabold text-[#4B2B1D]">Revenue vs. Expenses — last 6 months</h3>
+                    <p className="text-xs text-[#9A7E6F]">Computed from real orders and the expense ledger</p>
+                  </div>
+                  {trend.length === 0 ? (
+                    <p className="text-sm text-[#755B4C]">No data yet.</p>
+                  ) : (
+                    <>
+                      <div className="flex gap-0 mb-1.5">
+                        <div className="flex-1 pr-4">
+                          <p className="text-[11px] text-[#9A7E6F] font-semibold">Avg. net margin</p>
+                          <p className="text-base font-extrabold text-[#4B2B1D]">{avgNetMarginPct}%</p>
+                        </div>
+                        <div className="flex-1 px-4 border-l border-[#E8DCC8]">
+                          <p className="text-[11px] text-[#9A7E6F] font-semibold">Best month</p>
+                          <p className="text-base font-extrabold text-[#4B2B1D]">{bestMonth ? `${monthShort(bestMonth.month)} · $${bestMonth.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—'}</p>
+                        </div>
+                        <div className="flex-1 pl-4 border-l border-[#E8DCC8]">
+                          <p className="text-[11px] text-[#9A7E6F] font-semibold">Trend</p>
+                          <p className={`text-base font-extrabold ${trendPct >= 0 ? 'text-[#2F7A4D]' : 'text-[#B4432F]'}`}>{trendPct >= 0 ? '▲' : '▼'} {Math.abs(trendPct)}% MoM</p>
+                        </div>
+                      </div>
+                      <div className="mt-auto">
+                        <svg viewBox={`0 0 ${chartW + 50} ${chartH + 30}`} width="100%" style={{ overflow: 'visible' }}>
+                          <defs>
+                            <linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#2E527F" stopOpacity="0.14" />
+                              <stop offset="100%" stopColor="#2E527F" stopOpacity="0" />
+                            </linearGradient>
+                          </defs>
+                          {[0, 0.33, 0.66, 1].map((f, i) => (
+                            <line key={i} x1={chartPad} y1={10 + f * (chartH - 20)} x2={chartW} y2={10 + f * (chartH - 20)} stroke="#EFE7D8" strokeWidth={1} />
+                          ))}
+                          <path d={revAreaPath} fill="url(#revFill)" />
+                          <path d={expPath} fill="none" stroke="#C9692E" strokeWidth={2} strokeDasharray="5,4" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d={revPath} fill="none" stroke="#2E527F" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+                          {trendPoints.map((p, i) => (
+                            <g key={i}>
+                              <circle cx={p.x} cy={p.yExp} r={i === trendPoints.length - 1 ? 5 : 3} fill="#C9692E" stroke="#fff" strokeWidth={1.5} />
+                              <circle
+                                cx={p.x} cy={p.yRev} r={i === trendPoints.length - 1 ? 5.5 : 3}
+                                fill="#2E527F" stroke="#fff" strokeWidth={1.5}
+                                className={i === trendPoints.length - 1 ? 'cursor-pointer' : ''}
+                                onClick={i === trendPoints.length - 1 ? () => drillTo('revenue', `Period: ${monthLong(selectedMonth)}`) : undefined}
+                              />
+                              <text x={p.x} y={chartH + 18} textAnchor="middle" fontSize={10} fill="#755B4C" fontWeight={600}>{monthShort(p.month)}</text>
+                            </g>
+                          ))}
+                          <text x={trendPoints[trendPoints.length - 1]?.x + 8} y={trendPoints[trendPoints.length - 1]?.yRev + 4} fontSize={11} fontWeight={800} fill="#2E527F">
+                            ${trend[trend.length - 1]?.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                          </text>
+                          <text x={trendPoints[trendPoints.length - 1]?.x + 8} y={trendPoints[trendPoints.length - 1]?.yExp + 4} fontSize={11} fontWeight={800} fill="#AD5623">
+                            ${trend[trend.length - 1]?.expenses.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                          </text>
+                        </svg>
+                        <div className="flex gap-6 mt-3 pt-3 border-t border-[#E8DCC8] text-xs text-[#755B4C]">
+                          <span className="flex items-center gap-1.5"><span className="inline-block w-3.5 h-0.5 bg-[#2E527F]" />Revenue <b className="text-[#4B2B1D]">${trend[trend.length - 1]?.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}</b></span>
+                          <span className="flex items-center gap-1.5"><span className="inline-block w-3.5 h-0.5 bg-[#C9692E]" style={{ borderTop: '2px dashed #C9692E' }} />Expenses <b className="text-[#4B2B1D]">${trend[trend.length - 1]?.expenses.toLocaleString('en-US', { maximumFractionDigits: 0 })}</b></span>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
-                {trend.length === 0 ? (
-                  <p className="text-sm text-[#755B4C]">No data yet.</p>
-                ) : (
-                  <>
-                    <svg viewBox={`0 0 ${chartW + 50} ${chartH + 30}`} width="100%" style={{ overflow: 'visible' }}>
-                      {[0, 0.33, 0.66, 1].map((f, i) => (
-                        <line key={i} x1={chartPad} y1={10 + f * (chartH - 20)} x2={chartW} y2={10 + f * (chartH - 20)} stroke="#EFE7D8" strokeWidth={1} />
-                      ))}
-                      <path d={revPath} fill="none" stroke="#2E527F" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-                      <path d={expPath} fill="none" stroke="#C9692E" strokeWidth={2} strokeDasharray="5,4" strokeLinecap="round" strokeLinejoin="round" />
-                      {trendPoints.map((p, i) => (
-                        <g key={i}>
-                          <circle cx={p.x} cy={p.yRev} r={i === trendPoints.length - 1 ? 5 : 3} fill="#2E527F" stroke="#fff" strokeWidth={1.5} />
-                          <circle cx={p.x} cy={p.yExp} r={i === trendPoints.length - 1 ? 5 : 3} fill="#C9692E" stroke="#fff" strokeWidth={1.5} />
-                          <text x={p.x} y={chartH + 18} textAnchor="middle" fontSize={10} fill="#755B4C" fontWeight={600}>{monthShort(p.month)}</text>
-                        </g>
-                      ))}
-                    </svg>
-                    <div className="flex gap-6 mt-3 pt-3 border-t border-[#E8DCC8] text-xs text-[#755B4C]">
-                      <span className="flex items-center gap-1.5"><span className="inline-block w-3.5 h-0.5 bg-[#2E527F]" />Revenue <b className="text-[#4B2B1D]">${trend[trend.length - 1]?.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}</b></span>
-                      <span className="flex items-center gap-1.5"><span className="inline-block w-3.5 h-0.5 bg-[#C9692E]" style={{ borderTop: '2px dashed #C9692E' }} />Expenses <b className="text-[#4B2B1D]">${trend[trend.length - 1]?.expenses.toLocaleString('en-US', { maximumFractionDigits: 0 })}</b></span>
+
+                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                  <div className="mb-3">
+                    <h3 className="text-base font-extrabold text-[#4B2B1D]">Pending Balances</h3>
+                    <p className="text-xs text-[#9A7E6F]">{pendingBalances.length} customer{pendingBalances.length === 1 ? '' : 's'} owe money</p>
+                  </div>
+                  <div className="rounded-xl bg-[#EAF0F7] text-[#2E527F] px-3.5 py-3 text-xs font-semibold mb-3.5 flex items-center gap-2.5 flex-wrap">
+                    <LinkIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                    {automationRules.length > 0 ? (
+                      <>"Collect" enrolls the customer into your Automations rule ({automationRules[0].name}).</>
+                    ) : (
+                      <>No collection automation set up yet — create one in <button onClick={() => window.location.assign('/customers')} className="underline font-bold">Customers → Automations</button>.</>
+                    )}
+                  </div>
+                  {pendingBalancesLoading ? (
+                    <p className="text-sm text-[#755B4C]">Loading...</p>
+                  ) : pendingBalances.length === 0 ? (
+                    <p className="text-sm text-[#9A7E6F]">Nothing outstanding right now.</p>
+                  ) : (
+                    <>
+                      <div className="space-y-0.5 max-h-[280px] overflow-y-auto">
+                        {pendingBalances.map((b) => {
+                          const initials = b.customer_name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase()
+                          const collected = collectedCustomerIds.has(b.customer_id)
+                          return (
+                            <div key={b.order_id} className="flex items-center gap-2.5 py-2.5 border-b border-[#F3ECDE] last:border-0">
+                              <div className="h-8 w-8 rounded-full bg-[#EAF0F7] text-[#2E527F] flex items-center justify-center font-extrabold text-xs flex-shrink-0">{initials}</div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-[#4B2B1D] truncate">{b.customer_name}</p>
+                                <p className="text-xs text-[#9A7E6F]">{b.days_outstanding} day{b.days_outstanding === 1 ? '' : 's'} outstanding</p>
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <p className="text-sm font-extrabold text-[#4B2B1D]">${b.total_price.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
+                              </div>
+                              <button
+                                onClick={() => collectFromBalance(b.customer_id)}
+                                disabled={automationRules.length === 0 || collectingCustomerId === b.customer_id || collected}
+                                className="rounded-lg border border-[#E8DCC8] bg-white px-2.5 py-1.5 text-xs font-bold text-[#2E527F] hover:bg-[#EAF0F7] disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                              >
+                                {collected ? 'Enrolled' : collectingCustomerId === b.customer_id ? '...' : 'Collect'}
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      <div className="flex items-center justify-between mt-3.5 pt-3.5 border-t border-[#E8DCC8]">
+                        <span className="text-sm text-[#755B4C] font-semibold">Total outstanding</span>
+                        <span className="text-lg font-extrabold text-[#B4432F]">${pendingBalances.reduce((s, b) => s + b.total_price, 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'revenue' && (
+        <div className="space-y-4">
+          {revenueLoading || !revenueData ? (
+            <p className="text-sm text-[#755B4C]">Loading...</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm text-[#755B4C]">Paid this month</p>
+                      <p className="mt-2 text-2xl font-extrabold text-[#4B2B1D]">${revenueData.summary.paidTotal.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
+                      <p className="mt-1 text-xs text-[#9A7E6F]">{revenueData.summary.paidCount} order{revenueData.summary.paidCount === 1 ? '' : 's'}</p>
                     </div>
-                  </>
-                )}
+                    <div className="rounded-lg bg-[#EAF4EC] p-3"><Check className="h-5 w-5 text-[#2F7A4D]" /></div>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm text-[#755B4C]">Outstanding (all time)</p>
+                      <p className="mt-2 text-2xl font-extrabold text-[#4B2B1D]">${revenueData.summary.outstandingTotal.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
+                      <p className="mt-1 text-xs text-[#9A7E6F]">{revenueData.summary.outstandingCount} order{revenueData.summary.outstandingCount === 1 ? '' : 's'} not yet marked paid</p>
+                    </div>
+                    <div className="rounded-lg bg-[#FBEBE8] p-3"><AlertTriangle className="h-5 w-5 text-[#B4432F]" /></div>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                  <p className="text-sm text-[#755B4C] mb-2.5">By payment method</p>
+                  {revenueData.summary.byMethod.length === 0 ? (
+                    <p className="text-xs text-[#9A7E6F]">No paid orders with a method recorded this month.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {revenueData.summary.byMethod.map((m) => (
+                        <div key={m.method} className="flex items-center justify-between text-sm">
+                          <span className="text-[#755B4C] capitalize">{m.method}</span>
+                          <span className="font-bold text-[#4B2B1D]">${m.total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {overview.outstandingCount > 0 && (
-                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
-                  <div className="flex items-center justify-between mb-1">
-                    <h3 className="text-base font-extrabold text-[#4B2B1D]">Pending Balances</h3>
-                    <button onClick={() => setActiveTab('expenses')} className="text-xs font-bold text-[#2E527F] hover:underline">View in Expenses →</button>
-                  </div>
-                  <p className="text-xs text-[#9A7E6F]">{overview.outstandingCount} order{overview.outstandingCount === 1 ? '' : 's'} not yet marked paid — mark them paid as bank transfers, cash, Stripe, or however they actually came in from the order's row in the Expenses tab ledger.</p>
+              <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                <div className="mb-3">
+                  <h3 className="text-base font-extrabold text-[#4B2B1D]">Transactions — {monthLong(selectedMonth)}</h3>
+                  <p className="text-xs text-[#9A7E6F]">Every order this month, straight from the real ledger — no separate payment processor feed yet</p>
                 </div>
-              )}
+                {revenueData.transactions.length === 0 ? (
+                  <p className="text-sm text-[#9A7E6F]">No orders this month.</p>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-[#E8DCC8]">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-[#E8DCC8] bg-[#FDFBF7]">
+                          <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Customer</th>
+                          <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Date</th>
+                          <th className="px-3 py-2 text-right font-bold text-[#4B2B1D]">Amount</th>
+                          <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Method</th>
+                          <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {revenueData.transactions.map((t) => (
+                          <tr key={t.id} className="border-b border-[#E8DCC8] hover:bg-[#FDFBF7]">
+                            <td className="px-3 py-2 font-semibold text-[#4B2B1D]">{t.customer_name}</td>
+                            <td className="px-3 py-2 text-[#755B4C]">{new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td>
+                            <td className="px-3 py-2 text-right font-bold text-[#4B2B1D]">${t.total_price.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                            <td className="px-3 py-2 text-[#755B4C] capitalize">{t.payment_method || '—'}</td>
+                            <td className="px-3 py-2">
+                              <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${t.payment_status === 'paid' ? 'bg-[#EAF4EC] text-[#2F7A4D]' : 'bg-[#FBF2DE] text-[#B4831F]'}`}>
+                                {t.payment_status === 'paid' ? 'Paid' : 'Pending'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -2145,17 +2465,21 @@ function FinancialsPage() {
           <div className="space-y-4">
             {/* Summary by Category */}
             <div className="bg-[#FDFBF7] p-4 rounded-lg border border-[#E8DCC8]">
-              <h3 className="font-semibold text-[#4B2B1D] mb-3">Expenses by Category</h3>
-              <div className="space-y-2">
-                {Object.entries(expensesByCategory).map(([cat, amount]) => (
-                  <div key={cat} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded" style={{ backgroundColor: categoryColors[cat]?.bg || '#9A7E6F' }}></div>
-                      <span className="text-[#755B4C]">{categoryColors[cat]?.label || cat}</span>
+              <h3 className="font-semibold text-[#4B2B1D] mb-3">Spend by Category</h3>
+              <div className="space-y-1">
+                {Object.entries(expensesByCategory).sort((a, b) => b[1] - a[1]).map(([cat, amount]) => {
+                  const maxAmount = Math.max(1, ...Object.values(expensesByCategory))
+                  const pct = Math.max(3, Math.round(((amount || 0) / maxAmount) * 100))
+                  return (
+                    <div key={cat} className="flex items-center gap-3 py-2 border-b border-[#F3ECDE] last:border-0">
+                      <span className="w-28 flex-shrink-0 text-sm font-bold text-[#4B2B1D]">{categoryColors[cat]?.label || cat}</span>
+                      <div className="flex-1 h-2 rounded-full bg-[#F0ECE3] overflow-hidden">
+                        <div className="h-full rounded-full bg-[#C9692E]" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="w-20 flex-shrink-0 text-right text-sm font-bold text-[#4B2B1D]">${(amount || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
                     </div>
-                    <span className="font-bold text-[#4B2B1D]">${(amount || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
               {pendingExpenses > 0 && (
                 <div className="mt-3 pt-3 border-t border-[#E8DCC8]">
@@ -2169,6 +2493,35 @@ function FinancialsPage() {
             {/* Ledger -- one row per line item, with bulk + single-row
                 approve/reject and an audit trail of who acted and when */}
             <Section id="ledger" title={`Ledger (${expenses.length})`} expandedSections={expandedSections} toggleSection={toggleSection}>
+              <div className="flex gap-2 flex-wrap mb-3">
+                <select
+                  value={ledgerCategoryFilter}
+                  onChange={(e) => setLedgerCategoryFilter(e.target.value)}
+                  className="rounded-lg border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold text-[#755B4C]"
+                >
+                  <option value="all">All categories</option>
+                  {Object.entries(categoryColors).map(([key, val]) => (
+                    <option key={key} value={key}>{val.label}</option>
+                  ))}
+                </select>
+                <select
+                  value={ledgerStatusFilter}
+                  onChange={(e) => setLedgerStatusFilter(e.target.value)}
+                  className="rounded-lg border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold text-[#755B4C]"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="approved">Approved</option>
+                  <option value="reconciled">Reconciled</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+                <input
+                  value={ledgerSearch}
+                  onChange={(e) => setLedgerSearch(e.target.value)}
+                  placeholder="Search vendor or description..."
+                  className="flex-1 min-w-[180px] rounded-lg border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs text-[#4B2B1D] outline-none"
+                />
+              </div>
               {selectedExpenseIds.size > 0 && (
                 <div className="flex items-center justify-between gap-3 rounded-xl bg-[#4B2B1D] text-white px-4 py-2.5 mb-3">
                   <span className="text-sm font-bold">{selectedExpenseIds.size} selected</span>
@@ -2180,10 +2533,20 @@ function FinancialsPage() {
                   </div>
                 </div>
               )}
-              {expensesLoading ? (
+              {(() => {
+                const filteredExpenses = expenses.filter((e) => {
+                  if (ledgerCategoryFilter !== 'all' && e.category !== ledgerCategoryFilter) return false
+                  if (ledgerStatusFilter !== 'all' && e.status !== ledgerStatusFilter) return false
+                  if (ledgerSearch.trim()) {
+                    const q = ledgerSearch.toLowerCase()
+                    if (!e.vendor.toLowerCase().includes(q) && !e.description.toLowerCase().includes(q)) return false
+                  }
+                  return true
+                })
+                return expensesLoading ? (
                 <p className="text-sm text-[#755B4C]">Loading...</p>
-              ) : expenses.length === 0 ? (
-                <p className="text-sm text-[#755B4C]">No expenses logged yet.</p>
+              ) : filteredExpenses.length === 0 ? (
+                <p className="text-sm text-[#755B4C]">No expenses match this filter.</p>
               ) : (
                 <div className="overflow-x-auto rounded-lg border border-[#E8DCC8]">
                   <table className="w-full text-sm">
@@ -2192,8 +2555,8 @@ function FinancialsPage() {
                         <th className="px-3 py-2 w-6">
                           <input
                             type="checkbox"
-                            checked={selectedExpenseIds.size > 0 && selectedExpenseIds.size === expenses.filter((e) => e.status === 'pending').length}
-                            onChange={(e) => setSelectedExpenseIds(e.target.checked ? new Set(expenses.filter((x) => x.status === 'pending').map((x) => x.id)) : new Set())}
+                            checked={selectedExpenseIds.size > 0 && selectedExpenseIds.size === filteredExpenses.filter((e) => e.status === 'pending').length}
+                            onChange={(e) => setSelectedExpenseIds(e.target.checked ? new Set(filteredExpenses.filter((x) => x.status === 'pending').map((x) => x.id)) : new Set())}
                           />
                         </th>
                         <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Date</th>
@@ -2206,7 +2569,7 @@ function FinancialsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {expenses.map((e) => {
+                      {filteredExpenses.map((e) => {
                         const sourceIcon = e.sourceType === 'gdrive' ? <Cloud className="h-3 w-3" /> : e.sourceType === 'scan' ? <Camera className="h-3 w-3" /> : <Edit3 className="h-3 w-3" />
                         const sourceLabel = e.sourceType === 'gdrive' ? 'Drive' : e.sourceType === 'scan' ? 'Scan' : 'Manual'
                         const statusStyle =
@@ -2251,7 +2614,7 @@ function FinancialsPage() {
                     </tbody>
                   </table>
                 </div>
-              )}
+              )})()}
             </Section>
 
             {/* Receipt History -- one row per receipt (not per line item),
