@@ -2687,7 +2687,11 @@ function FinancialsPage() {
                 // entries) are their own singleton group.
                 const groupsMap = new Map<string, Expense[]>()
                 for (const e of filteredExpenses) {
-                  const key = e.receiptScanId != null ? `r${e.receiptScanId}` : `single-${e.id}`
+                  // Manual entries typed in one at a time (no receipt_scan_id)
+                  // still belong to the same real-world trip if they share a
+                  // vendor and date -- group those together too instead of
+                  // treating each line as its own "receipt."
+                  const key = e.receiptScanId != null ? `r${e.receiptScanId}` : `manual-${e.vendor.trim().toLowerCase()}-${e.date.slice(0, 10)}`
                   if (!groupsMap.has(key)) groupsMap.set(key, [])
                   groupsMap.get(key)!.push(e)
                 }
