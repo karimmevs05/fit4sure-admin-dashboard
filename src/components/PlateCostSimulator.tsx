@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
-import { Calculator, ChevronDown, ChevronUp, X } from 'lucide-react'
+import { Calculator, ChevronDown, ChevronUp, X, Check } from 'lucide-react'
 
 type Recipe = {
   recipe_id: number
@@ -38,6 +38,7 @@ function macroLine(m: { calories: number; protein_g: number; carbs_g: number; fa
 }
 
 type PlateItem = { recipe: Recipe; servingSizeG: string }
+type Customer = { id: number; name: string }
 
 const CATEGORY_LABELS: Record<string, string> = {
   carbohydrates: 'carb',
@@ -59,6 +60,13 @@ export function PlateCostSimulator() {
   const [categoryFilter, setCategoryFilter] = useState('ALL')
   const [defaultServingSizeG, setDefaultServingSizeG] = useState('')
 
+  const [allCustomers, setAllCustomers] = useState<Customer[]>([])
+  const [customerQuery, setCustomerQuery] = useState('')
+  const [showCustomerMatches, setShowCustomerMatches] = useState(false)
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [assigning, setAssigning] = useState(false)
+  const [assignMessage, setAssignMessage] = useState<string | null>(null)
+
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
 
@@ -70,7 +78,20 @@ export function PlateCostSimulator() {
         setAllRecipes(rows.filter((r: any) => r.category !== 'prepared_meal'))
       })
       .catch(() => {})
+    axios
+      .get(`${apiUrl}/api/admin/customers`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => {
+        const rows = res.data.data || res.data || []
+        setAllCustomers(rows.map((c: any) => ({ id: c.id, name: c.name })))
+      })
+      .catch(() => {})
   }, [])
+
+  const customerMatches = useMemo(() => {
+    if (!customerQuery.trim()) return []
+    const q = customerQuery.toLowerCase()
+    return allCustomers.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 8)
+  }, [customerQuery, allCustomers])
 
   const filteredRecipes = categoryFilter === 'ALL' ? allRecipes : allRecipes.filter((r) => r.category === categoryFilter)
 
@@ -105,6 +126,35 @@ export function PlateCostSimulator() {
       { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, cost_cents: 0 }
     )
   }, [plate])
+
+  // One-command "make this real for a real client": creates a real menu
+  // item priced at exactly what's shown here, and a real order for them --
+  // no separate modal, no day/format picker, just pick a customer and go.
+  const assignToClient = async () => {
+    if (!selectedCustomer || plate.length === 0) return
+    setAssigning(true)
+    setAssignMessage(null)
+    try {
+      const name = plate.map((p) => p.recipe.name).join(' + ').slice(0, 120)
+      await axios.post(
+        `${apiUrl}/api/admin/orders/custom-plate`,
+        {
+          customerId: selectedCustomer.id,
+          name,
+          priceCents: totals.cost_cents,
+          notes: `Custom plate from simulator: ${plate.map((p) => `${p.recipe.name} (${p.servingSizeG}g)`).join(', ')}`,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      setAssignMessage(`Added to ${selectedCustomer.name}'s order`)
+      setSelectedCustomer(null)
+      setCustomerQuery('')
+    } catch (err: any) {
+      setAssignMessage(err.response?.data?.error || 'Failed to assign')
+    } finally {
+      setAssigning(false)
+    }
+  }
 
   return (
     <div className="rounded-xl border border-[#E4D8C9] bg-[#FBF7F0]">
@@ -185,6 +235,53 @@ export function PlateCostSimulator() {
                   </div>
                 )
               })}
+
+              {/* Simple command: pick a customer, one click makes this
+                  exact plate a real order for them -- no separate modal. */}
+              <div className="relative flex items-center gap-1.5 px-3 py-1.5 border-t border-[#E4D8C9] bg-[#F8F2E8] rounded-b-lg">
+                <input
+                  value={selectedCustomer ? selectedCustomer.name : customerQuery}
+                  onChange={(e) => {
+                    setSelectedCustomer(null)
+                    setCustomerQuery(e.target.value)
+                    setShowCustomerMatches(true)
+                  }}
+                  onFocus={() => setShowCustomerMatches(true)}
+                  onBlur={() => setTimeout(() => setShowCustomerMatches(false), 150)}
+                  placeholder="Assign to client..."
+                  className="h-7 flex-1 min-w-0 rounded-md border border-[#D8CDBE] bg-white px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                />
+                <button
+                  onClick={assignToClient}
+                  disabled={!selectedCustomer || assigning}
+                  className="h-7 flex-shrink-0 rounded-md bg-[#16A34A] px-2.5 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#15873F] transition"
+                >
+                  {assigning ? '...' : 'Assign'}
+                </button>
+                {assignMessage && (
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-[#755B4C] flex-shrink-0">
+                    <Check className="h-3 w-3 text-[#16A34A]" />
+                    {assignMessage}
+                  </span>
+                )}
+                {showCustomerMatches && customerMatches.length > 0 && (
+                  <div className="absolute left-3 right-3 top-full z-10 mt-1 rounded-md border border-[#D8CDBE] bg-white shadow-md max-h-40 overflow-y-auto">
+                    {customerMatches.map((c) => (
+                      <button
+                        key={c.id}
+                        onMouseDown={() => {
+                          setSelectedCustomer(c)
+                          setCustomerQuery('')
+                          setShowCustomerMatches(false)
+                        }}
+                        className="block w-full px-2.5 py-1.5 text-left text-xs text-[#4B2B1D] hover:bg-[#F8F2E8]"
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
