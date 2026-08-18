@@ -14,11 +14,28 @@ import {
   ImagePlus,
   Pencil,
   Plus,
+  Ruler,
   Search,
   Trash2,
   User,
   X,
 } from "lucide-react";
+
+// Standard serving sizes per plate structure -- source of truth is the
+// "Plate structure" reference sheet, not derived/computed from recipe data.
+const PLATE_STRUCTURE_SERVINGS: Array<{
+  structure: string;
+  proteinOz: number;
+  carbsG: number;
+  veggiesG: number | null;
+}> = [
+  { structure: "Regular", proteinOz: 5, carbsG: 150, veggiesG: 100 },
+  { structure: "Large", proteinOz: 7, carbsG: 225, veggiesG: 140 },
+  { structure: "By the Pound", proteinOz: 16, carbsG: 0, veggiesG: 0 },
+  { structure: "Low Carb", proteinOz: 7, carbsG: 0, veggiesG: 150 },
+  { structure: "High Protein", proteinOz: 7, carbsG: 150, veggiesG: null },
+  { structure: "Breakfast", proteinOz: 2.5, carbsG: 120, veggiesG: 25 },
+];
 
 type Category = "beef" | "chicken" | "turkey" | "carbohydrates" | "vegetables" | "sauces" | "beverage" | "breakfast";
 
@@ -435,6 +452,7 @@ function RecipeCard({
     "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=500&q=80";
   const categoryKey = recipe.category as Category;
   const colors = CATEGORY_CLASSES[categoryKey] || CATEGORY_CLASSES.beef;
+  const [showPlateInfo, setShowPlateInfo] = useState(false);
 
   return (
     <article onClick={() => onSelect(recipe)} className="group cursor-pointer overflow-hidden rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] shadow-[0_8px_24px_rgba(75,43,29,0.06)] transition duration-200 hover:-translate-y-0.5 hover:border-[#3E6594]/50 hover:shadow-[0_14px_32px_rgba(75,43,29,0.10)]">
@@ -493,7 +511,21 @@ function RecipeCard({
           <p className="text-[9px] text-[#9A8774]">per lb (455g)</p>
         </div>
 
-        <div className="mt-2 flex justify-end gap-2 pt-2 border-t border-[#E4D8C9]">
+        <div className="mt-2 flex justify-end gap-2 pt-2 border-t border-[#E4D8C9] relative">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowPlateInfo((v) => !v);
+            }}
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+              showPlateInfo
+                ? "border-[#3E6594] bg-[#EDF2F7] text-[#2E527F]"
+                : "border-[#B9A88F] bg-[#FBF6EE] text-[#755B4C] hover:border-[#3E6594] hover:text-[#2E527F] hover:bg-[#EDF2F7]"
+            }`}
+            aria-label="Standard plate serving sizes"
+          >
+            <Ruler className="h-3.5 w-3.5" />
+          </button>
           <button
             onClick={() => onEdit(recipe)}
             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#B9A88F] bg-[#FBF6EE] text-[#2E527F] transition hover:border-[#3E6594] hover:bg-[#EDF2F7]"
@@ -508,6 +540,44 @@ function RecipeCard({
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
+
+          {showPlateInfo && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="absolute bottom-full left-0 z-20 mb-2 w-64 rounded-xl border border-[#CDBDA8] bg-white p-3 shadow-[0_12px_28px_rgba(75,43,29,0.16)]"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#4B2B1D]">
+                  Plate Structure Servings
+                </p>
+                <button onClick={() => setShowPlateInfo(false)} className="text-[#9A8774] hover:text-[#4B2B1D]">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <table className="w-full text-[10.5px]">
+                <thead>
+                  <tr className="text-[#9A8774]">
+                    <th className="text-left font-bold pb-1">Structure</th>
+                    <th className="text-right font-bold pb-1">Protein</th>
+                    <th className="text-right font-bold pb-1">Carbs</th>
+                    <th className="text-right font-bold pb-1">Veg</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {PLATE_STRUCTURE_SERVINGS.map((row) => (
+                    <tr key={row.structure} className="border-t border-[#F0EAE0]">
+                      <td className="py-1 font-semibold text-[#4B2B1D]">{row.structure}</td>
+                      <td className="py-1 text-right text-[#755B4C]">{row.proteinOz} oz</td>
+                      <td className="py-1 text-right text-[#755B4C]">{row.carbsG > 0 ? `${row.carbsG}g` : "—"}</td>
+                      <td className="py-1 text-right text-[#755B4C]">
+                        {row.veggiesG == null ? "n/a" : row.veggiesG > 0 ? `${row.veggiesG}g` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </article>
