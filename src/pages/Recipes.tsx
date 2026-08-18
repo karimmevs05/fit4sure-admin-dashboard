@@ -4,6 +4,7 @@ import { IngredientPicker, PickedIngredient } from "../components/IngredientPick
 import { RecipeImportPanel } from "../components/RecipeImportPanel";
 import { RecipeStepsEditor, RecipeStep } from "../components/RecipeStepsEditor";
 import { formatIngredientWeight } from "../utils/unitConversion";
+import { PLATE_STRUCTURE_SERVINGS, plateComponentFor, servingGramsFor } from "../utils/plateStructure";
 import {
   BookOpen,
   ChevronDown,
@@ -20,41 +21,6 @@ import {
   User,
   X,
 } from "lucide-react";
-
-// Standard serving sizes per plate structure -- source of truth is the
-// "Plate structure" reference sheet, not derived/computed from recipe data.
-const PLATE_STRUCTURE_SERVINGS: Array<{
-  structure: string;
-  proteinOz: number;
-  carbsG: number;
-  veggiesG: number | null;
-}> = [
-  { structure: "Regular", proteinOz: 5, carbsG: 150, veggiesG: 100 },
-  { structure: "Large", proteinOz: 7, carbsG: 225, veggiesG: 140 },
-  { structure: "By the Pound", proteinOz: 16, carbsG: 0, veggiesG: 0 },
-  { structure: "Low Carb", proteinOz: 7, carbsG: 0, veggiesG: 150 },
-  { structure: "High Protein", proteinOz: 7, carbsG: 150, veggiesG: null },
-  { structure: "Breakfast", proteinOz: 2.5, carbsG: 120, veggiesG: 25 },
-];
-
-const OZ_TO_G = 28.3495;
-
-// Which plate-structure column a recipe's macros should scale against, based
-// on its own category -- a protein recipe cares about the protein serving
-// size, a carb side about the carbs serving size, etc. Sauces/beverages
-// don't map to any column in the sheet, so they get no selector.
-function plateComponentFor(category: string): "protein" | "carbs" | "veggies" | null {
-  if (category === "carbohydrates") return "carbs";
-  if (category === "vegetables") return "veggies";
-  if (category === "beef" || category === "chicken" || category === "turkey" || category === "breakfast") return "protein";
-  return null;
-}
-
-function servingGramsFor(row: (typeof PLATE_STRUCTURE_SERVINGS)[number], component: "protein" | "carbs" | "veggies"): number | null {
-  if (component === "protein") return row.proteinOz * OZ_TO_G;
-  if (component === "carbs") return row.carbsG;
-  return row.veggiesG;
-}
 
 type Category = "beef" | "chicken" | "turkey" | "carbohydrates" | "vegetables" | "sauces" | "beverage" | "breakfast";
 
