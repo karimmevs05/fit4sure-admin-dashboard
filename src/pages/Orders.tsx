@@ -98,8 +98,11 @@ type MenuFormat = {
 type RecipePlanItem = {
   recipeId: number
   name: string
+  category: string
   formats: MenuFormat[]
 }
+
+const SIDE_CATEGORIES = ['carbohydrates', 'vegetables']
 
 type BreakfastItem = {
   id: number
@@ -1282,31 +1285,69 @@ function AddOrderModal({
                       </button>
                       {openDay === day && (
                         <div className="px-3 pb-3 space-y-2">
-                          {weeklyMenu[day].map((recipe) => (
-                            <div key={recipe.recipeId} className="rounded-lg border border-[#DDC9A8] bg-white p-2.5">
-                              <p className="text-xs font-semibold uppercase tracking-tight text-[#3B2A1E] mb-1.5 truncate" title={recipe.name}>
-                                {recipe.name}
-                              </p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {recipe.formats.map((f) => {
-                                  const inCart = qtyInCart(recipe.name, f.label, day)
-                                  return (
-                                    <button
-                                      key={f.id}
-                                      type="button"
-                                      onClick={() => addFromMenu(recipe.name, f.label, day, f.price)}
-                                      className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
-                                        inCart ? 'bg-[#3D5A78] text-white' : 'bg-[#F5EFE0] text-[#3B2A1E] hover:bg-[#EFE3D0]'
-                                      }`}
-                                    >
-                                      {f.label} · ${f.price.toFixed(2)}
-                                      {inCart && <span className="ml-1 font-bold">×{inCart}</span>}
-                                    </button>
-                                  )
-                                })}
+                          {weeklyMenu[day].map((recipe) => {
+                            const isSide = SIDE_CATEGORIES.includes(recipe.category)
+                            const hasSelection = recipe.formats.some((f) => qtyInCart(recipe.name, f.label, day))
+                            const sidesThisDay = !isSide
+                              ? weeklyMenu[day].filter((r) => SIDE_CATEGORIES.includes(r.category) && r.recipeId !== recipe.recipeId)
+                              : []
+                            return (
+                              <div key={recipe.recipeId} className="rounded-lg border border-[#DDC9A8] bg-white p-2.5">
+                                <p className="text-xs font-semibold uppercase tracking-tight text-[#3B2A1E] mb-1.5 truncate" title={recipe.name}>
+                                  {recipe.name}
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {recipe.formats.map((f) => {
+                                    const inCart = qtyInCart(recipe.name, f.label, day)
+                                    return (
+                                      <button
+                                        key={f.id}
+                                        type="button"
+                                        onClick={() => addFromMenu(recipe.name, f.label, day, f.price)}
+                                        className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
+                                          inCart ? 'bg-[#3D5A78] text-white' : 'bg-[#F5EFE0] text-[#3B2A1E] hover:bg-[#EFE3D0]'
+                                        }`}
+                                      >
+                                        {f.label} · ${f.price.toFixed(2)}
+                                        {inCart && <span className="ml-1 font-bold">×{inCart}</span>}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+
+                                {/* Once this protein has a format selected, surface this
+                                    week's carb/veggie sides right here so staff don't have
+                                    to go hunting for them elsewhere in the day's list. */}
+                                {hasSelection && sidesThisDay.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-[#F0EAE0]">
+                                    <p className="text-[9px] font-bold uppercase tracking-wide text-[#9C8C77] mb-1">
+                                      Sides available this week
+                                    </p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {sidesThisDay.map((side) => {
+                                        const format = side.formats[0]
+                                        const inCart = format ? qtyInCart(side.name, format.label, day) : undefined
+                                        return (
+                                          <button
+                                            key={side.recipeId}
+                                            type="button"
+                                            onClick={() => format && addFromMenu(side.name, format.label, day, format.price)}
+                                            className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
+                                              inCart ? 'bg-[#3D5A78] text-white' : 'bg-[#F5EFE0] text-[#3B2A1E] hover:bg-[#EFE3D0]'
+                                            }`}
+                                          >
+                                            {side.name}
+                                            {format ? ` · $${format.price.toFixed(2)}` : ''}
+                                            {inCart && <span className="ml-1 font-bold">×{inCart}</span>}
+                                          </button>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       )}
                     </div>
