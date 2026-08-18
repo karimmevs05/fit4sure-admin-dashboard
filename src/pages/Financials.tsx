@@ -4,7 +4,7 @@ import {
   Package, Percent, RefreshCw, Camera, Cloud, Edit3, Check, AlertTriangle, Calendar, Link as LinkIcon,
   BarChart3, FileText,
 } from 'lucide-react'
-// Receipt scanning goes through OCR.space via /api/admin/expenses/scan-receipt
+// Receipt scanning goes through Gemini via /api/admin/expenses/scan-receipt
 
 // Error Boundary
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
@@ -893,11 +893,13 @@ function FinancialsPage() {
     }
   }
 
-  // Process receipt via the real OCR.space-backed parser. This used to call
-  // /api/admin/task-management-test/parse-receipt (a GoHighLevel integration
-  // that was never actually built -- that route isn't even mounted in
-  // app.js, and its handler was a hardcoded mock that ignored the image).
-  // /api/admin/expenses/scan-receipt is the real, already-working parser.
+  // Process receipt via the Gemini-based parser (services/receiptProcessor.js
+  // on the backend) -- the same one Google Drive sync already uses. This
+  // used to call /api/admin/task-management-test/parse-receipt (a
+  // GoHighLevel integration that was never actually built -- that route
+  // wasn't even mounted in app.js, and its handler was a hardcoded mock that
+  // ignored the image), then briefly an OCR.space text-regex parser, before
+  // landing on one real AI parser shared by every receipt-capture path.
   const processReceiptImage = async (file: File) => {
     setIsProcessing(true)
     setProcessingStatus('Reading receipt...')
@@ -913,7 +915,7 @@ function FinancialsPage() {
           const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/expenses/scan-receipt`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ imageBase64: base64Image }),
+            body: JSON.stringify({ imageBase64: base64Image, mimeType: file.type || 'image/jpeg' }),
           })
 
           const result = await response.json()
@@ -2221,7 +2223,7 @@ function FinancialsPage() {
                       <Upload className="h-8 w-8 text-[#8B6F47]" />
                       <div>
                         <p className="font-semibold text-[#4B2B1D]">Drop receipt image here or click to upload</p>
-                        <p className="text-sm text-[#755B4C] mt-1">🤖 OCR-powered parsing -- confirm the items before saving</p>
+                        <p className="text-sm text-[#755B4C] mt-1">🤖 AI-powered parsing (Gemini) -- confirm the items before saving</p>
                       </div>
                     </>
                   )}
