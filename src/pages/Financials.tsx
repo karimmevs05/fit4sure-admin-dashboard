@@ -4,7 +4,7 @@ import {
   Package, Percent, RefreshCw, Camera, Cloud, Edit3, Check, AlertTriangle, Calendar, Link as LinkIcon,
   BarChart3, FileText,
 } from 'lucide-react'
-// Removed Tesseract - using GoHighLevel API instead
+// Receipt scanning goes through OCR.space via /api/admin/expenses/scan-receipt
 
 // Error Boundary
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
@@ -893,10 +893,14 @@ function FinancialsPage() {
     }
   }
 
-  // Process receipt using GoHighLevel API
+  // Process receipt via the real OCR.space-backed parser. This used to call
+  // /api/admin/task-management-test/parse-receipt (a GoHighLevel integration
+  // that was never actually built -- that route isn't even mounted in
+  // app.js, and its handler was a hardcoded mock that ignored the image).
+  // /api/admin/expenses/scan-receipt is the real, already-working parser.
   const processReceiptImage = async (file: File) => {
     setIsProcessing(true)
-    setProcessingStatus('Sending to GoHighLevel...')
+    setProcessingStatus('Reading receipt...')
 
     try {
       const reader = new FileReader()
@@ -904,22 +908,19 @@ function FinancialsPage() {
         try {
           const imageDataUrl = e.target?.result as string
           const base64Image = imageDataUrl.split(',')[1]
+          const token = localStorage.getItem('token')
 
-          // Call GoHighLevel receipt parser endpoint
-          const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/task-management-test/parse-receipt`, {
+          const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/admin/expenses/scan-receipt`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              imageBase64: base64Image,
-              fileName: file.name
-            })
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ imageBase64: base64Image }),
           })
 
+          const result = await response.json()
           if (!response.ok) {
-            throw new Error('GoHighLevel parsing failed')
+            throw new Error(result.error || 'Receipt parsing failed')
           }
 
-          const result = await response.json()
           const receiptData = result.data
 
           setProcessingStatus('')
@@ -932,7 +933,7 @@ function FinancialsPage() {
             total: receiptData.total || 0,
           })
         } catch (error) {
-          console.error('GoHighLevel Error:', error)
+          console.error('Receipt scan error:', error)
           setProcessingStatus('')
           alert(`Parsing Error: ${error instanceof Error ? error.message : 'Failed to parse receipt'}`)
         }
@@ -2220,7 +2221,7 @@ function FinancialsPage() {
                       <Upload className="h-8 w-8 text-[#8B6F47]" />
                       <div>
                         <p className="font-semibold text-[#4B2B1D]">Drop receipt image here or click to upload</p>
-                        <p className="text-sm text-[#755B4C] mt-1">🤖 AI-powered by GoHighLevel for accurate parsing</p>
+                        <p className="text-sm text-[#755B4C] mt-1">🤖 OCR-powered parsing -- confirm the items before saving</p>
                       </div>
                     </>
                   )}
