@@ -37,6 +37,25 @@ const PLATE_STRUCTURE_SERVINGS: Array<{
   { structure: "Breakfast", proteinOz: 2.5, carbsG: 120, veggiesG: 25 },
 ];
 
+const OZ_TO_G = 28.3495;
+
+// Which plate-structure column a recipe's macros should scale against, based
+// on its own category -- a protein recipe cares about the protein serving
+// size, a carb side about the carbs serving size, etc. Sauces/beverages
+// don't map to any column in the sheet, so they get no selector.
+function plateComponentFor(category: string): "protein" | "carbs" | "veggies" | null {
+  if (category === "carbohydrates") return "carbs";
+  if (category === "vegetables") return "veggies";
+  if (category === "beef" || category === "chicken" || category === "turkey" || category === "breakfast") return "protein";
+  return null;
+}
+
+function servingGramsFor(row: (typeof PLATE_STRUCTURE_SERVINGS)[number], component: "protein" | "carbs" | "veggies"): number | null {
+  if (component === "protein") return row.proteinOz * OZ_TO_G;
+  if (component === "carbs") return row.carbsG;
+  return row.veggiesG;
+}
+
 type Category = "beef" | "chicken" | "turkey" | "carbohydrates" | "vegetables" | "sauces" | "beverage" | "breakfast";
 
 type RecipeIngredient = {
@@ -452,7 +471,22 @@ function RecipeCard({
     "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=500&q=80";
   const categoryKey = recipe.category as Category;
   const colors = CATEGORY_CLASSES[categoryKey] || CATEGORY_CLASSES.beef;
-  const [showPlateInfo, setShowPlateInfo] = useState(false);
+  const [showStructureMenu, setShowStructureMenu] = useState(false);
+  const [selectedStructureIdx, setSelectedStructureIdx] = useState<number | null>(null);
+
+  const component = plateComponentFor(recipe.category);
+  const selectedRow = selectedStructureIdx != null ? PLATE_STRUCTURE_SERVINGS[selectedStructureIdx] : null;
+  const servingGrams = selectedRow && component ? servingGramsFor(selectedRow, component) : null;
+  const ratio = servingGrams != null ? servingGrams / 455 : null;
+
+  const displayCalories = ratio != null ? Math.round((recipe.per_pound?.calories ?? 0) * ratio) : recipe.per_pound?.calories ?? 0;
+  const displayProtein = ratio != null ? Math.round(parseFloat(recipe.per_pound?.protein_g ?? "0") * ratio) : Math.round(parseFloat(recipe.per_pound?.protein_g ?? "0"));
+  const displayCarbs = ratio != null ? Math.round(parseFloat(recipe.per_pound?.carbs_g ?? "0") * ratio) : Math.round(parseFloat(recipe.per_pound?.carbs_g ?? "0"));
+  const displayFat = ratio != null ? Math.round(parseFloat(recipe.per_pound?.fat_g ?? "0") * ratio) : Math.round(parseFloat(recipe.per_pound?.fat_g ?? "0"));
+  const displayCost = ratio != null ? ((recipe.cost_per_pound_cents ?? 0) / 100) * ratio : (recipe.cost_per_pound_cents ?? 0) / 100;
+  const servingLabel = selectedRow && component
+    ? `${selectedRow.structure} · ${component === "protein" ? `${selectedRow.proteinOz}oz` : `${servingGrams}g`}`
+    : "per lb (455g)";
 
   return (
     <article onClick={() => onSelect(recipe)} className="group cursor-pointer overflow-hidden rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] shadow-[0_8px_24px_rgba(75,43,29,0.06)] transition duration-200 hover:-translate-y-0.5 hover:border-[#3E6594]/50 hover:shadow-[0_14px_32px_rgba(75,43,29,0.10)]">
@@ -476,56 +510,89 @@ function RecipeCard({
         </h2>
 
         <div className="mt-2 grid grid-cols-4 gap-1">
-          <MacroBadge
-            value={recipe.per_pound?.calories ?? 0}
-            label="CAL"
-            className="bg-[#E8EEF5] text-[#134DA1]"
-          />
-          <MacroBadge
-            value={`${Math.round(parseFloat(recipe.per_pound?.protein_g ?? '0'))}g`}
-            label="PRO"
-            className="bg-[#EAF5EC] text-[#16834A]"
-          />
-          <MacroBadge
-            value={`${Math.round(parseFloat(recipe.per_pound?.carbs_g ?? '0'))}g`}
-            label="CARB"
-            className="bg-[#FFF0E1] text-[#DC6500]"
-          />
-          <MacroBadge
-            value={`${Math.round(parseFloat(recipe.per_pound?.fat_g ?? '0'))}g`}
-            label="FAT"
-            className="bg-[#FDEBEC] text-[#D62F3D]"
-          />
+          <MacroBadge value={displayCalories} label="CAL" className="bg-[#E8EEF5] text-[#134DA1]" />
+          <MacroBadge value={`${displayProtein}g`} label="PRO" className="bg-[#EAF5EC] text-[#16834A]" />
+          <MacroBadge value={`${displayCarbs}g`} label="CARB" className="bg-[#FFF0E1] text-[#DC6500]" />
+          <MacroBadge value={`${displayFat}g`} label="FAT" className="bg-[#FDEBEC] text-[#D62F3D]" />
         </div>
-        <p className="mt-0.5 text-[9px] text-[#9A8774]">per lb (455g)</p>
+        <p className="mt-0.5 text-[9px] text-[#9A8774]">{servingLabel}</p>
 
         <div className="mt-auto pt-2 border-t border-[#E4D8C9]">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-[#755B4C]">
-              {recipe.servings}x • {recipe.prep_time_minutes || '?'} min
-            </span>
+          <div className="flex items-center justify-between mb-2 relative">
+            {component ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowStructureMenu((v) => !v);
+                }}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-bold transition ${
+                  selectedRow
+                    ? "border-[#3E6594] bg-[#EDF2F7] text-[#2E527F]"
+                    : "border-[#B9A88F] bg-[#FBF6EE] text-[#755B4C] hover:border-[#3E6594] hover:text-[#2E527F]"
+                }`}
+              >
+                <Ruler className="h-3 w-3" />
+                {selectedRow ? selectedRow.structure : "Per lb"}
+                <ChevronDown className="h-3 w-3" />
+              </button>
+            ) : (
+              <span className="text-xs font-medium text-[#755B4C]">
+                {recipe.servings}x • {recipe.prep_time_minutes || '?'} min
+              </span>
+            )}
             <span className="text-lg font-extrabold text-[#16813D]">
-              ${((recipe.cost_per_pound_cents ?? 0) / 100).toFixed(2)}
+              ${displayCost.toFixed(2)}
             </span>
+
+            {showStructureMenu && component && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute bottom-full left-0 z-20 mb-2 w-44 rounded-xl border border-[#CDBDA8] bg-white p-1.5 shadow-[0_12px_28px_rgba(75,43,29,0.16)]"
+              >
+                <button
+                  onClick={() => {
+                    setSelectedStructureIdx(null);
+                    setShowStructureMenu(false);
+                  }}
+                  className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold ${
+                    selectedStructureIdx == null ? "bg-[#EDF2F7] text-[#2E527F]" : "text-[#4B2B1D] hover:bg-[#F8F2E8]"
+                  }`}
+                >
+                  Per lb (455g)
+                </button>
+                {PLATE_STRUCTURE_SERVINGS.map((row, idx) => {
+                  const grams = servingGramsFor(row, component);
+                  const disabled = grams == null;
+                  return (
+                    <button
+                      key={row.structure}
+                      disabled={disabled}
+                      onClick={() => {
+                        setSelectedStructureIdx(idx);
+                        setShowStructureMenu(false);
+                      }}
+                      className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold ${
+                        disabled
+                          ? "text-[#C9BBA8] cursor-not-allowed"
+                          : selectedStructureIdx === idx
+                          ? "bg-[#EDF2F7] text-[#2E527F]"
+                          : "text-[#4B2B1D] hover:bg-[#F8F2E8]"
+                      }`}
+                    >
+                      {row.structure}
+                      <span className="text-[10px] font-normal text-[#9A8774]">
+                        {disabled ? "n/a" : component === "protein" ? `${row.proteinOz}oz` : `${grams}g`}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
-          <p className="text-[9px] text-[#9A8774]">per lb (455g)</p>
+          <p className="text-[9px] text-[#9A8774]">{servingLabel}</p>
         </div>
 
-        <div className="mt-2 flex justify-end gap-2 pt-2 border-t border-[#E4D8C9] relative">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowPlateInfo((v) => !v);
-            }}
-            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
-              showPlateInfo
-                ? "border-[#3E6594] bg-[#EDF2F7] text-[#2E527F]"
-                : "border-[#B9A88F] bg-[#FBF6EE] text-[#755B4C] hover:border-[#3E6594] hover:text-[#2E527F] hover:bg-[#EDF2F7]"
-            }`}
-            aria-label="Standard plate serving sizes"
-          >
-            <Ruler className="h-3.5 w-3.5" />
-          </button>
+        <div className="mt-2 flex justify-end gap-2 pt-2 border-t border-[#E4D8C9]">
           <button
             onClick={() => onEdit(recipe)}
             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#B9A88F] bg-[#FBF6EE] text-[#2E527F] transition hover:border-[#3E6594] hover:bg-[#EDF2F7]"
@@ -540,44 +607,6 @@ function RecipeCard({
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
-
-          {showPlateInfo && (
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="absolute bottom-full left-0 z-20 mb-2 w-64 rounded-xl border border-[#CDBDA8] bg-white p-3 shadow-[0_12px_28px_rgba(75,43,29,0.16)]"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#4B2B1D]">
-                  Plate Structure Servings
-                </p>
-                <button onClick={() => setShowPlateInfo(false)} className="text-[#9A8774] hover:text-[#4B2B1D]">
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <table className="w-full text-[10.5px]">
-                <thead>
-                  <tr className="text-[#9A8774]">
-                    <th className="text-left font-bold pb-1">Structure</th>
-                    <th className="text-right font-bold pb-1">Protein</th>
-                    <th className="text-right font-bold pb-1">Carbs</th>
-                    <th className="text-right font-bold pb-1">Veg</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {PLATE_STRUCTURE_SERVINGS.map((row) => (
-                    <tr key={row.structure} className="border-t border-[#F0EAE0]">
-                      <td className="py-1 font-semibold text-[#4B2B1D]">{row.structure}</td>
-                      <td className="py-1 text-right text-[#755B4C]">{row.proteinOz} oz</td>
-                      <td className="py-1 text-right text-[#755B4C]">{row.carbsG > 0 ? `${row.carbsG}g` : "—"}</td>
-                      <td className="py-1 text-right text-[#755B4C]">
-                        {row.veggiesG == null ? "n/a" : row.veggiesG > 0 ? `${row.veggiesG}g` : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       </div>
     </article>
