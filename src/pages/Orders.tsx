@@ -1337,20 +1337,21 @@ function AddOrderModal({
                                       Sides available this week
                                     </p>
                                     <div className="flex flex-wrap gap-1.5">
+                                      {/* Free -- the selected format's price already covers this
+                                          serving of carbs/veggies per the plate structure table,
+                                          so adding it here isn't a separate paid line item. */}
                                       {sidesThisDay.map((side) => {
-                                        const format = side.formats[0]
-                                        const inCart = format ? qtyInCart(side.name, format.label, day) : undefined
+                                        const inCart = qtyInCart(side.name, 'Included Side', day)
                                         return (
                                           <button
                                             key={side.recipeId}
                                             type="button"
-                                            onClick={() => format && addFromMenu(side.name, format.label, day, format.price)}
+                                            onClick={() => addFromMenu(side.name, 'Included Side', day, 0)}
                                             className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
                                               inCart ? 'bg-[#3D5A78] text-white' : 'bg-[#F5EFE0] text-[#3B2A1E] hover:bg-[#EFE3D0]'
                                             }`}
                                           >
                                             {side.name}
-                                            {format ? ` · $${format.price.toFixed(2)}` : ''}
                                             {inCart && <span className="ml-1 font-bold">×{inCart}</span>}
                                           </button>
                                         )

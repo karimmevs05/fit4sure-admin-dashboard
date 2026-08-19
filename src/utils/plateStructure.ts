@@ -4,13 +4,13 @@ export const PLATE_STRUCTURE_SERVINGS: Array<{
   structure: string;
   proteinOz: number;
   carbsG: number;
-  veggiesG: number | null;
+  veggiesG: number;
 }> = [
   { structure: "Regular", proteinOz: 5, carbsG: 150, veggiesG: 100 },
   { structure: "Large", proteinOz: 7, carbsG: 225, veggiesG: 140 },
   { structure: "By the Pound", proteinOz: 16, carbsG: 0, veggiesG: 0 },
   { structure: "Low Carb", proteinOz: 7, carbsG: 0, veggiesG: 150 },
-  { structure: "High Protein", proteinOz: 7, carbsG: 150, veggiesG: null },
+  { structure: "High Protein", proteinOz: 7, carbsG: 150, veggiesG: 0 },
   { structure: "Breakfast", proteinOz: 2.5, carbsG: 120, veggiesG: 25 },
 ];
 
@@ -27,7 +27,7 @@ export function plateComponentFor(category: string): "protein" | "carbs" | "vegg
   return null;
 }
 
-export function servingGramsFor(row: (typeof PLATE_STRUCTURE_SERVINGS)[number], component: "protein" | "carbs" | "veggies"): number | null {
+export function servingGramsFor(row: (typeof PLATE_STRUCTURE_SERVINGS)[number], component: "protein" | "carbs" | "veggies"): number {
   if (component === "protein") return row.proteinOz * OZ_TO_G;
   if (component === "carbs") return row.carbsG;
   return row.veggiesG;
@@ -57,7 +57,7 @@ export function sideCategoriesFor(selectedFormatLabels: string[]): { carbs: bool
     const row = PLATE_STRUCTURE_SERVINGS.find((r) => r.structure === structureName);
     if (!row) continue;
     if (row.carbsG > 0) carbs = true;
-    if (row.veggiesG != null && row.veggiesG > 0) veggies = true;
+    if (row.veggiesG > 0) veggies = true;
   }
   return { carbs, veggies };
 }

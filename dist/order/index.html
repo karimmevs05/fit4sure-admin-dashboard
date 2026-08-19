@@ -420,20 +420,21 @@ function buildMealCard(dayKey, recipe, sides){
     }
     sidesWrap.classList.add('show');
     sideChipsEl.innerHTML = '';
+    // Free -- the selected format's price already covers this serving of
+    // carbs/veggies per the plate structure table, so adding it here isn't
+    // a separate paid line item.
     applicable.forEach((side) => {
-      const sideFormat = side.formats[0];
-      if (!sideFormat) return;
       const chip = document.createElement('div');
-      const key = cartKey(side.name, sideFormat.id);
+      const key = cartKey(side.name, 'includedside');
       chip.className = 'side-chip' + (cart[key] ? ' added' : '');
-      chip.textContent = `${side.name} · ${money(sideFormat.price)}`;
+      chip.textContent = side.name;
       chip.addEventListener('click', () => {
         cart[key] = {
           day: dayKey,
           dayLabel: dayKey === 'monday' ? 'Monday' : 'Thursday',
           recipeName: side.name,
-          format: sideFormat.label,
-          price: sideFormat.price,
+          format: 'Included Side',
+          price: 0,
           qty: 1,
           notes: '',
         };
