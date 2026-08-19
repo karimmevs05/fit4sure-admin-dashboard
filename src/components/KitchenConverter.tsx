@@ -73,7 +73,7 @@ export function KitchenConverter({
       <button
         onClick={toggle}
         title="Open Kitchen Converter"
-        className="fixed top-1/2 -translate-y-1/2 z-30 flex items-center gap-1 rounded-r-lg border border-l-0 border-[#D8CDBE] bg-[#E9DFD0] px-2 py-4 text-[#4B2B1D] hover:bg-[#D8CDBE] transition"
+        className="fixed top-1/2 -translate-y-1/2 z-[45] flex items-center gap-1 rounded-r-lg border border-l-0 border-[#D8CDBE] bg-[#E9DFD0] px-2 py-4 text-[#4B2B1D] hover:bg-[#D8CDBE] transition"
         style={{ left: '256px' }}
       >
         <Calculator size={16} />
@@ -84,7 +84,7 @@ export function KitchenConverter({
 
   return (
     <aside
-      className="fixed left-[256px] top-0 bottom-0 flex flex-col bg-[#FBF7F0] border-r border-[#D8CDBE] overflow-y-auto z-30"
+      className="fixed left-[256px] top-0 bottom-0 flex flex-col bg-[#FBF7F0] border-r border-[#D8CDBE] overflow-y-auto z-[45]"
       style={{ width: '288px' }}
     >
       <div className="flex items-center justify-between p-4 border-b border-[#D8CDBE]">
