@@ -121,6 +121,8 @@ const ADD_ON_EXTRA_PRICE = 2.5
 // Sides get 2 free per day before the $2.50 charge kicks in; sauces get 1.
 const ADD_ON_FREE_COUNT: Record<string, number> = { [SIDE_FORMAT]: 2, [SAUCE_ADDON_FORMAT]: 1 }
 
+type OrderItem = { mealName: string; category: string; quantity: string; dayOfWeek: string; price: number; notes: string }
+
 type BreakfastItem = {
   id: number
   name: string
@@ -1153,8 +1155,12 @@ function AddOrderModal({
   // old order (often for meals not even on this week's menu) next to the
   // live picker read as confusing clutter. Always start empty; build the
   // order by tapping this week's actual plates.
-  const [items, setItems] = useState<Array<{ mealName: string; category: string; quantity: string; dayOfWeek: string; price: number }>>([])
+  const [items, setItems] = useState<OrderItem[]>([])
   const [notes, setNotes] = useState('')
+  // Which single protein card (keyed "day::recipeId") is expanded -- same
+  // "one open at a time" behavior as the client ordering page, so staff
+  // build one plate at a time instead of a wall of always-open cards.
+  const [openProteinKey, setOpenProteinKey] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [weeklyMenu, setWeeklyMenu] = useState<WeeklyMenu | null>(null)
   const [loadingMenu, setLoadingMenu] = useState(true)
@@ -1180,28 +1186,26 @@ function AddOrderModal({
     fetchMenu()
   }, [])
 
-  // Tapping a tile adds it to this client's order, or bumps the quantity
-  // if it's already on the list.
-  const addFromMenu = (mealName: string, category: string, dayOfWeek: string, price: number) => {
+  // Confirms a plate into the order -- called from a protein card's "Add"
+  // button once staff has finished building it (format, sides, sauces,
+  // notes, qty), matching the client page's "build then confirm" flow
+  // instead of committing on every tap.
+  const addFromMenu = (mealName: string, category: string, dayOfWeek: string, price: number, qty: number = 1, itemNotes: string = '') => {
     setItems((prev) => {
       const idx = prev.findIndex((it) => it.mealName === mealName && it.category === category && it.dayOfWeek === dayOfWeek)
       if (idx >= 0) {
         const next = [...prev]
-        next[idx] = { ...next[idx], quantity: String((parseFloat(next[idx].quantity) || 0) + 1) }
+        next[idx] = { ...next[idx], quantity: String((parseFloat(next[idx].quantity) || 0) + qty) }
         return next
       }
-      return [...prev, { mealName, category, quantity: '1', dayOfWeek, price }]
+      return [...prev, { mealName, category, quantity: String(qty), dayOfWeek, price, notes: itemNotes }]
     })
   }
 
   // Re-derive each add-on line's price from its position among same-day,
   // same-format add-on lines -- so removing the free one promotes whichever
   // line is left to free, instead of leaving a stale $2.50 everywhere.
-  const repriceAddOns = (
-    list: Array<{ mealName: string; category: string; quantity: string; dayOfWeek: string; price: number }>,
-    category: string,
-    dayOfWeek: string
-  ) => {
+  const repriceAddOns = (list: OrderItem[], category: string, dayOfWeek: string) => {
     const freeCount = ADD_ON_FREE_COUNT[category] ?? 1
     let seen = 0
     return list.map((it) => {
@@ -1218,12 +1222,12 @@ function AddOrderModal({
   const toggleAddOn = (mealName: string, category: string, dayOfWeek: string) => {
     setItems((prev) => {
       const idx = prev.findIndex((it) => it.mealName === mealName && it.category === category && it.dayOfWeek === dayOfWeek)
-      const next = idx >= 0 ? prev.filter((_, i) => i !== idx) : [...prev, { mealName, category, quantity: '1', dayOfWeek, price: 0 }]
+      const next = idx >= 0 ? prev.filter((_, i) => i !== idx) : [...prev, { mealName, category, quantity: '1', dayOfWeek, price: 0, notes: '' }]
       return repriceAddOns(next, category, dayOfWeek)
     })
   }
 
-  const addManualItem = () => setItems([...items, { mealName: '', category: 'Regular', quantity: '1', dayOfWeek: '', price: 0 }])
+  const addManualItem = () => setItems([...items, { mealName: '', category: 'Regular', quantity: '1', dayOfWeek: '', price: 0, notes: '' }])
   const removeItem = (idx: number) => {
     setItems((prev) => {
       const target = prev[idx]
@@ -1263,7 +1267,7 @@ function AddOrderModal({
             category: item.category,
             quantity: parseFloat(item.quantity),
             dayOfWeek: item.dayOfWeek || null,
-            notes: notes || null,
+            notes: item.notes || notes || null,
             price: ADD_ON_FORMATS.includes(item.category) ? item.price : undefined,
           },
           { headers: { Authorization: `Bearer ${token}` } }
@@ -1340,132 +1344,25 @@ function AddOrderModal({
                       {openDay === day && (
                         <div className="px-3 pb-3 space-y-2">
                           {/* Carbs/veggies/sauces are add-ons, not their own orderable
-                              plate -- they only appear below a protein once a format is
-                              picked, filtered to what that format's real serving
-                              structure includes (see sidesThisDay/saucesThisDay below). */}
-                          {weeklyMenu[day].filter((recipe) => !SIDE_CATEGORIES.includes(recipe.category) && recipe.category !== SAUCE_CATEGORY).map((recipe) => {
-                            const selectedFormatLabels = recipe.formats.filter((f) => qtyInCart(recipe.name, f.label, day)).map((f) => f.label)
-                            const hasSelection = selectedFormatLabels.length > 0
-                            // Which side categories actually belong on this plate depends
-                            // on the selected format -- Low Carb has no carbs serving,
-                            // High Protein has no veggies serving, By the Pound has
-                            // neither, so don't suggest sides that format's own
-                            // serving-size structure doesn't include.
-                            const allowedSides = sideCategoriesFor(selectedFormatLabels)
-                            const sidesThisDay = weeklyMenu[day].filter(
-                              (r) =>
-                                (r.category === 'carbohydrates' && allowedSides.carbs) ||
-                                (r.category === 'vegetables' && allowedSides.veggies)
-                            )
-                            // Sauces aren't in the plate structure table at all (no sauce
-                            // column), so unlike sides they're not gated by which format
-                            // is selected -- just by whether a protein's been picked yet.
-                            const saucesThisDay = weeklyMenu[day].filter((r) => r.category === SAUCE_CATEGORY)
-                            const sideUnitsThisDay = items.filter((it) => it.category === SIDE_FORMAT && it.dayOfWeek === day).length
-                            const sauceUnitsThisDay = items.filter((it) => it.category === SAUCE_ADDON_FORMAT && it.dayOfWeek === day).length
-                            return (
-                              <div key={recipe.recipeId} className="rounded-lg border border-[#DDC9A8] bg-white p-2.5">
-                                <p className="text-xs font-semibold uppercase tracking-tight text-[#3B2A1E] mb-1.5 truncate" title={recipe.name}>
-                                  {recipe.name}
-                                </p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {recipe.formats.map((f) => {
-                                    const inCart = qtyInCart(recipe.name, f.label, day)
-                                    return (
-                                      <button
-                                        key={f.id}
-                                        type="button"
-                                        onClick={() => addFromMenu(recipe.name, f.label, day, f.price)}
-                                        className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
-                                          inCart ? 'bg-[#3D5A78] text-white' : 'bg-[#F5EFE0] text-[#3B2A1E] hover:bg-[#EFE3D0]'
-                                        }`}
-                                      >
-                                        {f.label} · ${f.price.toFixed(2)}
-                                        {inCart && <span className="ml-1 font-bold">×{inCart}</span>}
-                                      </button>
-                                    )
-                                  })}
-                                </div>
-
-                                {/* Once this protein has a format selected, surface this
-                                    week's carb/veggie sides right here so staff don't have
-                                    to go hunting for them elsewhere in the day's list.
-                                    first 2 sides for the day are free, every one after is
-                                    +$2.50 -- pooled across the whole day, not per protein,
-                                    since this picker doesn't scope sides to one protein. */}
-                                {hasSelection && sidesThisDay.length > 0 && (
-                                  <div className="mt-2 pt-2 border-t border-[#F0EAE0]">
-                                    <p className="text-[9px] font-bold uppercase tracking-wide text-[#9C8C77] mb-1">
-                                      Sides &middot; first 2 free, +$2.50 each after
-                                    </p>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {sidesThisDay.map((side) => {
-                                        const inCart = !!qtyInCart(side.name, SIDE_FORMAT, day)
-                                        const priceLabel = inCart
-                                          ? items.find((it) => it.mealName === side.name && it.category === SIDE_FORMAT && it.dayOfWeek === day)!.price ===
-                                            ADD_ON_FREE_PRICE
-                                            ? 'Free'
-                                            : `+$${ADD_ON_EXTRA_PRICE.toFixed(2)}`
-                                          : sideUnitsThisDay < ADD_ON_FREE_COUNT[SIDE_FORMAT]
-                                            ? 'Free'
-                                            : `+$${ADD_ON_EXTRA_PRICE.toFixed(2)}`
-                                        return (
-                                          <button
-                                            key={side.recipeId}
-                                            type="button"
-                                            onClick={() => toggleAddOn(side.name, SIDE_FORMAT, day)}
-                                            className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
-                                              inCart ? 'bg-[#3D5A78] text-white' : 'bg-[#F5EFE0] text-[#3B2A1E] hover:bg-[#EFE3D0]'
-                                            }`}
-                                          >
-                                            {side.name} <span className="opacity-80">{priceLabel}</span>
-                                          </button>
-                                        )
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Sauces are add-ons too, priced the same 1st-free/+$2.50
-                                    way as sides but with their own separate allowance --
-                                    not gated by plate format since the structure table has
-                                    no sauce column, just by whether a protein's selected. */}
-                                {hasSelection && saucesThisDay.length > 0 && (
-                                  <div className="mt-2 pt-2 border-t border-[#F0EAE0]">
-                                    <p className="text-[9px] font-bold uppercase tracking-wide text-[#9C8C77] mb-1">
-                                      Sauces &middot; 1 free, +$2.50 each after
-                                    </p>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {saucesThisDay.map((sauce) => {
-                                        const inCart = !!qtyInCart(sauce.name, SAUCE_ADDON_FORMAT, day)
-                                        const priceLabel = inCart
-                                          ? items.find(
-                                              (it) => it.mealName === sauce.name && it.category === SAUCE_ADDON_FORMAT && it.dayOfWeek === day
-                                            )!.price === ADD_ON_FREE_PRICE
-                                            ? 'Free'
-                                            : `+$${ADD_ON_EXTRA_PRICE.toFixed(2)}`
-                                          : sauceUnitsThisDay < ADD_ON_FREE_COUNT[SAUCE_ADDON_FORMAT]
-                                            ? 'Free'
-                                            : `+$${ADD_ON_EXTRA_PRICE.toFixed(2)}`
-                                        return (
-                                          <button
-                                            key={sauce.recipeId}
-                                            type="button"
-                                            onClick={() => toggleAddOn(sauce.name, SAUCE_ADDON_FORMAT, day)}
-                                            className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
-                                              inCart ? 'bg-[#3D5A78] text-white' : 'bg-[#F5EFE0] text-[#3B2A1E] hover:bg-[#EFE3D0]'
-                                            }`}
-                                          >
-                                            {sauce.name} <span className="opacity-80">{priceLabel}</span>
-                                          </button>
-                                        )
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })}
+                              plate -- surfaced inside each protein's own expanded card
+                              (see ProteinCard) once a format is picked there. */}
+                          {weeklyMenu[day].filter((recipe) => !SIDE_CATEGORIES.includes(recipe.category) && recipe.category !== SAUCE_CATEGORY).map((recipe) => (
+                            <ProteinCard
+                              key={recipe.recipeId}
+                              recipe={recipe}
+                              day={day}
+                              daySides={weeklyMenu[day].filter((r) => SIDE_CATEGORIES.includes(r.category))}
+                              daySauces={weeklyMenu[day].filter((r) => r.category === SAUCE_CATEGORY)}
+                              items={items}
+                              qtyInCart={qtyInCart}
+                              addFromMenu={addFromMenu}
+                              toggleAddOn={toggleAddOn}
+                              isOpen={openProteinKey === `${day}::${recipe.recipeId}`}
+                              onToggleOpen={() =>
+                                setOpenProteinKey((k) => (k === `${day}::${recipe.recipeId}` ? null : `${day}::${recipe.recipeId}`))
+                              }
+                            />
+                          ))}
                         </div>
                       )}
                     </div>
@@ -1633,5 +1530,186 @@ function AddOrderModal({
         </div>
       </div>
     </>
+  )
+}
+
+// A single protein, collapsed to a name + status row by default -- tap to
+// expand a detail panel (format, sides, sauces, notes, qty), then "Add to
+// Order" to confirm the plate into the cart. Mirrors the client ordering
+// page's "build, then confirm" flow instead of committing on every tap, so
+// staff get the same experience customers do.
+function ProteinCard({
+  recipe,
+  day,
+  daySides,
+  daySauces,
+  items,
+  qtyInCart,
+  addFromMenu,
+  toggleAddOn,
+  isOpen,
+  onToggleOpen,
+}: {
+  recipe: RecipePlanItem
+  day: string
+  daySides: RecipePlanItem[]
+  daySauces: RecipePlanItem[]
+  items: OrderItem[]
+  qtyInCart: (mealName: string, category: string, dayOfWeek: string) => string | undefined
+  addFromMenu: (mealName: string, category: string, dayOfWeek: string, price: number, qty?: number, itemNotes?: string) => void
+  toggleAddOn: (mealName: string, category: string, dayOfWeek: string) => void
+  isOpen: boolean
+  onToggleOpen: () => void
+}) {
+  const [selectedFormat, setSelectedFormat] = useState<MenuFormat | null>(null)
+  const [qty, setQty] = useState(1)
+  const [cardNotes, setCardNotes] = useState('')
+
+  // Which side categories actually belong on this plate depends on the
+  // selected format -- Low Carb has no carbs serving, High Protein has no
+  // veggies serving, By the Pound has neither.
+  const allowedSides = sideCategoriesFor(selectedFormat ? [selectedFormat.label] : [])
+  const sidesForFormat = daySides.filter(
+    (r) => (r.category === 'carbohydrates' && allowedSides.carbs) || (r.category === 'vegetables' && allowedSides.veggies)
+  )
+  const sideUnitsThisDay = items.filter((it) => it.category === SIDE_FORMAT && it.dayOfWeek === day).length
+  const sauceUnitsThisDay = items.filter((it) => it.category === SAUCE_ADDON_FORMAT && it.dayOfWeek === day).length
+
+  const totalAdded = items
+    .filter((it) => it.mealName === recipe.name && it.dayOfWeek === day && !ADD_ON_FORMATS.includes(it.category))
+    .reduce((sum, it) => sum + (parseFloat(it.quantity) || 0), 0)
+
+  const handleAdd = () => {
+    if (!selectedFormat) return
+    addFromMenu(recipe.name, selectedFormat.label, day, selectedFormat.price, qty, cardNotes.trim())
+    setSelectedFormat(null)
+    setQty(1)
+    setCardNotes('')
+    onToggleOpen()
+  }
+
+  const addOnPriceLabel = (name: string, category: string, unitsThisDay: number) => {
+    const inCart = !!qtyInCart(name, category, day)
+    if (inCart) {
+      const existing = items.find((it) => it.mealName === name && it.category === category && it.dayOfWeek === day)
+      return existing?.price === ADD_ON_FREE_PRICE ? 'Free' : `+$${ADD_ON_EXTRA_PRICE.toFixed(2)}`
+    }
+    return unitsThisDay < ADD_ON_FREE_COUNT[category] ? 'Free' : `+$${ADD_ON_EXTRA_PRICE.toFixed(2)}`
+  }
+
+  return (
+    <div className={`rounded-lg border bg-white overflow-hidden transition ${isOpen ? 'border-[#3D5A78]' : 'border-[#DDC9A8]'}`}>
+      <button type="button" onClick={onToggleOpen} className="flex w-full items-center justify-between gap-2 p-2.5 text-left">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-tight text-[#3B2A1E] truncate" title={recipe.name}>
+            {recipe.name}
+          </p>
+          <p className={`text-[10px] mt-0.5 ${totalAdded > 0 ? 'font-bold text-[#3D5A78]' : 'text-[#9C8C77]'}`}>
+            {totalAdded > 0 ? `✓ Added ×${totalAdded}` : 'Tap to build plate'}
+          </p>
+        </div>
+        <span className={`flex-shrink-0 text-[#3D5A78] transition-transform ${isOpen ? 'rotate-90' : ''}`}>›</span>
+      </button>
+
+      {isOpen && (
+        <div className="px-2.5 pb-2.5 pt-2 border-t border-[#F0EAE0] space-y-2">
+          <div>
+            <p className="text-[9px] font-bold uppercase tracking-wide text-[#9C8C77] mb-1">Plate Format</p>
+            <div className="flex flex-wrap gap-1.5">
+              {recipe.formats.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setSelectedFormat(f)}
+                  className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
+                    selectedFormat?.id === f.id ? 'bg-[#3D5A78] text-white' : 'bg-[#F5EFE0] text-[#3B2A1E] hover:bg-[#EFE3D0]'
+                  }`}
+                >
+                  {f.label} · ${f.price.toFixed(2)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {selectedFormat && sidesForFormat.length > 0 && (
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wide text-[#9C8C77] mb-1">Sides &middot; first 2 free, +$2.50 each after</p>
+              <div className="flex flex-wrap gap-1.5">
+                {sidesForFormat.map((side) => {
+                  const inCart = !!qtyInCart(side.name, SIDE_FORMAT, day)
+                  return (
+                    <button
+                      key={side.recipeId}
+                      type="button"
+                      onClick={() => toggleAddOn(side.name, SIDE_FORMAT, day)}
+                      className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
+                        inCart ? 'bg-[#3D5A78] text-white' : 'bg-[#F5EFE0] text-[#3B2A1E] hover:bg-[#EFE3D0]'
+                      }`}
+                    >
+                      {side.name} <span className="opacity-80">{addOnPriceLabel(side.name, SIDE_FORMAT, sideUnitsThisDay)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {daySauces.length > 0 && (
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wide text-[#9C8C77] mb-1">Sauces &middot; 1 free, +$2.50 each after</p>
+              <div className="flex flex-wrap gap-1.5">
+                {daySauces.map((sauce) => {
+                  const inCart = !!qtyInCart(sauce.name, SAUCE_ADDON_FORMAT, day)
+                  return (
+                    <button
+                      key={sauce.recipeId}
+                      type="button"
+                      onClick={() => toggleAddOn(sauce.name, SAUCE_ADDON_FORMAT, day)}
+                      className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
+                        inCart ? 'bg-[#3D5A78] text-white' : 'bg-[#F5EFE0] text-[#3B2A1E] hover:bg-[#EFE3D0]'
+                      }`}
+                    >
+                      {sauce.name} <span className="opacity-80">{addOnPriceLabel(sauce.name, SAUCE_ADDON_FORMAT, sauceUnitsThisDay)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          <input
+            value={cardNotes}
+            onChange={(e) => setCardNotes(e.target.value)}
+            placeholder="Notes for this plate (optional)"
+            maxLength={200}
+            className="w-full h-8 rounded-lg border border-[#DDC9A8] bg-[#FBF5EA] px-2.5 text-xs text-[#3B2A1E] outline-none focus:border-[#3D5A78]"
+          />
+
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setQty((q) => Math.max(1, q - 1))}
+                className="h-7 w-7 rounded-lg border border-[#DDC9A8] text-xs font-bold text-[#3B2A1E]"
+              >
+                −
+              </button>
+              <span className="w-5 text-center text-xs font-bold text-[#3B2A1E]">{qty}</span>
+              <button type="button" onClick={() => setQty((q) => q + 1)} className="h-7 w-7 rounded-lg border border-[#DDC9A8] text-xs font-bold text-[#3B2A1E]">
+                +
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={!selectedFormat}
+              className="flex-1 h-8 rounded-full bg-[#E3922E] text-[11px] font-bold uppercase tracking-wide text-white hover:bg-[#C97C1E] disabled:opacity-40 transition"
+            >
+              {selectedFormat ? 'Add to Order' : 'Select a format'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
