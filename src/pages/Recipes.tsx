@@ -8,8 +8,6 @@ import { PLATE_STRUCTURE_SERVINGS, plateComponentFor, servingGramsFor } from "..
 import {
   BookOpen,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Clock3,
   Filter,
   ImagePlus,
@@ -96,8 +94,10 @@ export default function Fit4SureRecipesPage() {
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [activeTab, setActiveTab] = useState<"library" | "drafts">("library");
-  const [page, setPage] = useState(1);
-  const pageSize = 6;
+  // Which plate format every recipe card displays its macros/cost at --
+  // shared across the whole grid so switching it once updates every card,
+  // instead of clicking through each card's own selector individually.
+  const [structureIdx, setStructureIdx] = useState<number | null>(null);
 
   const token = localStorage.getItem("token");
   const apiUrl = import.meta.env.VITE_API_BASE_URL;
@@ -153,9 +153,6 @@ export default function Fit4SureRecipesPage() {
     });
   }, [recipes, draftRecipes, search, activeCategory, activeTab]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const visibleRecipes = filtered.slice((page - 1) * pageSize, page * pageSize);
-
   const deleteRecipe = async (id: number) => {
     if (!confirm("Delete this recipe?")) return;
     if (activeTab === "drafts") {
@@ -189,18 +186,14 @@ export default function Fit4SureRecipesPage() {
         <div className="px-4 py-5 sm:px-6 lg:px-7 xl:px-8">
           <Header
             search={search}
-            setSearch={(value) => {
-              setSearch(value);
-              setPage(1);
-            }}
+            setSearch={setSearch}
             activeCategory={activeCategory}
-            setActiveCategory={(value) => {
-              setActiveCategory(value);
-              setPage(1);
-            }}
+            setActiveCategory={setActiveCategory}
             onAdd={() => setDrawerOpen(true)}
             activeTab={activeTab}
             onTabChange={setActiveTab}
+            structureIdx={structureIdx}
+            setStructureIdx={setStructureIdx}
           />
 
           {error && (
@@ -220,10 +213,12 @@ export default function Fit4SureRecipesPage() {
             ) : (
               <>
                 <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
-                  {visibleRecipes.map((recipe) => (
+                  {filtered.map((recipe) => (
                     <RecipeCard
                       key={recipe.recipe_id}
                       recipe={recipe}
+                      structureIdx={structureIdx}
+                      onStructureChange={setStructureIdx}
                       onDelete={deleteRecipe}
                       onSelect={(r) => {
                         // Drafts only exist in localStorage -- the fake
@@ -262,23 +257,13 @@ export default function Fit4SureRecipesPage() {
                   ))}
                 </div>
 
-                {visibleRecipes.length === 0 && (
+                {filtered.length === 0 && (
                   <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-10 text-center">
                     <p className="text-lg font-extrabold">No recipes found.</p>
                     <p className="mt-1 text-sm text-[#755B4C]">
                       Try a different search or category.
                     </p>
                   </div>
-                )}
-
-                {filtered.length > 0 && (
-                  <Pagination
-                    page={page}
-                    totalPages={totalPages}
-                    count={filtered.length}
-                    pageSize={pageSize}
-                    onPageChange={setPage}
-                  />
                 )}
               </>
             )}
@@ -330,6 +315,8 @@ function Header({
   onAdd,
   activeTab,
   onTabChange,
+  structureIdx,
+  setStructureIdx,
 }: {
   search: string;
   setSearch: (value: string) => void;
@@ -338,6 +325,8 @@ function Header({
   onAdd: () => void;
   activeTab: "library" | "drafts";
   onTabChange: (tab: "library" | "drafts") => void;
+  structureIdx: number | null;
+  setStructureIdx: (idx: number | null) => void;
 }) {
   return (
     <header className="flex flex-col gap-5">
@@ -410,6 +399,23 @@ function Header({
           <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" />
         </div>
 
+        <div className="relative">
+          <Ruler className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#2E527F]" />
+          <select
+            value={structureIdx == null ? "" : String(structureIdx)}
+            onChange={(event) => setStructureIdx(event.target.value === "" ? null : Number(event.target.value))}
+            className="h-12 appearance-none rounded-xl border border-[#B7A58F] bg-[#FBF7F0] pl-11 pr-10 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+          >
+            <option value="">Plate format: Per lb</option>
+            {PLATE_STRUCTURE_SERVINGS.map((row, idx) => (
+              <option key={row.structure} value={idx}>
+                Plate format: {row.structure}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" />
+        </div>
+
         <button
           onClick={onAdd}
           className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#2E527F] px-5 text-sm font-bold text-white shadow-[0_8px_18px_rgba(46,82,127,0.18)] transition hover:bg-[#24466E] active:scale-[0.98]"
@@ -424,11 +430,15 @@ function Header({
 
 function RecipeCard({
   recipe,
+  structureIdx,
+  onStructureChange,
   onDelete,
   onSelect,
   onEdit,
 }: {
   recipe: Recipe;
+  structureIdx: number | null;
+  onStructureChange: (idx: number | null) => void;
   onDelete: (id: number) => void;
   onSelect: (recipe: Recipe) => void;
   onEdit: (recipe: Recipe) => void;
@@ -438,7 +448,7 @@ function RecipeCard({
   const categoryKey = recipe.category as Category;
   const colors = CATEGORY_CLASSES[categoryKey] || CATEGORY_CLASSES.beef;
   const [showStructureMenu, setShowStructureMenu] = useState(false);
-  const [selectedStructureIdx, setSelectedStructureIdx] = useState<number | null>(null);
+  const selectedStructureIdx = structureIdx;
 
   const component = plateComponentFor(recipe.category);
   const selectedRow = selectedStructureIdx != null ? PLATE_STRUCTURE_SERVINGS[selectedStructureIdx] : null;
@@ -517,7 +527,7 @@ function RecipeCard({
               >
                 <button
                   onClick={() => {
-                    setSelectedStructureIdx(null);
+                    onStructureChange(null);
                     setShowStructureMenu(false);
                   }}
                   className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold ${
@@ -534,7 +544,7 @@ function RecipeCard({
                       key={row.structure}
                       disabled={disabled}
                       onClick={() => {
-                        setSelectedStructureIdx(idx);
+                        onStructureChange(idx);
                         setShowStructureMenu(false);
                       }}
                       className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold ${
@@ -593,63 +603,6 @@ function MacroBadge({
       <div className="truncate text-xs font-extrabold leading-none">{value}</div>
       <div className="mt-0.5 truncate text-[8px] font-extrabold uppercase tracking-[0.05em]">
         {label}
-      </div>
-    </div>
-  );
-}
-
-function Pagination({
-  page,
-  totalPages,
-  count,
-  pageSize,
-  onPageChange,
-}: {
-  page: number;
-  totalPages: number;
-  count: number;
-  pageSize: number;
-  onPageChange: (page: number) => void;
-}) {
-  const start = count === 0 ? 0 : (page - 1) * pageSize + 1;
-  const end = Math.min(page * pageSize, count);
-
-  return (
-    <div className="mt-6 flex flex-col gap-4 border-t border-[#D8CDBE] pt-5 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-sm text-[#755B4C]">
-        Showing {start} to {end} of {count} recipes
-      </p>
-
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => onPageChange(Math.max(1, page - 1))}
-          disabled={page === 1}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#B9A88F] bg-[#FBF7F0] disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-
-        {Array.from({ length: totalPages }, (_, index) => index + 1).map((item) => (
-          <button
-            key={item}
-            onClick={() => onPageChange(item)}
-            className={`inline-flex h-9 min-w-9 items-center justify-center rounded-lg px-3 text-sm font-extrabold ${
-              item === page
-                ? "bg-[#2E527F] text-white"
-                : "border border-[#B9A88F] bg-[#FBF7F0] text-[#4B2B1D] hover:border-[#3E6594]"
-            }`}
-          >
-            {item}
-          </button>
-        ))}
-
-        <button
-          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-          disabled={page === totalPages}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#B9A88F] bg-[#FBF7F0] disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
       </div>
     </div>
   );
