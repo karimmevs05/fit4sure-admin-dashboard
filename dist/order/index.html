@@ -91,16 +91,27 @@
   .day-body.open{display:block;}
 
   .meals{padding:0;}
-  .meal{
-    background:var(--card);border:1.5px solid var(--border-soft);border-radius:18px;
-    margin-bottom:14px;overflow:hidden;
-  }
-  .meal-body{padding:16px;}
-  .meal-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
-  .meal-name{font-weight:500;font-size:15px;color:var(--ink);text-transform:uppercase;letter-spacing:-0.01em;}
-  .meal-macros{font-size:11px;color:var(--ink-muted);margin-top:6px;font-weight:500;}
 
-  .options{margin-top:12px;border-top:1.5px solid var(--border-soft);padding-top:12px;}
+  /* protein list: collapsed to just a name + status until tapped, so the
+     day view reads as a clean list rather than every plate's full options
+     dumped on screen at once. */
+  .protein-item{
+    background:var(--card);border:1.5px solid var(--border-soft);border-radius:14px;
+    margin-bottom:10px;overflow:hidden;transition:border-color .15s ease;
+  }
+  .protein-item.has-open{border-color:var(--navy);}
+  .protein-row{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;cursor:pointer;gap:10px;}
+  .protein-name{font-weight:500;font-size:15px;color:var(--ink);text-transform:uppercase;letter-spacing:-0.01em;}
+  .protein-status{font-size:11px;color:var(--ink-muted);margin-top:3px;font-weight:500;}
+  .protein-status.added{color:var(--green);font-weight:600;}
+  .protein-status.added::before{content:'✓ ';}
+  .protein-chevron{font-size:20px;color:var(--navy);transition:transform .2s ease;flex-shrink:0;}
+  .protein-chevron.open{transform:rotate(90deg);}
+  .protein-detail{display:none;padding:0 16px 16px;}
+  .protein-detail.open{display:block;}
+  .meal-macros{font-size:11px;color:var(--ink-muted);margin:-4px 0 12px;font-weight:500;}
+
+  .options{border-top:1.5px solid var(--border-soft);padding-top:12px;}
   .opt-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-muted);font-weight:500;margin-bottom:7px;}
 
   .format-list{margin-bottom:14px;}
@@ -123,8 +134,12 @@
   .side-chip{
     cursor:pointer;font-size:11.5px;color:var(--ink-soft);padding:6px 10px;
     border-radius:999px;border:1.5px solid var(--border-soft);background:var(--bg);
+    display:inline-flex;align-items:baseline;gap:5px;
   }
+  .side-chip .side-chip-price{font-size:10px;opacity:.8;}
   .side-chip.added{background:var(--green);color:#fff;border-color:var(--green);}
+  .side-chip.free .side-chip-price{color:var(--green);font-weight:700;}
+  .side-chip.added.free .side-chip-price{color:#fff;}
 
   .notes-wrap{margin-top:2px;}
   .notes-input{
@@ -279,6 +294,9 @@ const FORMAT_LABEL_TO_STRUCTURE = {
   'Low Carb': 'Low Carb', 'High Protein': 'High Protein', 'Breakfast': 'Breakfast',
 };
 const SIDE_CATEGORIES = ['carbohydrates', 'vegetables'];
+const SAUCE_CATEGORY = 'sauces';
+const FIRST_SIDE_PRICE = 0;
+const EXTRA_SIDE_PRICE = 2.5;
 
 function sideCategoriesForFormat(formatLabel){
   const structureName = FORMAT_LABEL_TO_STRUCTURE[formatLabel];
@@ -326,11 +344,13 @@ function renderDay(dayKey, title, recipes){
   const menuArea = document.getElementById('menuArea');
   if (!recipes || recipes.length === 0) return;
 
-  // Carbs/veggies are sides, not their own orderable plate -- they only
-  // show up under a protein once a format is picked, filtered to what that
-  // format's real serving structure actually includes.
-  const proteins = recipes.filter((r) => !SIDE_CATEGORIES.includes(r.category));
+  // Carbs/veggies are sides, sauces are add-ons -- neither is its own
+  // orderable plate. Sides show up once a format is picked, filtered to
+  // what that format's real serving structure includes; sauces show up
+  // regardless of format (the plate-structure table has no sauce column).
+  const proteins = recipes.filter((r) => !SIDE_CATEGORIES.includes(r.category) && r.category !== SAUCE_CATEGORY);
   const sides = recipes.filter((r) => SIDE_CATEGORIES.includes(r.category));
+  const sauces = recipes.filter((r) => r.category === SAUCE_CATEGORY);
   if (proteins.length === 0) return;
 
   const section = document.createElement('div');
@@ -349,7 +369,7 @@ function renderDay(dayKey, title, recipes){
 
   const mealsEl = section.querySelector('.meals');
   proteins.forEach((recipe) => {
-    mealsEl.appendChild(buildMealCard(dayKey, recipe, sides));
+    mealsEl.appendChild(buildProteinItem(dayKey, recipe, sides, sauces, mealsEl));
   });
 
   section.querySelector('.day-header').addEventListener('click', () => {
@@ -360,9 +380,80 @@ function renderDay(dayKey, title, recipes){
   });
 }
 
-function buildMealCard(dayKey, recipe, sides){
-  const meal = document.createElement('div');
-  meal.className = 'meal';
+// One free, then $2.50 each after -- shared by both the sides group (gated
+// by plate format) and the sauces group (always available, no format
+// dependency) so the two don't drift out of sync with each other. Each
+// group tracks its own "added, in tap order" list, kept separate from the
+// cart itself so removing one item can re-price the others in that group.
+function makeAddOnGroup(dayKey, recipe, labelHtml, keySuffix){
+  const wrap = document.createElement('div');
+  wrap.className = 'sides-wrap';
+  wrap.innerHTML = `<div class="sides-label">${labelHtml}</div><div class="side-chips"></div>`;
+  const chipsEl = wrap.querySelector('.side-chips');
+  let addedKeys = [];
+  let currentItems = [];
+
+  function cartKeyFor(name){ return `${dayKey}::${name}::${keySuffix}`; }
+
+  function reprice(){
+    addedKeys.forEach((key, idx) => {
+      if (cart[key]) cart[key].price = idx === 0 ? FIRST_SIDE_PRICE : EXTRA_SIDE_PRICE;
+    });
+  }
+
+  function render(items){
+    currentItems = items || [];
+    if (currentItems.length === 0) { wrap.classList.remove('show'); return; }
+    wrap.classList.add('show');
+    chipsEl.innerHTML = '';
+    currentItems.forEach((thing) => {
+      const key = cartKeyFor(thing.name);
+      const isAdded = addedKeys.includes(key);
+      const willBeFree = isAdded ? addedKeys.indexOf(key) === 0 : addedKeys.length === 0;
+      const priceLabel = willBeFree ? 'Free' : `+${money(EXTRA_SIDE_PRICE)}`;
+
+      const chip = document.createElement('div');
+      chip.className = 'side-chip' + (isAdded ? ' added' : '') + (priceLabel === 'Free' ? ' free' : '');
+      chip.innerHTML = `${escapeHtml(thing.name)} <span class="side-chip-price">${priceLabel}</span>`;
+      chip.addEventListener('click', () => {
+        if (isAdded) {
+          delete cart[key];
+          addedKeys = addedKeys.filter((k) => k !== key);
+        } else {
+          cart[key] = {
+            day: dayKey,
+            dayLabel: dayKey === 'monday' ? 'Monday' : 'Thursday',
+            recipeName: thing.name,
+            format: keySuffix === 'sauceaddon' ? 'Sauce Add-On' : 'Included Side',
+            price: 0,
+            qty: 1,
+            notes: '',
+          };
+          addedKeys.push(key);
+        }
+        reprice();
+        render(currentItems);
+        updateOrderBar();
+      });
+      chipsEl.appendChild(chip);
+    });
+  }
+
+  function reset(){
+    addedKeys.forEach((key) => delete cart[key]);
+    addedKeys = [];
+  }
+
+  return { wrap, render, reset };
+}
+
+// Collapsed to just the protein's name + a status hint until tapped --
+// tapping opens a detail panel below it (format, then sides, then qty/notes/
+// add), and closes any other protein's open panel in the same day so only
+// one plate is being built at a time.
+function buildProteinItem(dayKey, recipe, sides, sauces, siblingsContainer){
+  const item = document.createElement('div');
+  item.className = 'protein-item';
 
   const macrosLine = recipe.perPound
     ? `${recipe.perPound.protein_g}g protein · ${recipe.perPound.calories} cal per lb`
@@ -370,21 +461,23 @@ function buildMealCard(dayKey, recipe, sides){
 
   const cartKey = (name, formatId) => `${dayKey}::${name}::${formatId}`;
 
-  meal.innerHTML = `
-    <div class="meal-body">
-      <div class="meal-top">
-        <div class="meal-name">${escapeHtml(recipe.name)}</div>
+  item.innerHTML = `
+    <div class="protein-row">
+      <div>
+        <div class="protein-name">${escapeHtml(recipe.name)}</div>
+        <div class="protein-status">Tap to choose format</div>
       </div>
+      <div class="protein-chevron">&rsaquo;</div>
+    </div>
+    <div class="protein-detail">
       ${macrosLine ? `<div class="meal-macros">${macrosLine}</div>` : ''}
       <div class="options">
         <div class="opt-label">Plate Format</div>
         <div class="format-list">
           <div class="format-row"></div>
         </div>
-        <div class="sides-wrap">
-          <div class="sides-label">Sides available this week</div>
-          <div class="side-chips"></div>
-        </div>
+        <div class="addon-slot" data-slot="sides"></div>
+        <div class="addon-slot" data-slot="sauces"></div>
         <div class="notes-wrap">
           <input type="text" class="notes-input" placeholder="Notes for this item (optional)" maxlength="200">
         </div>
@@ -400,50 +493,64 @@ function buildMealCard(dayKey, recipe, sides){
     </div>
   `;
 
-  const formatRow = meal.querySelector('.format-row');
-  const sidesWrap = meal.querySelector('.sides-wrap');
-  const sideChipsEl = meal.querySelector('.side-chips');
+  const row = item.querySelector('.protein-row');
+  const chevron = item.querySelector('.protein-chevron');
+  const detail = item.querySelector('.protein-detail');
+  const statusEl = item.querySelector('.protein-status');
+  const formatRow = item.querySelector('.format-row');
   let selectedFormat = null;
 
-  function renderSides(){
-    if (!selectedFormat || !sides || sides.length === 0) {
-      sidesWrap.classList.remove('show');
-      return;
+  const sidesGroup = makeAddOnGroup(dayKey, recipe, "Sides available this week &middot; 1st free, +$2.50 each after", 'includedside');
+  item.querySelector('[data-slot="sides"]').replaceWith(sidesGroup.wrap);
+
+  // Sauces don't depend on the plate format at all (no column for them in
+  // the serving-size table), so they render once, immediately, independent
+  // of format selection -- their own separate 1-free allowance.
+  const saucesGroup = makeAddOnGroup(dayKey, recipe, "Sauces &middot; 1 free, +$2.50 each after", 'sauceaddon');
+  item.querySelector('[data-slot="sauces"]').replaceWith(saucesGroup.wrap);
+  if (sauces && sauces.length > 0) saucesGroup.render(sauces);
+
+  function updateStatus(){
+    const total = Object.values(cart).reduce(
+      (sum, it) => sum + (it.day === dayKey && it.recipeName === recipe.name ? it.qty : 0), 0
+    );
+    if (total > 0) {
+      statusEl.textContent = `Added ×${total}`;
+      statusEl.classList.add('added');
+    } else {
+      statusEl.textContent = 'Tap to choose format';
+      statusEl.classList.remove('added');
     }
+  }
+
+  function renderSides(){
+    if (!selectedFormat || !sides || sides.length === 0) { sidesGroup.render([]); return; }
     const allowed = sideCategoriesForFormat(selectedFormat.label);
     const applicable = sides.filter((s) =>
       (s.category === 'carbohydrates' && allowed.carbs) || (s.category === 'vegetables' && allowed.veggies)
     );
-    if (applicable.length === 0) {
-      sidesWrap.classList.remove('show');
-      return;
-    }
-    sidesWrap.classList.add('show');
-    sideChipsEl.innerHTML = '';
-    // Free -- the selected format's price already covers this serving of
-    // carbs/veggies per the plate structure table, so adding it here isn't
-    // a separate paid line item.
-    applicable.forEach((side) => {
-      const chip = document.createElement('div');
-      const key = cartKey(side.name, 'includedside');
-      chip.className = 'side-chip' + (cart[key] ? ' added' : '');
-      chip.textContent = side.name;
-      chip.addEventListener('click', () => {
-        cart[key] = {
-          day: dayKey,
-          dayLabel: dayKey === 'monday' ? 'Monday' : 'Thursday',
-          recipeName: side.name,
-          format: 'Included Side',
-          price: 0,
-          qty: 1,
-          notes: '',
-        };
-        chip.classList.add('added');
-        updateOrderBar();
-      });
-      sideChipsEl.appendChild(chip);
-    });
+    sidesGroup.render(applicable);
   }
+
+  function closeDetail(){
+    detail.classList.remove('open');
+    chevron.classList.remove('open');
+    item.classList.remove('has-open');
+  }
+
+  row.addEventListener('click', () => {
+    const isOpen = detail.classList.contains('open');
+    siblingsContainer.querySelectorAll('.protein-detail.open').forEach((el) => {
+      if (el !== detail) {
+        el.classList.remove('open');
+        el.previousElementSibling.querySelector('.protein-chevron').classList.remove('open');
+        el.closest('.protein-item').classList.remove('has-open');
+      }
+    });
+    detail.classList.toggle('open', !isOpen);
+    chevron.classList.toggle('open', !isOpen);
+    item.classList.toggle('has-open', !isOpen);
+  });
 
   recipe.formats.forEach((format) => {
     const opt = document.createElement('div');
@@ -456,20 +563,26 @@ function buildMealCard(dayKey, recipe, sides){
       addBtn.disabled = false;
       addBtn.textContent = 'Add';
       addBtn.classList.remove('added');
+      // Switching format changes which sides even apply -- drop whatever
+      // was added under the old format rather than leave a stale, possibly
+      // no-longer-applicable side (and its price) sitting in the cart.
+      // Sauces aren't format-dependent, so they're left alone here.
+      sidesGroup.reset();
       renderSides();
+      updateOrderBar();
     });
     formatRow.appendChild(opt);
   });
 
-  const qtyValEl = meal.querySelector('.qty-val');
-  const addBtn = meal.querySelector('.add-btn');
-  const notesEl = meal.querySelector('.notes-input');
+  const qtyValEl = item.querySelector('.qty-val');
+  const addBtn = item.querySelector('.add-btn');
+  const notesEl = item.querySelector('.notes-input');
   let qty = 1;
 
-  meal.querySelector('.qty-dec').addEventListener('click', () => {
+  item.querySelector('.qty-dec').addEventListener('click', () => {
     if (qty > 1) { qty -= 1; qtyValEl.textContent = qty; }
   });
-  meal.querySelector('.qty-inc').addEventListener('click', () => {
+  item.querySelector('.qty-inc').addEventListener('click', () => {
     qty += 1; qtyValEl.textContent = qty;
   });
 
@@ -485,12 +598,12 @@ function buildMealCard(dayKey, recipe, sides){
       qty,
       notes: notesEl.value.trim(),
     };
-    addBtn.textContent = 'Added';
-    addBtn.classList.add('added');
+    updateStatus();
     updateOrderBar();
+    closeDetail();
   });
 
-  return meal;
+  return item;
 }
 
 function updateOrderBar(){
