@@ -1286,24 +1286,24 @@ function AddOrderModal({
                       </button>
                       {openDay === day && (
                         <div className="px-3 pb-3 space-y-2">
-                          {weeklyMenu[day].map((recipe) => {
-                            const isSide = SIDE_CATEGORIES.includes(recipe.category)
+                          {/* Carbs/veggies are sides, not their own orderable plate --
+                              they only appear below a protein once a format is picked,
+                              filtered to what that format's real serving structure
+                              includes (see sidesThisDay below). */}
+                          {weeklyMenu[day].filter((recipe) => !SIDE_CATEGORIES.includes(recipe.category)).map((recipe) => {
                             const selectedFormatLabels = recipe.formats.filter((f) => qtyInCart(recipe.name, f.label, day)).map((f) => f.label)
                             const hasSelection = selectedFormatLabels.length > 0
                             // Which side categories actually belong on this plate depends
-                            // on the selected format, not just "is this a protein" -- Low
-                            // Carb has no carbs serving, High Protein has no veggies
-                            // serving, By the Pound has neither, so don't suggest sides
-                            // that format's own serving-size structure doesn't include.
+                            // on the selected format -- Low Carb has no carbs serving,
+                            // High Protein has no veggies serving, By the Pound has
+                            // neither, so don't suggest sides that format's own
+                            // serving-size structure doesn't include.
                             const allowedSides = sideCategoriesFor(selectedFormatLabels)
-                            const sidesThisDay = !isSide
-                              ? weeklyMenu[day].filter(
-                                  (r) =>
-                                    r.recipeId !== recipe.recipeId &&
-                                    ((r.category === 'carbohydrates' && allowedSides.carbs) ||
-                                      (r.category === 'vegetables' && allowedSides.veggies))
-                                )
-                              : []
+                            const sidesThisDay = weeklyMenu[day].filter(
+                              (r) =>
+                                (r.category === 'carbohydrates' && allowedSides.carbs) ||
+                                (r.category === 'vegetables' && allowedSides.veggies)
+                            )
                             return (
                               <div key={recipe.recipeId} className="rounded-lg border border-[#DDC9A8] bg-white p-2.5">
                                 <p className="text-xs font-semibold uppercase tracking-tight text-[#3B2A1E] mb-1.5 truncate" title={recipe.name}>
