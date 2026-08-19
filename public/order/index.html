@@ -385,7 +385,7 @@ function renderDay(dayKey, title, recipes){
 // dependency) so the two don't drift out of sync with each other. Each
 // group tracks its own "added, in tap order" list, kept separate from the
 // cart itself so removing one item can re-price the others in that group.
-function makeAddOnGroup(dayKey, recipe, labelHtml, keySuffix){
+function makeAddOnGroup(dayKey, recipe, labelHtml, keySuffix, freeCount = 1){
   const wrap = document.createElement('div');
   wrap.className = 'sides-wrap';
   wrap.innerHTML = `<div class="sides-label">${labelHtml}</div><div class="side-chips"></div>`;
@@ -397,7 +397,7 @@ function makeAddOnGroup(dayKey, recipe, labelHtml, keySuffix){
 
   function reprice(){
     addedKeys.forEach((key, idx) => {
-      if (cart[key]) cart[key].price = idx === 0 ? FIRST_SIDE_PRICE : EXTRA_SIDE_PRICE;
+      if (cart[key]) cart[key].price = idx < freeCount ? FIRST_SIDE_PRICE : EXTRA_SIDE_PRICE;
     });
   }
 
@@ -409,7 +409,7 @@ function makeAddOnGroup(dayKey, recipe, labelHtml, keySuffix){
     currentItems.forEach((thing) => {
       const key = cartKeyFor(thing.name);
       const isAdded = addedKeys.includes(key);
-      const willBeFree = isAdded ? addedKeys.indexOf(key) === 0 : addedKeys.length === 0;
+      const willBeFree = isAdded ? addedKeys.indexOf(key) < freeCount : addedKeys.length < freeCount;
       const priceLabel = willBeFree ? 'Free' : `+${money(EXTRA_SIDE_PRICE)}`;
 
       const chip = document.createElement('div');
@@ -500,13 +500,13 @@ function buildProteinItem(dayKey, recipe, sides, sauces, siblingsContainer){
   const formatRow = item.querySelector('.format-row');
   let selectedFormat = null;
 
-  const sidesGroup = makeAddOnGroup(dayKey, recipe, "Sides available this week &middot; 1st free, +$2.50 each after", 'includedside');
+  const sidesGroup = makeAddOnGroup(dayKey, recipe, "Sides available this week &middot; first 2 free, +$2.50 each after", 'includedside', 2);
   item.querySelector('[data-slot="sides"]').replaceWith(sidesGroup.wrap);
 
   // Sauces don't depend on the plate format at all (no column for them in
   // the serving-size table), so they render once, immediately, independent
   // of format selection -- their own separate 1-free allowance.
-  const saucesGroup = makeAddOnGroup(dayKey, recipe, "Sauces &middot; 1 free, +$2.50 each after", 'sauceaddon');
+  const saucesGroup = makeAddOnGroup(dayKey, recipe, "Sauces &middot; 1 free, +$2.50 each after", 'sauceaddon', 1);
   item.querySelector('[data-slot="sauces"]').replaceWith(saucesGroup.wrap);
   if (sauces && sauces.length > 0) saucesGroup.render(sauces);
 

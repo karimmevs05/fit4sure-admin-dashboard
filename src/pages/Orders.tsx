@@ -104,6 +104,22 @@ type RecipePlanItem = {
 }
 
 const SIDE_CATEGORIES = ['carbohydrates', 'vegetables']
+const SAUCE_CATEGORY = 'sauces'
+
+// Mirrors orderingService.js on the backend -- sides and sauces are add-ons
+// under a selected protein, each with their own "first is free, every one
+// after is $2.50" allowance, tracked separately from each other. Unlike the
+// public order page (where each protein card has its own allowance), this
+// admin picker pools sides/sauces at the (day, format) level -- it already
+// keyed cart entries that way before this add-on pricing existed, so that's
+// the natural, minimal-change scope to price against here.
+const SIDE_FORMAT = 'Included Side'
+const SAUCE_ADDON_FORMAT = 'Sauce Add-On'
+const ADD_ON_FORMATS = [SIDE_FORMAT, SAUCE_ADDON_FORMAT]
+const ADD_ON_FREE_PRICE = 0
+const ADD_ON_EXTRA_PRICE = 2.5
+// Sides get 2 free per day before the $2.50 charge kicks in; sauces get 1.
+const ADD_ON_FREE_COUNT: Record<string, number> = { [SIDE_FORMAT]: 2, [SAUCE_ADDON_FORMAT]: 1 }
 
 type BreakfastItem = {
   id: number
@@ -1178,8 +1194,44 @@ function AddOrderModal({
     })
   }
 
+  // Re-derive each add-on line's price from its position among same-day,
+  // same-format add-on lines -- so removing the free one promotes whichever
+  // line is left to free, instead of leaving a stale $2.50 everywhere.
+  const repriceAddOns = (
+    list: Array<{ mealName: string; category: string; quantity: string; dayOfWeek: string; price: number }>,
+    category: string,
+    dayOfWeek: string
+  ) => {
+    const freeCount = ADD_ON_FREE_COUNT[category] ?? 1
+    let seen = 0
+    return list.map((it) => {
+      if (it.category !== category || it.dayOfWeek !== dayOfWeek) return it
+      const price = seen < freeCount ? ADD_ON_FREE_PRICE : ADD_ON_EXTRA_PRICE
+      seen += 1
+      return { ...it, price }
+    })
+  }
+
+  // Sides/sauces are boolean add-ons (tap to add, tap again to remove) --
+  // never quantity-stepped -- so each line's price stays a single clean
+  // $0 or $2.50 the backend can trust, same contract as the public page.
+  const toggleAddOn = (mealName: string, category: string, dayOfWeek: string) => {
+    setItems((prev) => {
+      const idx = prev.findIndex((it) => it.mealName === mealName && it.category === category && it.dayOfWeek === dayOfWeek)
+      const next = idx >= 0 ? prev.filter((_, i) => i !== idx) : [...prev, { mealName, category, quantity: '1', dayOfWeek, price: 0 }]
+      return repriceAddOns(next, category, dayOfWeek)
+    })
+  }
+
   const addManualItem = () => setItems([...items, { mealName: '', category: 'Regular', quantity: '1', dayOfWeek: '', price: 0 }])
-  const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx))
+  const removeItem = (idx: number) => {
+    setItems((prev) => {
+      const target = prev[idx]
+      const next = prev.filter((_, i) => i !== idx)
+      if (target && ADD_ON_FORMATS.includes(target.category)) return repriceAddOns(next, target.category, target.dayOfWeek)
+      return next
+    })
+  }
   const updateItem = (idx: number, field: string, value: string) => {
     setItems(items.map((it, i) => (i === idx ? { ...it, [field]: value } : it)))
   }
@@ -1212,6 +1264,7 @@ function AddOrderModal({
             quantity: parseFloat(item.quantity),
             dayOfWeek: item.dayOfWeek || null,
             notes: notes || null,
+            price: ADD_ON_FORMATS.includes(item.category) ? item.price : undefined,
           },
           { headers: { Authorization: `Bearer ${token}` } }
         )
@@ -1286,11 +1339,11 @@ function AddOrderModal({
                       </button>
                       {openDay === day && (
                         <div className="px-3 pb-3 space-y-2">
-                          {/* Carbs/veggies are sides, not their own orderable plate --
-                              they only appear below a protein once a format is picked,
-                              filtered to what that format's real serving structure
-                              includes (see sidesThisDay below). */}
-                          {weeklyMenu[day].filter((recipe) => !SIDE_CATEGORIES.includes(recipe.category)).map((recipe) => {
+                          {/* Carbs/veggies/sauces are add-ons, not their own orderable
+                              plate -- they only appear below a protein once a format is
+                              picked, filtered to what that format's real serving
+                              structure includes (see sidesThisDay/saucesThisDay below). */}
+                          {weeklyMenu[day].filter((recipe) => !SIDE_CATEGORIES.includes(recipe.category) && recipe.category !== SAUCE_CATEGORY).map((recipe) => {
                             const selectedFormatLabels = recipe.formats.filter((f) => qtyInCart(recipe.name, f.label, day)).map((f) => f.label)
                             const hasSelection = selectedFormatLabels.length > 0
                             // Which side categories actually belong on this plate depends
@@ -1304,6 +1357,12 @@ function AddOrderModal({
                                 (r.category === 'carbohydrates' && allowedSides.carbs) ||
                                 (r.category === 'vegetables' && allowedSides.veggies)
                             )
+                            // Sauces aren't in the plate structure table at all (no sauce
+                            // column), so unlike sides they're not gated by which format
+                            // is selected -- just by whether a protein's been picked yet.
+                            const saucesThisDay = weeklyMenu[day].filter((r) => r.category === SAUCE_CATEGORY)
+                            const sideUnitsThisDay = items.filter((it) => it.category === SIDE_FORMAT && it.dayOfWeek === day).length
+                            const sauceUnitsThisDay = items.filter((it) => it.category === SAUCE_ADDON_FORMAT && it.dayOfWeek === day).length
                             return (
                               <div key={recipe.recipeId} className="rounded-lg border border-[#DDC9A8] bg-white p-2.5">
                                 <p className="text-xs font-semibold uppercase tracking-tight text-[#3B2A1E] mb-1.5 truncate" title={recipe.name}>
@@ -1330,29 +1389,74 @@ function AddOrderModal({
 
                                 {/* Once this protein has a format selected, surface this
                                     week's carb/veggie sides right here so staff don't have
-                                    to go hunting for them elsewhere in the day's list. */}
+                                    to go hunting for them elsewhere in the day's list.
+                                    first 2 sides for the day are free, every one after is
+                                    +$2.50 -- pooled across the whole day, not per protein,
+                                    since this picker doesn't scope sides to one protein. */}
                                 {hasSelection && sidesThisDay.length > 0 && (
                                   <div className="mt-2 pt-2 border-t border-[#F0EAE0]">
                                     <p className="text-[9px] font-bold uppercase tracking-wide text-[#9C8C77] mb-1">
-                                      Sides available this week
+                                      Sides &middot; first 2 free, +$2.50 each after
                                     </p>
                                     <div className="flex flex-wrap gap-1.5">
-                                      {/* Free -- the selected format's price already covers this
-                                          serving of carbs/veggies per the plate structure table,
-                                          so adding it here isn't a separate paid line item. */}
                                       {sidesThisDay.map((side) => {
-                                        const inCart = qtyInCart(side.name, 'Included Side', day)
+                                        const inCart = !!qtyInCart(side.name, SIDE_FORMAT, day)
+                                        const priceLabel = inCart
+                                          ? items.find((it) => it.mealName === side.name && it.category === SIDE_FORMAT && it.dayOfWeek === day)!.price ===
+                                            ADD_ON_FREE_PRICE
+                                            ? 'Free'
+                                            : `+$${ADD_ON_EXTRA_PRICE.toFixed(2)}`
+                                          : sideUnitsThisDay < ADD_ON_FREE_COUNT[SIDE_FORMAT]
+                                            ? 'Free'
+                                            : `+$${ADD_ON_EXTRA_PRICE.toFixed(2)}`
                                         return (
                                           <button
                                             key={side.recipeId}
                                             type="button"
-                                            onClick={() => addFromMenu(side.name, 'Included Side', day, 0)}
+                                            onClick={() => toggleAddOn(side.name, SIDE_FORMAT, day)}
                                             className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
                                               inCart ? 'bg-[#3D5A78] text-white' : 'bg-[#F5EFE0] text-[#3B2A1E] hover:bg-[#EFE3D0]'
                                             }`}
                                           >
-                                            {side.name}
-                                            {inCart && <span className="ml-1 font-bold">×{inCart}</span>}
+                                            {side.name} <span className="opacity-80">{priceLabel}</span>
+                                          </button>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Sauces are add-ons too, priced the same 1st-free/+$2.50
+                                    way as sides but with their own separate allowance --
+                                    not gated by plate format since the structure table has
+                                    no sauce column, just by whether a protein's selected. */}
+                                {hasSelection && saucesThisDay.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-[#F0EAE0]">
+                                    <p className="text-[9px] font-bold uppercase tracking-wide text-[#9C8C77] mb-1">
+                                      Sauces &middot; 1 free, +$2.50 each after
+                                    </p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {saucesThisDay.map((sauce) => {
+                                        const inCart = !!qtyInCart(sauce.name, SAUCE_ADDON_FORMAT, day)
+                                        const priceLabel = inCart
+                                          ? items.find(
+                                              (it) => it.mealName === sauce.name && it.category === SAUCE_ADDON_FORMAT && it.dayOfWeek === day
+                                            )!.price === ADD_ON_FREE_PRICE
+                                            ? 'Free'
+                                            : `+$${ADD_ON_EXTRA_PRICE.toFixed(2)}`
+                                          : sauceUnitsThisDay < ADD_ON_FREE_COUNT[SAUCE_ADDON_FORMAT]
+                                            ? 'Free'
+                                            : `+$${ADD_ON_EXTRA_PRICE.toFixed(2)}`
+                                        return (
+                                          <button
+                                            key={sauce.recipeId}
+                                            type="button"
+                                            onClick={() => toggleAddOn(sauce.name, SAUCE_ADDON_FORMAT, day)}
+                                            className={`rounded-lg px-2 py-1 text-[11px] font-medium transition ${
+                                              inCart ? 'bg-[#3D5A78] text-white' : 'bg-[#F5EFE0] text-[#3B2A1E] hover:bg-[#EFE3D0]'
+                                            }`}
+                                          >
+                                            {sauce.name} <span className="opacity-80">{priceLabel}</span>
                                           </button>
                                         )
                                       })}
@@ -1481,13 +1585,22 @@ function AddOrderModal({
                           {item.mealName} <span className="text-[#9C8C77]">({item.category}{item.dayOfWeek ? `, ${item.dayOfWeek}` : ''})</span>
                         </p>
                         <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <button type="button" onClick={() => bumpQty(idx, -1)} className="h-5 w-5 rounded border border-[#DDC9A8] text-[11px] font-bold text-[#3B2A1E]">
-                            −
-                          </button>
-                          <span className="w-4 text-center text-[11px] font-bold text-[#3B2A1E]">{item.quantity}</span>
-                          <button type="button" onClick={() => bumpQty(idx, 1)} className="h-5 w-5 rounded border border-[#DDC9A8] text-[11px] font-bold text-[#3B2A1E]">
-                            +
-                          </button>
+                          {/* Sides/sauces are boolean add-ons, not quantity-stepped --
+                              a stray + here would break the single $0/$2.50 price the
+                              backend trusts per line, so just offer remove. */}
+                          {ADD_ON_FORMATS.includes(item.category) ? (
+                            <span className="text-[11px] text-[#9C8C77]">{item.price === ADD_ON_FREE_PRICE ? 'Free' : `+$${item.price.toFixed(2)}`}</span>
+                          ) : (
+                            <>
+                              <button type="button" onClick={() => bumpQty(idx, -1)} className="h-5 w-5 rounded border border-[#DDC9A8] text-[11px] font-bold text-[#3B2A1E]">
+                                −
+                              </button>
+                              <span className="w-4 text-center text-[11px] font-bold text-[#3B2A1E]">{item.quantity}</span>
+                              <button type="button" onClick={() => bumpQty(idx, 1)} className="h-5 w-5 rounded border border-[#DDC9A8] text-[11px] font-bold text-[#3B2A1E]">
+                                +
+                              </button>
+                            </>
+                          )}
                           <button onClick={() => removeItem(idx)} className="text-[#B0242F] text-[11px] ml-0.5">
                             ✕
                           </button>
