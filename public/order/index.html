@@ -110,6 +110,11 @@
   .protein-detail{display:none;padding:0 16px 16px;}
   .protein-detail.open{display:block;}
   .meal-macros{font-size:11px;color:var(--ink-muted);margin:-4px 0 12px;font-weight:500;}
+  .plate-macros{
+    font-size:11.5px;color:var(--navy);margin:-4px 0 12px;font-weight:600;
+    background:var(--bg);border:1px solid var(--border-soft);border-radius:8px;padding:7px 10px;
+  }
+  .plate-macros .plate-macros-label{text-transform:uppercase;letter-spacing:.04em;font-size:9.5px;color:var(--ink-muted);font-weight:700;display:block;margin-bottom:2px;}
 
   .options{border-top:1.5px solid var(--border-soft);padding-top:12px;}
   .opt-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-muted);font-weight:500;margin-bottom:7px;}
@@ -282,12 +287,12 @@ let reviewOpen = false;
 // TS/Vite build, so it can't import that module directly). Source of truth
 // is the "Plate structure" reference sheet.
 const PLATE_STRUCTURE_SERVINGS = [
-  { structure: 'Regular', carbsG: 150, veggiesG: 100 },
-  { structure: 'Large', carbsG: 225, veggiesG: 140 },
-  { structure: 'By the Pound', carbsG: 0, veggiesG: 0 },
-  { structure: 'Low Carb', carbsG: 0, veggiesG: 150 },
-  { structure: 'High Protein', carbsG: 150, veggiesG: null },
-  { structure: 'Breakfast', carbsG: 120, veggiesG: 25 },
+  { structure: 'Regular', proteinOz: 5, carbsG: 150, veggiesG: 100 },
+  { structure: 'Large', proteinOz: 7, carbsG: 225, veggiesG: 140 },
+  { structure: 'By the Pound', proteinOz: 16, carbsG: 0, veggiesG: 0 },
+  { structure: 'Low Carb', proteinOz: 7, carbsG: 0, veggiesG: 150 },
+  { structure: 'High Protein', proteinOz: 7, carbsG: 150, veggiesG: 0 },
+  { structure: 'Breakfast', proteinOz: 2.5, carbsG: 120, veggiesG: 25 },
 ];
 const FORMAT_LABEL_TO_STRUCTURE = {
   'Regular': 'Regular', 'Large': 'Large', '1 Pound': 'By the Pound', 'By the Pound': 'By the Pound',
@@ -297,12 +302,43 @@ const SIDE_CATEGORIES = ['carbohydrates', 'vegetables'];
 const SAUCE_CATEGORY = 'sauces';
 const FIRST_SIDE_PRICE = 0;
 const EXTRA_SIDE_PRICE = 2.5;
+const OZ_TO_G = 28.3495;
+const GRAMS_PER_POUND = 455; // matches the backend's per-pound macro convention
 
 function sideCategoriesForFormat(formatLabel){
   const structureName = FORMAT_LABEL_TO_STRUCTURE[formatLabel];
   const row = PLATE_STRUCTURE_SERVINGS.find((r) => r.structure === structureName);
   if (!row) return { carbs: false, veggies: false };
-  return { carbs: row.carbsG > 0, veggies: row.veggiesG != null && row.veggiesG > 0 };
+  return { carbs: row.carbsG > 0, veggies: row.veggiesG > 0 };
+}
+
+function servingGramsForComponent(row, component){
+  if (component === 'protein') return row.proteinOz * OZ_TO_G;
+  if (component === 'carbs') return row.carbsG;
+  return row.veggiesG;
+}
+
+// Scales a recipe's real per-pound macros down to whatever grams this
+// specific plate component actually serves -- not a fabricated per-format
+// estimate, just the same per-pound figure applied to the real serving size.
+function scaleMacros(perPound, gramsServing){
+  if (!perPound || !gramsServing) return null;
+  const factor = gramsServing / GRAMS_PER_POUND;
+  return {
+    calories: (Number(perPound.calories) || 0) * factor,
+    protein_g: (Number(perPound.protein_g) || 0) * factor,
+    carbs_g: (Number(perPound.carbs_g) || 0) * factor,
+    fat_g: (Number(perPound.fat_g) || 0) * factor,
+  };
+}
+
+function sumMacros(list){
+  return list.reduce((acc, m) => m ? {
+    calories: acc.calories + m.calories,
+    protein_g: acc.protein_g + m.protein_g,
+    carbs_g: acc.carbs_g + m.carbs_g,
+    fat_g: acc.fat_g + m.fat_g,
+  } : acc, { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
 }
 
 function money(n){ return '$' + Number(n).toFixed(2); }
@@ -385,7 +421,7 @@ function renderDay(dayKey, title, recipes){
 // dependency) so the two don't drift out of sync with each other. Each
 // group tracks its own "added, in tap order" list, kept separate from the
 // cart itself so removing one item can re-price the others in that group.
-function makeAddOnGroup(dayKey, recipe, labelHtml, keySuffix, freeCount = 1){
+function makeAddOnGroup(dayKey, recipe, labelHtml, keySuffix, freeCount = 1, onChange){
   const wrap = document.createElement('div');
   wrap.className = 'sides-wrap';
   wrap.innerHTML = `<div class="sides-label">${labelHtml}</div><div class="side-chips"></div>`;
@@ -434,6 +470,7 @@ function makeAddOnGroup(dayKey, recipe, labelHtml, keySuffix, freeCount = 1){
         reprice();
         render(currentItems);
         updateOrderBar();
+        if (onChange) onChange();
       });
       chipsEl.appendChild(chip);
     });
@@ -444,7 +481,14 @@ function makeAddOnGroup(dayKey, recipe, labelHtml, keySuffix, freeCount = 1){
     addedKeys = [];
   }
 
-  return { wrap, render, reset };
+  // Names currently toggled on, in the order they appear in cartKeyFor
+  // ("dayKey::name::suffix") -- used to look up each added thing's own
+  // macros when computing the live plate total.
+  function getAddedNames(){
+    return addedKeys.map((key) => key.split('::')[1]);
+  }
+
+  return { wrap, render, reset, getAddedNames };
 }
 
 // Collapsed to just the protein's name + a status hint until tapped --
@@ -470,7 +514,7 @@ function buildProteinItem(dayKey, recipe, sides, sauces, siblingsContainer){
       <div class="protein-chevron">&rsaquo;</div>
     </div>
     <div class="protein-detail">
-      ${macrosLine ? `<div class="meal-macros">${macrosLine}</div>` : ''}
+      <div class="plate-macros-slot"></div>
       <div class="options">
         <div class="opt-label">Plate Format</div>
         <div class="format-list">
@@ -500,7 +544,11 @@ function buildProteinItem(dayKey, recipe, sides, sauces, siblingsContainer){
   const formatRow = item.querySelector('.format-row');
   let selectedFormat = null;
 
-  const sidesGroup = makeAddOnGroup(dayKey, recipe, "Sides available this week &middot; first 2 free, +$2.50 each after", 'includedside', 2);
+  // Re-render the live macros box whenever a side is toggled -- sauces
+  // aren't wired in here since there's no established serving size for them
+  // anywhere in this app (no column in the plate structure table), so they
+  // can't be scaled into a real contribution.
+  const sidesGroup = makeAddOnGroup(dayKey, recipe, "Sides available this week &middot; first 2 free, +$2.50 each after", 'includedside', 2, () => renderMacrosBox());
   item.querySelector('[data-slot="sides"]').replaceWith(sidesGroup.wrap);
 
   // Sauces don't depend on the plate format at all (no column for them in
@@ -509,6 +557,44 @@ function buildProteinItem(dayKey, recipe, sides, sauces, siblingsContainer){
   const saucesGroup = makeAddOnGroup(dayKey, recipe, "Sauces &middot; 1 free, +$2.50 each after", 'sauceaddon', 1);
   item.querySelector('[data-slot="sauces"]').replaceWith(saucesGroup.wrap);
   if (sauces && sauces.length > 0) saucesGroup.render(sauces);
+
+  // Live macros for the plate as currently configured -- the selected
+  // format's real serving size (protein) plus whatever sides are toggled
+  // on, each scaled from the recipe's actual per-pound macros rather than a
+  // fabricated per-format estimate. Falls back to the static per-lb
+  // reference line before a format is picked.
+  const macrosSlot = item.querySelector('.plate-macros-slot');
+  function renderMacrosBox(){
+    if (!selectedFormat) {
+      macrosSlot.innerHTML = macrosLine ? `<div class="meal-macros">${macrosLine}</div>` : '';
+      return;
+    }
+    const structureName = FORMAT_LABEL_TO_STRUCTURE[selectedFormat.label];
+    const row = PLATE_STRUCTURE_SERVINGS.find((r) => r.structure === structureName);
+    if (!row) { macrosSlot.innerHTML = ''; return; }
+
+    const proteinMacros = scaleMacros(recipe.perPound, servingGramsForComponent(row, 'protein'));
+    // No linked ingredient data for this recipe -- don't show a misleading
+    // "0 cal" line, just omit the box entirely.
+    if (!proteinMacros) { macrosSlot.innerHTML = ''; return; }
+
+    const parts = [proteinMacros];
+    sidesGroup.getAddedNames().forEach((name) => {
+      const sideRecipe = (sides || []).find((s) => s.name === name);
+      if (!sideRecipe) return;
+      const component = sideRecipe.category === 'carbohydrates' ? 'carbs' : 'veggies';
+      parts.push(scaleMacros(sideRecipe.perPound, servingGramsForComponent(row, component)));
+    });
+    const total = sumMacros(parts);
+
+    macrosSlot.innerHTML = `
+      <div class="plate-macros">
+        <span class="plate-macros-label">This plate</span>
+        ${Math.round(total.calories)} cal &middot; ${total.protein_g.toFixed(1)}g protein &middot; ${total.carbs_g.toFixed(1)}g carbs &middot; ${total.fat_g.toFixed(1)}g fat
+      </div>
+    `;
+  }
+  renderMacrosBox();
 
   function updateStatus(){
     const total = Object.values(cart).reduce(
@@ -570,6 +656,7 @@ function buildProteinItem(dayKey, recipe, sides, sauces, siblingsContainer){
       sidesGroup.reset();
       renderSides();
       updateOrderBar();
+      renderMacrosBox();
     });
     formatRow.appendChild(opt);
   });
