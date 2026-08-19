@@ -83,6 +83,21 @@ function ReadOnlyValue({ value }: { value: string | number }) {
   );
 }
 
+const REGULAR_STRUCTURE_ROW = PLATE_STRUCTURE_SERVINGS.find((row) => row.structure === "Regular")!;
+
+// How many actual Regular-plate servings a batch recipe yields -- total
+// ingredient weight divided by the Regular row's serving size for whichever
+// plate component this recipe's category feeds (protein/carbs/veggies).
+// Sauces/beverages aren't part of the plate structure table at all, so a
+// batch of one of those is just treated as a single serving.
+function computeRegularServings(category: Category, totalWeightG: number): number {
+  const component = plateComponentFor(category);
+  if (!component) return 1;
+  if (totalWeightG <= 0) return 0;
+  const regularServingGrams = servingGramsFor(REGULAR_STRUCTURE_ROW, component);
+  return regularServingGrams > 0 ? Math.max(1, Math.round(totalWeightG / regularServingGrams)) : 1;
+}
+
 export default function Fit4SureRecipesPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [draftRecipes, setDraftRecipes] = useState<Recipe[]>([]);
@@ -637,13 +652,19 @@ function AddRecipeDrawer({
   const [form, setForm] = useState({
     name: "",
     category: "beef" as Category,
-    servings: 1,
     prep_time_minutes: 30,
     image: "",
   });
 
   const [ingredients, setIngredients] = useState<RecipeFormIngredient[]>([]);
   const [steps, setSteps] = useState<RecipeStep[]>([]);
+
+  // Regular Servings isn't hand-entered either -- it's how many actual
+  // Regular-plate servings this batch yields, i.e. total ingredient weight
+  // divided by the Regular row's serving size for this category (see
+  // computeRegularServings above).
+  const totalWeightG = useMemo(() => ingredients.reduce((sum, ing) => sum + (Number(ing.quantity_g) || 0), 0), [ingredients]);
+  const regularServings = useMemo(() => computeRegularServings(form.category, totalWeightG), [form.category, totalWeightG]);
 
   // Calories/macros are never hand-entered -- the backend recalculates them
   // live from ingredients on every read (see adminRecipes.js), so an
@@ -660,14 +681,14 @@ function AddRecipeDrawer({
       }),
       { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
     );
-    const divisor = form.servings || 1;
+    const divisor = regularServings || 1;
     return {
       calories: Math.round(totals.calories / divisor),
       protein_g: +(totals.protein_g / divisor).toFixed(1),
       carbs_g: +(totals.carbs_g / divisor).toFixed(1),
       fat_g: +(totals.fat_g / divisor).toFixed(1),
     };
-  }, [ingredients, form.servings]);
+  }, [ingredients, regularServings]);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -702,6 +723,7 @@ function AddRecipeDrawer({
         const newDraft: Recipe = {
           recipe_id: Date.now(), // temporary ID
           ...form,
+          servings: regularServings || 1,
           calories: computedMacros.calories,
           protein_g: computedMacros.protein_g.toString(),
           carbs_g: computedMacros.carbs_g.toString(),
@@ -730,7 +752,7 @@ function AddRecipeDrawer({
           {
             name: form.name.trim(),
             category: form.category,
-            servings: form.servings,
+            servings: regularServings || 1,
             prep_time_minutes: form.prep_time_minutes,
             calories: computedMacros.calories,
             protein_g: computedMacros.protein_g,
@@ -752,7 +774,6 @@ function AddRecipeDrawer({
       setForm({
         name: "",
         category: "beef",
-        servings: 1,
         prep_time_minutes: 30,
         image: "",
       });
@@ -818,7 +839,6 @@ function AddRecipeDrawer({
                   ...current,
                   name: imported.name,
                   category: imported.category as Category,
-                  servings: imported.servings,
                   prep_time_minutes: imported.prep_time_minutes ?? current.prep_time_minutes,
                   image: imported.image || current.image,
                 }));
@@ -850,14 +870,8 @@ function AddRecipeDrawer({
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Servings">
-                <input
-                  type="number"
-                  min={1}
-                  value={form.servings}
-                  onChange={(event) => update("servings", Number(event.target.value))}
-                  className={INPUT_CLASS}
-                />
+              <Field label="Regular Servings">
+                <ReadOnlyValue value={regularServings} />
               </Field>
               <Field label="Prep Time (minutes)">
                 <input
@@ -965,6 +979,7 @@ function AddRecipeDrawer({
                     const newDraft: Recipe = {
                       recipe_id: Date.now(),
                       ...form,
+                      servings: regularServings || 1,
                       calories: computedMacros.calories,
                       protein_g: computedMacros.protein_g.toString(),
                       carbs_g: computedMacros.carbs_g.toString(),
@@ -1040,7 +1055,6 @@ function EditRecipeDrawer({
   const [form, setForm] = useState({
     name: recipe.name || "",
     category: recipe.category || ("beef" as Category),
-    servings: recipe.servings || 1,
     prep_time_minutes: recipe.prep_time_minutes || 0,
     image: recipe.image || "",
   });
@@ -1067,6 +1081,13 @@ function EditRecipeDrawer({
     })) || []
   );
 
+  // Regular Servings isn't hand-entered either -- it's how many actual
+  // Regular-plate servings this batch yields, i.e. total ingredient weight
+  // divided by the Regular row's serving size for this category (see
+  // computeRegularServings above).
+  const totalWeightG = useMemo(() => ingredients.reduce((sum, ing) => sum + (Number(ing.quantity_g) || 0), 0), [ingredients]);
+  const regularServings = useMemo(() => computeRegularServings(form.category, totalWeightG), [form.category, totalWeightG]);
+
   // Calories/macros are never hand-entered -- the backend recalculates them
   // live from ingredients on every read (see adminRecipes.js), so an
   // editable field here would silently get overwritten the moment the
@@ -1082,14 +1103,14 @@ function EditRecipeDrawer({
       }),
       { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
     );
-    const divisor = form.servings || 1;
+    const divisor = regularServings || 1;
     return {
       calories: Math.round(totals.calories / divisor),
       protein_g: +(totals.protein_g / divisor).toFixed(1),
       carbs_g: +(totals.carbs_g / divisor).toFixed(1),
       fat_g: +(totals.fat_g / divisor).toFixed(1),
     };
-  }, [ingredients, form.servings]);
+  }, [ingredients, regularServings]);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -1131,7 +1152,7 @@ function EditRecipeDrawer({
     const payload = {
       name: form.name.trim(),
       category: form.category,
-      servings: form.servings,
+      servings: regularServings || 1,
       prep_time_minutes: form.prep_time_minutes,
       calories: computedMacros.calories,
       protein_g: computedMacros.protein_g,
@@ -1235,14 +1256,8 @@ function EditRecipeDrawer({
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Servings">
-                <input
-                  type="number"
-                  min={1}
-                  value={form.servings}
-                  onChange={(event) => update("servings", Number(event.target.value))}
-                  className={INPUT_CLASS}
-                />
+              <Field label="Regular Servings">
+                <ReadOnlyValue value={regularServings} />
               </Field>
               <Field label="Prep Time (min)">
                 <input
