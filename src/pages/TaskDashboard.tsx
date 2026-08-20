@@ -99,9 +99,14 @@ export default function TaskDashboardPage() {
           )}
         </div>
 
-        <div className="flex justify-end items-center mb-4">
+        <div className="flex justify-between items-center mb-3 gap-3">
+          {!investor ? (
+            <p className="text-[13px]" style={{ color: COLORS.textSecondary }}>
+              Where the team tracks what's due, what's overdue, and what needs a decision before launch.
+            </p>
+          ) : <div />}
           <button
-            className="text-[12px] font-bold rounded-full border px-[14px] py-[6px]"
+            className="text-[12px] font-bold rounded-full border px-[14px] py-[6px] flex-shrink-0"
             style={{
               borderColor: investor ? COLORS.blue : COLORS.cardBorder,
               background: investor ? COLORS.blue : COLORS.cardBg,
@@ -112,12 +117,6 @@ export default function TaskDashboardPage() {
             Investor view
           </button>
         </div>
-
-        {!investor && (
-          <p className="text-[13px] mb-3" style={{ color: COLORS.textSecondary }}>
-            Where the team tracks what's due, what's overdue, and what needs a decision before launch.
-          </p>
-        )}
 
         {!investor && <CalendarMeetingPanel tasks={tasks} today={today} />}
 

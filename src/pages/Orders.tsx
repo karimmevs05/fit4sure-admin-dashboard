@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import WeeklyPrepPage from './WeeklyPrep'
 import { formatIngredientWeight } from '../utils/unitConversion'
-import { sideCategoriesFor } from '../utils/plateStructure'
+import { sideCategoriesFor, PLATE_STRUCTURE_SERVINGS, FORMAT_LABEL_TO_STRUCTURE, plateComponentFor, servingGramsFor } from '../utils/plateStructure'
 
 type OrderLine = {
   id: number
@@ -101,9 +101,36 @@ type RecipePlanItem = {
   name: string
   category: string
   formats: MenuFormat[]
+  perPound?: { calories: number; protein_g: string; carbs_g: string; fat_g: string } | null
 }
 
 const SIDE_CATEGORIES = ['carbohydrates', 'vegetables']
+
+// Matches the backend's "1 lb (455g)" convention used everywhere else in
+// this app -- scales a recipe's real per-pound macros down to whatever
+// grams this specific plate component actually serves, not a fabricated
+// per-format estimate.
+const GRAMS_PER_POUND = 455
+
+function scaleMacros(perPound: RecipePlanItem['perPound'], gramsServing: number | null | undefined) {
+  if (!perPound || !gramsServing) return null
+  const factor = gramsServing / GRAMS_PER_POUND
+  return {
+    calories: (Number(perPound.calories) || 0) * factor,
+    protein_g: (Number(perPound.protein_g) || 0) * factor,
+    carbs_g: (Number(perPound.carbs_g) || 0) * factor,
+    fat_g: (Number(perPound.fat_g) || 0) * factor,
+  }
+}
+
+type Macros = { calories: number; protein_g: number; carbs_g: number; fat_g: number }
+
+function sumMacros(list: Array<Macros | null>): Macros {
+  return list.reduce<Macros>(
+    (acc, m) => (m ? { calories: acc.calories + m.calories, protein_g: acc.protein_g + m.protein_g, carbs_g: acc.carbs_g + m.carbs_g, fat_g: acc.fat_g + m.fat_g } : acc),
+    { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+  )
+}
 const SAUCE_CATEGORY = 'sauces'
 
 // Mirrors orderingService.js on the backend -- sides and sauces are add-ons
@@ -1579,6 +1606,31 @@ function ProteinCard({
     .filter((it) => it.mealName === recipe.name && it.dayOfWeek === day && !ADD_ON_FORMATS.includes(it.category))
     .reduce((sum, it) => sum + (parseFloat(it.quantity) || 0), 0)
 
+  // Live macros for the plate as currently configured -- the selected
+  // format's real serving size (protein) plus whatever sides are in the
+  // cart for this day. Sides are pooled at the day level, not scoped to one
+  // protein, same simplification this picker's tiered pricing already
+  // accepts, so this treats every side in the cart for the day as part of
+  // whichever plate is currently open.
+  const structureRow = selectedFormat
+    ? PLATE_STRUCTURE_SERVINGS.find((r) => r.structure === FORMAT_LABEL_TO_STRUCTURE[selectedFormat.label])
+    : null
+  const proteinComponent = plateComponentFor(recipe.category)
+  const proteinMacros = structureRow && proteinComponent ? scaleMacros(recipe.perPound, servingGramsFor(structureRow, proteinComponent)) : null
+  const plateMacros = proteinMacros
+    ? sumMacros([
+        proteinMacros,
+        ...items
+          .filter((it) => it.category === SIDE_FORMAT && it.dayOfWeek === day)
+          .map((it) => {
+            const sideRecipe = daySides.find((s) => s.name === it.mealName)
+            if (!sideRecipe || !structureRow) return null
+            const component = sideRecipe.category === 'carbohydrates' ? 'carbs' : 'veggies'
+            return scaleMacros(sideRecipe.perPound, servingGramsFor(structureRow, component))
+          }),
+      ])
+    : null
+
   const handleAdd = () => {
     if (!selectedFormat) return
     addFromMenu(recipe.name, selectedFormat.label, day, selectedFormat.price, qty, cardNotes.trim())
@@ -1630,6 +1682,15 @@ function ProteinCard({
               ))}
             </div>
           </div>
+
+          {plateMacros && (
+            <div className="rounded-lg border border-[#DDC9A8] bg-[#FBF7F0] px-2.5 py-2">
+              <p className="text-[9px] font-bold uppercase tracking-wide text-[#9C8C77] mb-0.5">This plate</p>
+              <p className="text-[11px] font-semibold text-[#3D5A78]">
+                {Math.round(plateMacros.calories)} cal &middot; {plateMacros.protein_g.toFixed(1)}g protein &middot; {plateMacros.carbs_g.toFixed(1)}g carbs &middot; {plateMacros.fat_g.toFixed(1)}g fat
+              </p>
+            </div>
+          )}
 
           {selectedFormat && sidesForFormat.length > 0 && (
             <div>
