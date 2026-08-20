@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import type { Task, Urgency } from './types'
-import { COLORS } from './ui'
+import { COLORS, AttentionIconDot } from './ui'
 import { buildMeetingZone } from './selectors'
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -103,9 +103,12 @@ export function CalendarMeetingPanel({ tasks, today }: { tasks: Task[]; today: D
               {g.label} <span className="rounded-full px-[7px] py-[1px] text-[10px]" style={{ background: COLORS.divider, color: COLORS.textMuted }}>{g.items.length}</span>
             </div>
             {g.items.map((it, i) => (
-              <div key={i} className="flex justify-between items-center px-3 py-[9px] rounded-xl mb-[6px] last:mb-0" style={{ background: COLORS.cardBg }}>
-                <span className="font-medium text-[13.5px]" style={{ color: COLORS.textPrimary }}>{it.name}</span>
-                <span className="text-[11px]" style={{ color: '#B9A88F' }}>{it.meta}</span>
+              <div key={i} className="flex items-start gap-[10px] py-[7px] border-t first:border-t-0" style={{ borderColor: '#f0efe9' }}>
+                <span className="mt-[4px]"><AttentionIconDot icon={g.key} /></span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-[13.5px]" style={{ color: COLORS.textPrimary }}>{it.name}</div>
+                  <div className="text-[11px] mt-[2px]" style={{ color: '#B9A88F' }}>{it.meta}</div>
+                </div>
               </div>
             ))}
           </div>

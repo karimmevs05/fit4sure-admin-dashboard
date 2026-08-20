@@ -113,6 +113,12 @@ export default function TaskDashboardPage() {
           </button>
         </div>
 
+        {!investor && (
+          <p className="text-[13px] mb-3" style={{ color: COLORS.textSecondary }}>
+            Where the team tracks what's due, what's overdue, and what needs a decision before launch.
+          </p>
+        )}
+
         {!investor && <CalendarMeetingPanel tasks={tasks} today={today} />}
 
         {investor && (
