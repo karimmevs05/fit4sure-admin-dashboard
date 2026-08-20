@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Task, Milestone, ActivityLogEntry, DayNote, Expense, StaffUser, Tag, Urgency } from './types'
+import type { Task, ActivityLogEntry, DayNote, Expense, StaffUser, Tag, Urgency } from './types'
 
 function apiUrl() {
   return import.meta.env.VITE_API_BASE_URL
@@ -91,16 +91,6 @@ export async function updateTodo(taskId: number, todoId: number, patch: Partial<
 
 export async function deleteTodo(taskId: number, todoId: number) {
   await axios.delete(`${BASE()}/${taskId}/todos/${todoId}`, authConfig())
-}
-
-export async function fetchMilestones(): Promise<Milestone[]> {
-  const res = await axios.get(`${BASE()}/milestones`, authConfig())
-  return res.data.data
-}
-
-export async function updateMilestone(id: number, status: Milestone['status']): Promise<Milestone> {
-  const res = await axios.patch(`${BASE()}/milestones/${id}`, { status }, authConfig())
-  return res.data.data
 }
 
 export async function fetchActivityLog(limit = 20): Promise<ActivityLogEntry[]> {

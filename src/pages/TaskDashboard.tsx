@@ -1,18 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import type { Task, Milestone, ActivityLogEntry, StaffUser } from '../lib/launchTasks/types'
+import type { Task, ActivityLogEntry, StaffUser } from '../lib/launchTasks/types'
 import { COLORS, Card, AttentionIconDot } from '../lib/launchTasks/ui'
-import { buildAttention, computeReadinessPct, formatCents } from '../lib/launchTasks/selectors'
+import { buildAttention, formatCents } from '../lib/launchTasks/selectors'
 import { ListView } from '../lib/launchTasks/ListView'
 import { CalendarMeetingPanel } from '../lib/launchTasks/CalendarMeetingPanel'
 import * as api from '../lib/launchTasks/api'
-
-const MILESTONE_CYCLE: Milestone['status'][] = ['not_started', 'in_progress', 'complete']
 
 export default function TaskDashboardPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [roster, setRoster] = useState<StaffUser[]>([])
   const [currentUser, setCurrentUser] = useState<{ user_id: number; display_name: string } | null>(null)
-  const [milestones, setMilestones] = useState<Milestone[]>([])
   const [activity, setActivity] = useState<ActivityLogEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -29,15 +26,13 @@ export default function TaskDashboardPage() {
     try {
       setLoading(true)
       setError(null)
-      const [t, m, a, u, me] = await Promise.all([
+      const [t, a, u, me] = await Promise.all([
         api.fetchTasks(),
-        api.fetchMilestones(),
         api.fetchActivityLog(20),
         api.fetchUsers(),
         api.fetchCurrentUser(),
       ])
       setTasks(t)
-      setMilestones(m)
       setActivity(a)
       setRoster(u)
       setCurrentUser(me)
@@ -65,16 +60,7 @@ export default function TaskDashboardPage() {
     refreshActivity()
   }
 
-  const cycleMilestone = async (m: Milestone) => {
-    if (investor) return
-    const idx = MILESTONE_CYCLE.indexOf(m.status)
-    const next = MILESTONE_CYCLE[(idx + 1) % MILESTONE_CYCLE.length]
-    const updated = await api.updateMilestone(m.id, next)
-    setMilestones((prev) => prev.map((x) => (x.id === m.id ? updated : x)))
-  }
-
   const attention = useMemo(() => buildAttention(tasks, today, 5), [tasks, today])
-  const readinessPct = useMemo(() => computeReadinessPct(tasks), [tasks])
 
   const financials = useMemo(() => {
     const budget = tasks.reduce((s, t) => s + t.budget_cents, 0)
@@ -128,34 +114,6 @@ export default function TaskDashboardPage() {
         </div>
 
         {!investor && <CalendarMeetingPanel tasks={tasks} today={today} />}
-
-        <Card className="p-[14px_16px] mb-3">
-          <div className="flex justify-between text-[13px] mb-2" style={{ color: COLORS.textSecondary }}>
-            Launch readiness <b style={{ color: COLORS.textPrimary }}>{readinessPct}%</b>
-          </div>
-          <div className="h-[7px] rounded-md overflow-hidden" style={{ background: '#eee' }}>
-            <div className="h-full rounded-md" style={{ width: `${readinessPct}%`, background: COLORS.green }} />
-          </div>
-          <div className="text-[11px] mt-[6px]" style={{ color: '#B9A88F' }}>Critical tasks count double toward readiness</div>
-        </Card>
-
-        <Card className="flex items-start px-4 pt-[18px] pb-[14px] mb-3">
-          {milestones.map((m, i) => (
-            <div key={m.id} className="flex flex-col items-center flex-1 relative" style={{ cursor: investor ? 'default' : 'pointer' }} onClick={() => cycleMilestone(m)}>
-              {i < milestones.length - 1 && (
-                <div className="absolute z-0" style={{ top: 6, left: '50%', width: '100%', height: 2, background: m.status === 'complete' ? COLORS.green : '#e5e3dc' }} />
-              )}
-              <div
-                className="rounded-full z-10 mb-[7px]"
-                style={{
-                  width: 14, height: 14, border: '3px solid #fff', boxSizing: 'content-box',
-                  background: m.status === 'complete' ? COLORS.green : m.status === 'in_progress' ? COLORS.orange : '#e5e3dc',
-                }}
-              />
-              <div className="text-[10.5px] text-center max-w-[82px]" style={{ color: m.status === 'not_started' ? '#B9A88F' : COLORS.textPrimary, lineHeight: 1.3 }}>{m.name}</div>
-            </div>
-          ))}
-        </Card>
 
         {investor && (
           <div className="grid grid-cols-4 gap-3 mb-3">

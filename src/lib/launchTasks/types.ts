@@ -17,7 +17,6 @@ export type Urgency = 'critical' | 'workon' | 'eventually'
 export type TaskStatus = 'open' | 'done'
 export type Phase = 'week 1-2' | 'week 3-4' | 'week 5-8'
 export type DueBucket = 'overdue' | 'thisweek' | 'later' | 'done'
-export type MilestoneStatus = 'not_started' | 'in_progress' | 'complete'
 
 export type Todo = {
   id: number
@@ -58,14 +57,6 @@ export type Task = {
   note_updated_by: string | null
   phase: Phase
   todos: Todo[]
-}
-
-export type Milestone = {
-  id: number
-  name: string
-  status: MilestoneStatus
-  sort_order: number
-  updated_at: string
 }
 
 export type ActivityLogEntry = {

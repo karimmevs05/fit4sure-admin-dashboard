@@ -40,21 +40,6 @@ export function phaseForDate(dueDate: Date): 'week 1-2' | 'week 3-4' | 'week 5-8
   return 'week 5-8'
 }
 
-function taskWeight(task: Task): number {
-  return task.urgency === 'critical' ? 2 : 1
-}
-
-export function computeReadinessPct(tasks: Task[]): number {
-  let totalWeight = 0
-  let doneWeight = 0
-  for (const t of tasks) {
-    const w = taskWeight(t)
-    totalWeight += w
-    if (t.status === 'done') doneWeight += w
-  }
-  return totalWeight ? Math.round((doneWeight / totalWeight) * 100) : 0
-}
-
 function cleanTaskName(name: string): string {
   return name.replace(/OVERDUE|BLOCKED|NEEDS DECISION/g, '').trim()
 }
