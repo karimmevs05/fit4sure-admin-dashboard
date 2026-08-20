@@ -205,10 +205,10 @@ export function computeMetrics(tasks: Task[], today: Date): Metrics {
   return { criticalCount, doneCount, totalCount: tasks.length, thisWeekCount, overdueCount, readinessPct: computeReadinessPct(tasks) }
 }
 
-export function phaseProgress(tasks: Task[], phase: string): { done: number; total: number; pct: number } {
-  const inPhase = tasks.filter((t) => t.phase === phase)
-  const done = inPhase.filter((t) => t.status === 'done').length
-  const total = inPhase.length
+export function tagProgress(tasks: Task[], tag: Task['tag']): { done: number; total: number; pct: number } {
+  const inTag = tasks.filter((t) => t.tag === tag)
+  const done = inTag.filter((t) => t.status === 'done').length
+  const total = inTag.length
   return { done, total, pct: total ? Math.round((done / total) * 100) : 0 }
 }
 

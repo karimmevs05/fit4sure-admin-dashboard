@@ -4,9 +4,10 @@ import { COLORS, TAG_LABELS } from './ui'
 
 const TAGS: Tag[] = ['operations', 'admin', 'marketing', 'sales']
 
-export function AddTaskForm({ defaultDueDate, fixedDueDate, roster, defaultOwnerId, onSubmit, onCancel }: {
+export function AddTaskForm({ defaultDueDate, fixedDueDate, defaultTag, roster, defaultOwnerId, onSubmit, onCancel }: {
   defaultDueDate: string
   fixedDueDate?: string
+  defaultTag?: Tag
   roster: StaffUser[]
   defaultOwnerId?: number
   onSubmit: (data: { name: string; owner_id: number; tag: Tag; urgency: Urgency; due_date: string }) => void
@@ -14,7 +15,7 @@ export function AddTaskForm({ defaultDueDate, fixedDueDate, roster, defaultOwner
 }) {
   const [name, setName] = useState('')
   const [ownerId, setOwnerId] = useState<number>(defaultOwnerId ?? roster[0]?.user_id)
-  const [tag, setTag] = useState<Tag>('operations')
+  const [tag, setTag] = useState<Tag>(defaultTag ?? 'operations')
   const [urgency, setUrgency] = useState<Urgency>('workon')
   const [dueDate, setDueDate] = useState(fixedDueDate || defaultDueDate)
 

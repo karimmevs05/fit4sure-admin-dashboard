@@ -1,14 +1,12 @@
 import React, { useMemo, useState } from 'react'
-import type { Task, Tag, Urgency, Phase, StaffUser } from './types'
-import { COLORS } from './ui'
-import { dueBucketForTask, phaseProgress } from './selectors'
+import type { Task, Tag, Urgency, StaffUser } from './types'
+import { COLORS, TAG_LABELS } from './ui'
+import { dueBucketForTask, tagProgress } from './selectors'
 import { TaskRow } from './TaskRow'
 import { AddTaskForm } from './AddTaskForm'
 import * as api from './api'
 
-const PHASES: Phase[] = ['week 1-2', 'week 3-4', 'week 5-8']
-const PHASE_START_OFFSET: Record<Phase, number> = { 'week 1-2': 0, 'week 3-4': 14, 'week 5-8': 28 }
-const PROJECT_START = new Date(2026, 7, 1)
+const TAGS: Tag[] = ['operations', 'admin', 'marketing', 'sales']
 
 function selectCls() {
   return 'text-[13px] px-[10px] py-[7px] rounded-xl border font-[inherit]'
@@ -28,10 +26,9 @@ export function ListView({ tasks, today, investor, roster, currentUserId, onChan
   const [fOwner, setFOwner] = useState('')
   const [fUrgency, setFUrgency] = useState('')
   const [fStatus, setFStatus] = useState('')
-  const [fTag, setFTag] = useState('')
   const [fDue, setFDue] = useState('')
   const [sort, setSort] = useState('')
-  const [addingPhase, setAddingPhase] = useState<Phase | null>(null)
+  const [addingTag, setAddingTag] = useState<Tag | null>(null)
 
   const filtered = useMemo(() => {
     return tasks.filter((t) => {
@@ -40,19 +37,18 @@ export function ListView({ tasks, today, investor, roster, currentUserId, onChan
       if (fOwner && String(t.owner_id) !== fOwner) return false
       if (fUrgency && t.urgency !== fUrgency) return false
       if (fStatus && statusVal !== fStatus && !(fStatus === 'needs-decision' && t.needs_decision)) return false
-      if (fTag && t.tag !== fTag) return false
       if (fDue && dueBucket !== fDue) return false
       if (search && !t.name.toLowerCase().includes(search.toLowerCase())) return false
       return true
     })
-  }, [tasks, fOwner, fUrgency, fStatus, fTag, fDue, search, today])
+  }, [tasks, fOwner, fUrgency, fStatus, fDue, search, today])
 
-  const clear = () => { setFOwner(''); setFUrgency(''); setFStatus(''); setFTag(''); setFDue(''); setSearch('') }
+  const clear = () => { setFOwner(''); setFUrgency(''); setFStatus(''); setFDue(''); setSearch('') }
 
-  const createTask = async (phase: Phase, data: { name: string; owner_id: number; tag: Tag; urgency: Urgency; due_date: string }) => {
+  const createTask = async (tag: Tag, data: { name: string; owner_id: number; tag: Tag; urgency: Urgency; due_date: string }) => {
     const task = await api.createTask(data)
     onCreated(task)
-    setAddingPhase(null)
+    setAddingTag(null)
   }
 
   return (
@@ -86,13 +82,6 @@ export function ListView({ tasks, today, investor, roster, currentUserId, onChan
               <option value="open">Open</option>
               <option value="needs-decision">Needs decision</option>
             </select>
-            <select className={selectCls()} style={{ borderColor: COLORS.cardBorder, background: COLORS.cardBg, color: COLORS.textSecondary }} value={fTag} onChange={(e) => setFTag(e.target.value)}>
-              <option value="">Tag: all</option>
-              <option value="operations">Operations</option>
-              <option value="admin">Admin</option>
-              <option value="marketing">Marketing</option>
-              <option value="sales">Sales</option>
-            </select>
             <select className={selectCls()} style={{ borderColor: COLORS.cardBorder, background: COLORS.cardBg, color: COLORS.textSecondary }} value={fDue} onChange={(e) => setFDue(e.target.value)}>
               <option value="">Due: all</option>
               <option value="overdue">Overdue</option>
@@ -121,24 +110,23 @@ export function ListView({ tasks, today, investor, roster, currentUserId, onChan
         </>
       )}
 
-      {PHASES.map((phase) => {
-        const phaseTasks = filtered.filter((t) => t.phase === phase)
-        const filtersActive = fOwner || fUrgency || fStatus || fTag || fDue || search
-        if (!investor && phaseTasks.length === 0 && filtersActive && addingPhase !== phase) return null
+      {TAGS.map((tag) => {
+        const tagTasks = filtered.filter((t) => t.tag === tag)
+        const filtersActive = fOwner || fUrgency || fStatus || fDue || search
+        if (!investor && tagTasks.length === 0 && filtersActive && addingTag !== tag) return null
 
-        const sorted = [...phaseTasks].sort((a, b) => {
+        const sorted = [...tagTasks].sort((a, b) => {
           if (sort === 'due') return new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
           if (sort === 'cost') return b.budget_cents - a.budget_cents
           return 0
         })
-        const progress = phaseProgress(tasks, phase)
-        const defaultDate = new Date(Math.max(PROJECT_START.getTime() + PHASE_START_OFFSET[phase] * 86400000, today.getTime()))
-        const defaultDateStr = `${defaultDate.getFullYear()}-${String(defaultDate.getMonth() + 1).padStart(2, '0')}-${String(defaultDate.getDate()).padStart(2, '0')}`
+        const progress = tagProgress(tasks, tag)
+        const defaultDateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
 
         return (
-          <div key={phase}>
+          <div key={tag}>
             <div className="text-[13px] font-semibold mt-5 mb-2 flex items-center gap-[10px]" style={{ color: COLORS.textSecondary }}>
-              {phase}
+              {TAG_LABELS[tag]}
               {investor && (
                 <>
                   <div className="flex-1 h-[5px] rounded max-w-[160px] overflow-hidden" style={{ background: '#e8e6e0' }}>
@@ -154,19 +142,20 @@ export function ListView({ tasks, today, investor, roster, currentUserId, onChan
             ))}
 
             {!investor && (
-              addingPhase === phase ? (
+              addingTag === tag ? (
                 <AddTaskForm
                   defaultDueDate={defaultDateStr}
+                  defaultTag={tag}
                   roster={roster}
                   defaultOwnerId={currentUserId}
-                  onSubmit={(data) => createTask(phase, data)}
-                  onCancel={() => setAddingPhase(null)}
+                  onSubmit={(data) => createTask(tag, data)}
+                  onCancel={() => setAddingTag(null)}
                 />
               ) : (
                 <div
                   className="flex items-center gap-[10px] px-[14px] py-3 border border-dashed rounded-2xl text-[14px] cursor-pointer"
                   style={{ borderColor: COLORS.cardBorder, color: COLORS.textMuted }}
-                  onClick={() => setAddingPhase(phase)}
+                  onClick={() => setAddingTag(tag)}
                 >
                   <span className="text-[15px] w-[14px] text-center">+</span> Add task
                 </div>
