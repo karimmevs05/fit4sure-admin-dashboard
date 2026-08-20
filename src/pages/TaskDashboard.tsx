@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import type { Task, Milestone, ActivityLogEntry, StaffUser } from '../lib/launchTasks/types'
 import { COLORS, Card, AttentionIconDot } from '../lib/launchTasks/ui'
-import { buildFocus, buildDigest, buildAttention, computeReadinessPct, formatCents } from '../lib/launchTasks/selectors'
+import { buildAttention, computeReadinessPct, formatCents } from '../lib/launchTasks/selectors'
 import { ListView } from '../lib/launchTasks/ListView'
-import { TimelineView } from '../lib/launchTasks/TimelineView'
+import { CalendarMeetingPanel } from '../lib/launchTasks/CalendarMeetingPanel'
 import * as api from '../lib/launchTasks/api'
 
 const MILESTONE_CYCLE: Milestone['status'][] = ['not_started', 'in_progress', 'complete']
@@ -17,7 +17,6 @@ export default function TaskDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const [view, setView] = useState<'list' | 'timeline'>('list')
   const [investor, setInvestor] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
 
@@ -74,8 +73,6 @@ export default function TaskDashboardPage() {
     setMilestones((prev) => prev.map((x) => (x.id === m.id ? updated : x)))
   }
 
-  const focus = useMemo(() => buildFocus(tasks, today, roster), [tasks, today, roster])
-  const digest = useMemo(() => buildDigest(tasks, today), [tasks, today])
   const attention = useMemo(() => buildAttention(tasks, today, 5), [tasks, today])
   const readinessPct = useMemo(() => computeReadinessPct(tasks), [tasks])
 
@@ -116,23 +113,7 @@ export default function TaskDashboardPage() {
           )}
         </div>
 
-        <div className="flex justify-between items-center mb-4">
-          <div className="flex rounded-full border overflow-hidden" style={{ borderColor: COLORS.cardBorder }}>
-            <button
-              className="text-[12px] font-bold px-[14px] py-[6px]"
-              style={{ background: view === 'list' ? COLORS.blue : COLORS.cardBg, color: view === 'list' ? '#fff' : COLORS.textSecondary }}
-              onClick={() => setView('list')}
-            >
-              List
-            </button>
-            <button
-              className="text-[12px] font-bold px-[14px] py-[6px]"
-              style={{ background: view === 'timeline' ? COLORS.blue : COLORS.cardBg, color: view === 'timeline' ? '#fff' : COLORS.textSecondary }}
-              onClick={() => setView('timeline')}
-            >
-              Timeline
-            </button>
-          </div>
+        <div className="flex justify-end items-center mb-4">
           <button
             className="text-[12px] font-bold rounded-full border px-[14px] py-[6px]"
             style={{
@@ -146,32 +127,7 @@ export default function TaskDashboardPage() {
           </button>
         </div>
 
-        {!investor && (
-          <Card className="p-[14px_16px] mb-3">
-            <div className="flex justify-between items-baseline mb-1">
-              <div className="text-[13px] font-extrabold" style={{ color: COLORS.textPrimary }}>
-                Today — {today.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              </div>
-            </div>
-            <div className="text-[11.5px] mb-3" style={{ color: '#B9A88F' }} dangerouslySetInnerHTML={{ __html: digest.replace(/(\d+) (overdue|due today|completed in the last 2 days|waiting on a decision)/g, '<b style="color:#755B4C">$1</b> $2') }} />
-            <div className="flex gap-4">
-              {roster.map((owner) => (
-                <div key={owner.user_id} className="flex-1 rounded-xl border px-[14px] py-3" style={{ background: '#F0E6D2', borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-[9px]" style={{ color: '#9A8774' }}>{owner.display_name}'s focus</div>
-                  {(focus[owner.user_id] || []).length === 0 ? (
-                    <div className="text-[12.5px]" style={{ color: '#CDBDA8' }}>Nothing urgent today.</div>
-                  ) : focus[owner.user_id].map((it, i) => (
-                    <div key={i} className="flex items-center gap-2 px-[10px] py-2 rounded-[10px] mb-[6px] last:mb-0 text-[13px] border" style={{ background: '#FFFDFA', borderColor: COLORS.divider }}>
-                      <span className="w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: it.icon === 'overdue' ? COLORS.red : COLORS.orange }} />
-                      <span className="flex-1" style={{ color: COLORS.textPrimary }}>{it.name}</span>
-                      <span className="text-[10.5px]" style={{ color: '#B9A88F' }}>{it.reason}</span>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
+        {!investor && <CalendarMeetingPanel tasks={tasks} today={today} />}
 
         <Card className="p-[14px_16px] mb-3">
           <div className="flex justify-between text-[13px] mb-2" style={{ color: COLORS.textSecondary }}>
@@ -238,11 +194,7 @@ export default function TaskDashboardPage() {
           </Card>
         )}
 
-        {view === 'list' ? (
-          <ListView tasks={tasks} today={today} investor={investor} roster={roster} currentUserId={currentUser?.user_id} onChanged={handleChanged} onDeleted={handleDeleted} onCreated={handleCreated} />
-        ) : (
-          <TimelineView tasks={tasks} today={today} investor={investor} roster={roster} currentUserId={currentUser?.user_id} onChanged={handleChanged} onCreated={handleCreated} />
-        )}
+        <ListView tasks={tasks} today={today} investor={investor} roster={roster} currentUserId={currentUser?.user_id} onChanged={handleChanged} onDeleted={handleDeleted} onCreated={handleCreated} />
 
         {!investor && (
           <div className="mt-6 mb-2">

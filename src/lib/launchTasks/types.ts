@@ -93,10 +93,3 @@ export type AttentionItem = {
   reason: string
   priority: number
 }
-
-export type FocusItem = {
-  icon: 'overdue' | 'critical'
-  name: string
-  reason: string
-  priority: number
-}

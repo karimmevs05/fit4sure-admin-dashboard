@@ -2,7 +2,7 @@
 // mockup's JS (computeMetrics, computeIndicators, collectTodoAttentionItems,
 // buildFocus, buildDigest) -- the logic there is correct, only the data
 // source changed (real API instead of DOM attributes / localStorage).
-import type { Task, AttentionItem, AttentionIcon, FocusItem, StaffUser } from './types'
+import type { Task, AttentionItem, AttentionIcon } from './types'
 
 const DAY_MS = 86400000
 const PROJECT_START = { y: 2026, m: 8, d: 1 } // fixed anchor, not relative to "today"
@@ -55,53 +55,6 @@ export function computeReadinessPct(tasks: Task[]): number {
   return totalWeight ? Math.round((doneWeight / totalWeight) * 100) : 0
 }
 
-export type ScheduleBudget = {
-  expectedPct: number
-  actualPct: number
-  scheduleStatus: 'good' | 'watch' | 'risk'
-  scheduleLabel: string
-  budget: number
-  committed: number
-  paid: number
-  committedPct: number
-  paidPct: number
-  budgetStatus: 'good' | 'watch' | 'risk'
-  budgetLabel: string
-}
-
-export function computeScheduleAndBudget(tasks: Task[], today: Date): ScheduleBudget {
-  const dates = tasks.map((t) => dateOnly(t.due_date).getTime())
-  const start = dates.length ? Math.min(...dates) : today.getTime()
-  const end = dates.length ? Math.max(...dates) : today.getTime()
-  const totalSpan = end - start || 1
-  const elapsed = Math.min(Math.max((today.getTime() - start) / totalSpan, 0), 1)
-  const expectedPct = Math.round(elapsed * 100)
-
-  const actualPct = computeReadinessPct(tasks)
-  const diff = actualPct - expectedPct
-
-  let scheduleStatus: ScheduleBudget['scheduleStatus']
-  let scheduleLabel: string
-  if (diff >= 0) { scheduleStatus = 'good'; scheduleLabel = 'On track' }
-  else if (diff >= -20) { scheduleStatus = 'watch'; scheduleLabel = 'Slightly behind' }
-  else { scheduleStatus = 'risk'; scheduleLabel = 'Behind schedule' }
-
-  const budget = tasks.reduce((s, t) => s + t.budget_cents, 0)
-  const committed = tasks.reduce((s, t) => s + t.committed_cents, 0)
-  const paid = tasks.reduce((s, t) => s + t.paid_cents, 0)
-  const committedPct = budget ? Math.round((committed / budget) * 100) : 0
-  const paidPct = budget ? Math.round((paid / budget) * 100) : 0
-  const paceDiff = committedPct - expectedPct
-
-  let budgetStatus: ScheduleBudget['budgetStatus']
-  let budgetLabel: string
-  if (paceDiff <= 15) { budgetStatus = 'good'; budgetLabel = 'On pace' }
-  else if (paceDiff <= 40) { budgetStatus = 'watch'; budgetLabel = 'Ahead of pace' }
-  else { budgetStatus = 'risk'; budgetLabel = 'Committing fast' }
-
-  return { expectedPct, actualPct, scheduleStatus, scheduleLabel, budget, committed, paid, committedPct, paidPct, budgetStatus, budgetLabel }
-}
-
 function cleanTaskName(name: string): string {
   return name.replace(/OVERDUE|BLOCKED|NEEDS DECISION/g, '').trim()
 }
@@ -151,58 +104,6 @@ export function buildMeetingZone(tasks: Task[], today: Date): MeetingGroup[] {
     { key: 'decision', label: 'Needs decision' },
   ]
   return defs.filter((d) => groups[d.key].length).map((d) => ({ ...d, items: groups[d.key] }))
-}
-
-export function buildFocus(tasks: Task[], today: Date, owners: StaffUser[]): Record<number, FocusItem[]> {
-  const result: Record<number, FocusItem[]> = {}
-  for (const owner of owners) {
-    const ownerTasks = tasks.filter((t) => t.owner_id === owner.user_id && t.status !== 'done')
-    const items: FocusItem[] = []
-    for (const t of ownerTasks) {
-      const name = cleanTaskName(t.name)
-      const days = daysBetween(dateOnly(t.due_date), today)
-      if (dueBucketForTask(t, today) === 'overdue') {
-        items.push({ icon: 'overdue', name, reason: 'Overdue', priority: 0 })
-      } else if (t.urgency === 'critical' && days >= 0 && days <= 7) {
-        items.push({ icon: 'critical', name, reason: `Due in ${days}d`, priority: 1 })
-      }
-    }
-    items.sort((a, b) => a.priority - b.priority)
-    result[owner.user_id] = items.slice(0, 3)
-  }
-  return result
-}
-
-export function buildDigest(tasks: Task[], today: Date): string {
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-  const dueToday = tasks.filter((t) => t.due_date.slice(0, 10) === todayStr).length
-  const overdue = tasks.filter((t) => dueBucketForTask(t, today) === 'overdue').length
-  const doneRecent = tasks.filter((t) => t.status === 'done' && daysBetween(today, dateOnly(t.due_date)) <= 2).length
-  const decisions = tasks.filter((t) => t.needs_decision).length
-
-  const parts: string[] = []
-  if (overdue) parts.push(`${overdue} overdue`)
-  if (dueToday) parts.push(`${dueToday} due today`)
-  if (doneRecent) parts.push(`${doneRecent} completed in the last 2 days`)
-  if (decisions) parts.push(`${decisions} waiting on a decision`)
-  return parts.length ? parts.join(' · ') : 'Nothing urgent — quiet day.'
-}
-
-export type Metrics = {
-  criticalCount: number
-  doneCount: number
-  totalCount: number
-  thisWeekCount: number
-  overdueCount: number
-  readinessPct: number
-}
-
-export function computeMetrics(tasks: Task[], today: Date): Metrics {
-  const criticalCount = tasks.filter((t) => t.urgency === 'critical').length
-  const doneCount = tasks.filter((t) => t.status === 'done').length
-  const thisWeekCount = tasks.filter((t) => dueBucketForTask(t, today) === 'thisweek').length
-  const overdueCount = tasks.filter((t) => dueBucketForTask(t, today) === 'overdue').length
-  return { criticalCount, doneCount, totalCount: tasks.length, thisWeekCount, overdueCount, readinessPct: computeReadinessPct(tasks) }
 }
 
 export function tagProgress(tasks: Task[], tag: Task['tag']): { done: number; total: number; pct: number } {
