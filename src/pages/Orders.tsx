@@ -323,13 +323,14 @@ export default function OrdersPage() {
       {weeklyMenu && !weeklyMenu.menuReady && (
         <div className="rounded-2xl border border-[#F0C5B8] bg-[#FFF4F0] p-4 flex items-center justify-between gap-4">
           <p className="text-sm font-bold text-[#B8571F]">
-            ⚠️ Menu not fully built for the{' '}
-            {new Date(weeklyMenu.weekStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} delivery week
+            ⚠️{' '}
             {weeklyMenu.monday.length === 0 && weeklyMenu.thursday.length === 0
-              ? ' — no Monday or Thursday plates yet.'
+              ? `Menu not built yet for the ${new Date(weeklyMenu.weekStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} delivery week — no Monday or Thursday plates yet.`
               : weeklyMenu.monday.length === 0
-              ? ' — no Monday plates yet.'
-              : ' — no Thursday plates yet.'}
+              ? `Menu not built yet for the ${new Date(weeklyMenu.weekStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} delivery week — no Monday plates yet.`
+              : weeklyMenu.thursday.length === 0
+              ? `Menu not built yet for the ${new Date(weeklyMenu.weekStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} delivery week — no Thursday plates yet.`
+              : `Menu is built for the ${new Date(weeklyMenu.weekStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} delivery week but hasn't been submitted — customers won't see it until you hit Submit Menu.`}
           </p>
           <Link
             to="/menu-planner"

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
-import { Pencil, Check, X } from 'lucide-react'
+import { Pencil, Check, X, ExternalLink, Send } from 'lucide-react'
 import RecipePlanSection, { rowKey } from '../components/RecipePlanSection'
 import type { Block, PlanRecipeRow } from '../components/RecipePlanSection'
 import { PlateCostSimulator } from '../components/PlateCostSimulator'
@@ -36,6 +36,8 @@ export default function MenuPlannerPage() {
     financials: { monday: { costCents: 0, lb: 0, recipeCount: 0 }, thursday: { costCents: 0, lb: 0, recipeCount: 0 }, combined: { costCents: 0, lb: 0, recipeCount: 0 } },
   })
   const [loading, setLoading] = useState(true)
+  const [publishStatus, setPublishStatus] = useState<{ published: boolean; publishedAt: string | null } | null>(null)
+  const [publishing, setPublishing] = useState(false)
 
   // Weekly Recipe Plan block state -- owned here (not inside
   // RecipePlanSection) so the Custom Plate Builder can add a combo straight
@@ -58,10 +60,11 @@ export default function MenuPlannerPage() {
     setLoading(true)
     const headers = { Authorization: `Bearer ${token}` }
     try {
-      const [lastWeekRes, nextWeekRes, prepFinancialsRes] = await Promise.all([
+      const [lastWeekRes, nextWeekRes, prepFinancialsRes, publishStatusRes] = await Promise.all([
         axios.get(`${apiUrl}/api/admin/menu-planner/previous-week`, { headers }),
         axios.get(`${apiUrl}/api/admin/menu-planner/next-week`, { headers }),
         axios.get(`${apiUrl}/api/admin/menu-planner/prep-and-financials`, { headers }),
+        axios.get(`${apiUrl}/api/admin/menu-planner/publish-status`, { headers }),
       ])
 
       setLastWeekMenu(lastWeekRes.data.data || { monday: [], thursday: [] })
@@ -72,10 +75,30 @@ export default function MenuPlannerPage() {
           financials: { monday: { costCents: 0, lb: 0, recipeCount: 0 }, thursday: { costCents: 0, lb: 0, recipeCount: 0 }, combined: { costCents: 0, lb: 0, recipeCount: 0 } },
         }
       )
+      setPublishStatus(publishStatusRes.data.data || null)
     } catch (error) {
       console.error('Error fetching menu planner data:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Go-live for the whole week (both blocks) at once -- until this is
+  // clicked, saved block edits stay staff-only; the real customer ordering
+  // page keeps showing "not posted yet" regardless of what's saved.
+  const publishMenu = async () => {
+    setPublishing(true)
+    try {
+      const res = await axios.post(
+        `${apiUrl}/api/admin/menu-planner/publish`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      setPublishStatus(res.data.data)
+    } catch (error) {
+      console.error('Error publishing menu:', error)
+    } finally {
+      setPublishing(false)
     }
   }
 
@@ -240,14 +263,41 @@ export default function MenuPlannerPage() {
 
   return (
     <main className="flex-1 space-y-6 p-8">
-      <div className="flex items-center gap-4">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-[#4B2B1D]">Menu Planner</h1>
           <p className="mt-1 text-sm text-[#755B4C]">
             Building here creates the real menu for {weekStart.monday ? new Date(weekStart.monday).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'next week'} delivery
           </p>
         </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <a
+            href="https://fit4sure-admin-dashboard.pages.dev/order/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#2E527F] px-3 text-xs font-bold text-[#2E527F] hover:bg-[#EAF0F7] transition"
+          >
+            <ExternalLink className="h-3.5 w-3.5" /> View customer order page
+          </a>
+          <button
+            onClick={publishMenu}
+            disabled={publishing}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#16A34A] px-3 text-xs font-bold text-white hover:bg-[#15873F] disabled:opacity-50 transition"
+          >
+            <Send className="h-3.5 w-3.5" />
+            {publishing ? 'Submitting...' : publishStatus?.published ? 'Re-submit Menu' : 'Submit Menu'}
+          </button>
+        </div>
       </div>
+
+      {publishStatus && (
+        <p className={`text-xs font-medium ${publishStatus.published ? 'text-[#16A34A]' : 'text-[#D97706]'}`}>
+          {publishStatus.published
+            ? `Live to customers${publishStatus.publishedAt ? ` since ${new Date(publishStatus.publishedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''} — further block edits go live immediately.`
+            : "Draft — customers see \"menu isn't posted yet\" until you press Submit Menu."}
+        </p>
+      )}
 
       <PlateCostSimulator onAddToBlock={addComboToBlock} />
 
