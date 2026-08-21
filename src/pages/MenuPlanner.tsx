@@ -38,6 +38,7 @@ export default function MenuPlannerPage() {
   const [loading, setLoading] = useState(true)
   const [publishStatus, setPublishStatus] = useState<{ published: boolean; publishedAt: string | null } | null>(null)
   const [publishing, setPublishing] = useState(false)
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false)
 
   // Weekly Recipe Plan block state -- owned here (not inside
   // RecipePlanSection) so the Custom Plate Builder can add a combo straight
@@ -84,8 +85,11 @@ export default function MenuPlannerPage() {
   }
 
   // Go-live for the whole week (both blocks) at once -- until this is
-  // clicked, saved block edits stay staff-only; the real customer ordering
-  // page keeps showing "not posted yet" regardless of what's saved.
+  // confirmed, saved block edits stay staff-only; the real customer
+  // ordering page keeps showing "not posted yet" regardless of what's
+  // saved. Gated behind a review modal (see showPublishConfirm) so a
+  // block that looks wrong is caught before it reaches real customers,
+  // not after.
   const publishMenu = async () => {
     setPublishing(true)
     try {
@@ -95,6 +99,7 @@ export default function MenuPlannerPage() {
         { headers: { Authorization: `Bearer ${token}` } }
       )
       setPublishStatus(res.data.data)
+      setShowPublishConfirm(false)
     } catch (error) {
       console.error('Error publishing menu:', error)
     } finally {
@@ -262,6 +267,7 @@ export default function MenuPlannerPage() {
   }
 
   return (
+    <>
     <main className="flex-1 space-y-6 p-8">
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -281,12 +287,11 @@ export default function MenuPlannerPage() {
             <ExternalLink className="h-3.5 w-3.5" /> View customer order page
           </a>
           <button
-            onClick={publishMenu}
-            disabled={publishing}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#16A34A] px-3 text-xs font-bold text-white hover:bg-[#15873F] disabled:opacity-50 transition"
+            onClick={() => setShowPublishConfirm(true)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#16A34A] px-3 text-xs font-bold text-white hover:bg-[#15873F] transition"
           >
             <Send className="h-3.5 w-3.5" />
-            {publishing ? 'Submitting...' : publishStatus?.published ? 'Re-submit Menu' : 'Submit Menu'}
+            {publishStatus?.published ? 'Re-submit Menu' : 'Submit Menu'}
           </button>
         </div>
       </div>
@@ -359,6 +364,114 @@ export default function MenuPlannerPage() {
         <FinancialsColumn financials={prepFinancials.financials} />
       </div>
     </main>
+
+    {showPublishConfirm && (
+      <PublishConfirmModal
+        rows={rows}
+        dirty={dirty}
+        publishing={publishing}
+        alreadyPublished={!!publishStatus?.published}
+        onConfirm={publishMenu}
+        onCancel={() => setShowPublishConfirm(false)}
+      />
+    )}
+    </>
+  )
+}
+
+// One last visual check of exactly what's about to go live -- both blocks'
+// selected items, side by side -- before the irreversible-feeling step of
+// exposing it to real customers. Reads straight from the same `rows` state
+// the blocks themselves render from, so this is never out of sync with
+// what's on screen; a dirty block gets flagged since publish goes live
+// with whatever's already saved in the database, not an unsaved edit.
+function PublishConfirmModal({
+  rows,
+  dirty,
+  publishing,
+  alreadyPublished,
+  onConfirm,
+  onCancel,
+}: {
+  rows: Record<Block, PlanRecipeRow[]>
+  dirty: Record<Block, boolean>
+  publishing: boolean
+  alreadyPublished: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const blocks: { key: Block; label: string; sub: string; color: string }[] = [
+    { key: 'monday', label: 'Block 1', sub: 'Mon – Wed', color: '#16A34A' },
+    { key: 'thursday', label: 'Block 2', sub: 'Thu – Sun', color: '#D97706' },
+  ]
+  const anyDirty = dirty.monday || dirty.thursday
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-[rgba(251,247,240,0.9)] rounded-2xl border border-[#2E527F] max-w-2xl w-full my-8">
+        <div className="border-b border-[#E4D8C9] p-6 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-extrabold text-[#4B2B1D]">Review before submitting</h2>
+            <p className="mt-1 text-xs text-[#755B4C]">This is exactly what customers will see on the order page once submitted.</p>
+          </div>
+          <button onClick={onCancel} className="text-[#755B4C] hover:text-[#4B2B1D]">
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+          {anyDirty && (
+            <div className="rounded-lg border border-[#F0C5B8] bg-[#FFF4F0] p-3 text-xs font-bold text-[#B8571F]">
+              You have unsaved changes in {dirty.monday && dirty.thursday ? 'both blocks' : dirty.monday ? 'Block 1' : 'Block 2'} — Save Block first, or submitting now will publish the last saved version instead.
+            </div>
+          )}
+
+          {blocks.map(({ key, label, sub, color }) => {
+            const selected = rows[key].filter((r) => r.selected)
+            return (
+              <div key={key} className="rounded-lg border border-[#E4D8C9] bg-white p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }}></div>
+                  <h3 className="text-sm font-extrabold" style={{ color }}>{label}</h3>
+                  <span className="text-xs text-[#2E527F]">{sub}</span>
+                </div>
+                {selected.length === 0 ? (
+                  <p className="text-xs text-[#755B4C] italic">Nothing added — customers will see no options for this delivery day</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {selected.map((r) => (
+                      <li key={rowKey(r)} className="flex items-center justify-between text-xs">
+                        <span className="font-medium text-[#4B2B1D]">
+                          {r.name}
+                          {r.isCustom && <span className="ml-1.5 rounded-full bg-[#EAF0F7] px-1.5 py-[1px] text-[9px] font-bold text-[#2E527F] align-middle">combo</span>}
+                        </span>
+                        <span className="text-[#2E527F]">{r.expected_volume} lb</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="border-t border-[#E4D8C9] p-6 flex items-center justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="h-9 rounded-lg border border-[#B9A88F] px-4 text-xs font-bold text-[#4B2B1D] hover:bg-[#F1EAE0] transition"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={publishing}
+            className="h-9 rounded-lg bg-[#16A34A] px-4 text-xs font-bold text-white hover:bg-[#15873F] disabled:opacity-50 transition"
+          >
+            {publishing ? 'Submitting...' : alreadyPublished ? 'Looks good — Re-submit' : 'Looks good — Submit'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
