@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
+import { Pencil, Check, X } from 'lucide-react'
 import RecipePlanSection, { rowKey } from '../components/RecipePlanSection'
 import type { Block, PlanRecipeRow } from '../components/RecipePlanSection'
 import { PlateCostSimulator } from '../components/PlateCostSimulator'
@@ -10,6 +11,7 @@ const GRAMS_PER_POUND = 455
 type LastWeekMenu = { monday: string[]; thursday: string[] }
 
 type PrepIngredient = {
+  inventoryId: number
   name: string
   category: string
   neededG: number
@@ -302,7 +304,7 @@ export default function MenuPlannerPage() {
           </div>
         </div>
 
-        <ShoppingListColumn ingredients={prepFinancials.ingredients} />
+        <ShoppingListColumn ingredients={prepFinancials.ingredients} onStoreUpdated={fetchAll} />
 
         <FinancialsColumn financials={prepFinancials.financials} />
       </div>
@@ -315,11 +317,48 @@ export default function MenuPlannerPage() {
 // whichever store the receipt-sync pipeline last recorded that ingredient
 // being bought at (inventory.store), so a run to Costco vs. Sam's Club can
 // be planned as two separate lists instead of one flat ingredient dump.
-function ShoppingListColumn({ ingredients }: { ingredients: PrepIngredient[] }) {
+// A subtle pencil (visible on row hover) lets that store be assigned or
+// corrected inline -- PATCHes only the store column (not the full PUT
+// used by Inventory's edit modal, which would also re-run allergen
+// tagging/USDA lookup), then refetches so the item regroups immediately.
+function ShoppingListColumn({ ingredients, onStoreUpdated }: { ingredients: PrepIngredient[]; onStoreUpdated: () => void }) {
   const [openStore, setOpenStore] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [saving, setSaving] = useState(false)
+  const token = localStorage.getItem('token')
+  const apiUrl = import.meta.env.VITE_API_BASE_URL
+
   const formatLb = (g: number) => (g / GRAMS_PER_POUND).toFixed(1)
   const formatNeeded = (ing: PrepIngredient, g: number) =>
     ing.category?.toLowerCase() === 'protein' ? formatIngredientWeight(g, ing.category) : `${formatLb(g)} lb`
+
+  const knownStores = useMemo(
+    () => Array.from(new Set(ingredients.map((i) => i.store).filter((s): s is string => !!s))).sort(),
+    [ingredients]
+  )
+
+  const startEdit = (ing: PrepIngredient) => {
+    setEditingId(ing.inventoryId)
+    setEditValue(ing.store || '')
+  }
+
+  const saveStore = async (inventoryId: number) => {
+    setSaving(true)
+    try {
+      await axios.patch(
+        `${apiUrl}/api/inventory/${inventoryId}/store`,
+        { store: editValue.trim() },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      setEditingId(null)
+      onStoreUpdated()
+    } catch (error) {
+      console.error('Error updating ingredient store:', error)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const byStore = useMemo(() => {
     const toBuy = ingredients.filter((ing) => ing.shortfallG > 0)
@@ -338,6 +377,11 @@ function ShoppingListColumn({ ingredients }: { ingredients: PrepIngredient[] }) 
     <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
       <h2 className="mb-1 text-lg font-extrabold text-[#4B2B1D]">Shopping List</h2>
       <p className="mb-4 text-xs text-[#755B4C]">What's short vs. current stock, grouped by where you last bought it</p>
+      <datalist id="shopping-list-known-stores">
+        {knownStores.map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
 
       {byStore.length === 0 ? (
         <p className="text-xs text-[#755B4C] italic">Nothing to buy — current stock covers this week's plan</p>
@@ -361,12 +405,48 @@ function ShoppingListColumn({ ingredients }: { ingredients: PrepIngredient[] }) 
                 </button>
                 {isOpen && (
                   <div className="border-t border-[#E4D8C9] divide-y divide-[#F0EAE0]">
-                    {items.map((ing) => (
-                      <div key={ing.name} className="flex items-center gap-2 px-3 py-2">
-                        <p className="flex-1 truncate text-xs font-medium text-[#4B2B1D]">{ing.name}</p>
-                        <p className="text-xs font-bold text-[#D62F3D] flex-shrink-0">{formatNeeded(ing, ing.shortfallG)}</p>
-                      </div>
-                    ))}
+                    {items.map((ing) =>
+                      editingId === ing.inventoryId ? (
+                        <div key={ing.name} className="flex items-center gap-1.5 px-3 py-2">
+                          <input
+                            autoFocus
+                            list="shopping-list-known-stores"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && saveStore(ing.inventoryId)}
+                            placeholder="Store name..."
+                            className="h-7 flex-1 min-w-0 rounded border border-[#2E527F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
+                          />
+                          <button
+                            onClick={() => saveStore(ing.inventoryId)}
+                            disabled={saving}
+                            className="flex-shrink-0 text-[#16A34A] hover:text-[#15873F] disabled:opacity-40"
+                            aria-label="Save store"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className="flex-shrink-0 text-[#9A7E6F] hover:text-[#D62F3D]"
+                            aria-label="Cancel"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div key={ing.name} className="group flex items-center gap-2 px-3 py-2">
+                          <p className="flex-1 truncate text-xs font-medium text-[#4B2B1D]">{ing.name}</p>
+                          <button
+                            onClick={() => startEdit(ing)}
+                            className="flex-shrink-0 text-[#C9BBA8] opacity-0 transition group-hover:opacity-100 hover:text-[#2E527F]"
+                            aria-label={`Assign store for ${ing.name}`}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                          <p className="text-xs font-bold text-[#D62F3D] flex-shrink-0">{formatNeeded(ing, ing.shortfallG)}</p>
+                        </div>
+                      )
+                    )}
                   </div>
                 )}
               </div>
