@@ -236,10 +236,10 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-2xl border border-[#E8DCC8] bg-white overflow-hidden">
+    <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] overflow-hidden">
       <button
         onClick={() => toggleSection(id)}
-        className="w-full flex items-center justify-between p-6 hover:bg-[#FDFBF7] transition"
+        className="w-full flex items-center justify-between p-6 hover:bg-[rgba(251,247,240,0.9)] transition"
       >
         <h2 className="text-lg font-extrabold text-[#4B2B1D]">{title}</h2>
         {expandedSections[id] ? (
@@ -249,7 +249,7 @@ function Section({
         )}
       </button>
       {expandedSections[id] && (
-        <div className="border-t border-[#E8DCC8] p-6 space-y-4">
+        <div className="border-t border-[#2E527F] p-6 space-y-4">
           {children}
         </div>
       )}
@@ -1419,8 +1419,8 @@ function FinancialsPage() {
   const trendPct = trend.length >= 2 ? pctDeltaClient(trend[trend.length - 1].revenue, trend[trend.length - 2].revenue) : 0
 
   return (
-    <main className="space-y-6 bg-[#FDFBF7] p-8">
-      <div className="flex items-start justify-between flex-wrap gap-3">
+    <main className="space-y-6 min-h-screen p-8">
+      <header className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-3xl font-extrabold text-[#4B2B1D]">Financials</h1>
           <p className="mt-1 text-[#755B4C] flex items-center gap-2">
@@ -1434,12 +1434,12 @@ function FinancialsPage() {
           <select
             value={compareMode}
             onChange={(e) => setCompareMode(e.target.value as 'mom' | 'yoy')}
-            className="rounded-xl border border-[#E8DCC8] bg-white px-3 py-2 text-sm font-semibold text-[#4B2B1D]"
+            className="rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-2 text-sm font-semibold text-[#4B2B1D]"
           >
             <option value="mom">Compare: Previous month</option>
             <option value="yoy">Compare: Same month last year</option>
           </select>
-          <div className="flex items-center gap-1 rounded-xl border border-[#E8DCC8] bg-white px-1.5 py-1">
+          <div className="flex items-center gap-1 rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-1.5 py-1">
             <button onClick={() => shiftSelectedMonth(-1)} className="h-8 w-8 rounded-lg flex items-center justify-center text-[#2E527F] hover:bg-[#EAF0F7]">‹</button>
             <span className="min-w-[130px] text-center text-sm font-bold text-[#4B2B1D] flex items-center justify-center gap-1.5">
               <Calendar className="h-3.5 w-3.5" />{monthLong(selectedMonth)}
@@ -1451,7 +1451,7 @@ function FinancialsPage() {
             >›</button>
           </div>
         </div>
-      </div>
+      </header>
 
       <div className="flex items-center gap-2 text-xs text-[#2E527F] -mt-2">
         <RefreshCw className="h-3.5 w-3.5" />
@@ -1460,7 +1460,7 @@ function FinancialsPage() {
         <button onClick={() => { fetchOverview(); fetchExpenses(); fetchRevenue() }} className="font-bold text-[#2E527F] hover:underline">Refresh now</button>
       </div>
 
-      <div className="flex gap-1 border-b border-[#E8DCC8]">
+      <div className="flex gap-1 border-b border-[#2E527F]">
         {([
           ['overview', 'Overview'],
           ['revenue', 'Revenue & Payments'],
@@ -1495,7 +1495,7 @@ function FinancialsPage() {
           ) : (
             <>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6 cursor-pointer hover:shadow-md transition" onClick={() => drillTo('revenue', `Period: ${monthLong(selectedMonth)}`)}>
+                <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6 cursor-pointer hover:shadow-md transition" onClick={() => drillTo('revenue', `Period: ${monthLong(selectedMonth)}`)}>
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-[#755B4C]">Gross Revenue</p>
@@ -1510,7 +1510,7 @@ function FinancialsPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6 cursor-pointer hover:shadow-md transition" onClick={() => drillTo('expenses', `Period: ${monthLong(selectedMonth)}`)}>
+                <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6 cursor-pointer hover:shadow-md transition" onClick={() => drillTo('expenses', `Period: ${monthLong(selectedMonth)}`)}>
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-[#755B4C]">Total Expenses</p>
@@ -1525,7 +1525,7 @@ function FinancialsPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-[#755B4C]">Net Operating Profit</p>
@@ -1536,7 +1536,7 @@ function FinancialsPage() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6 cursor-pointer hover:shadow-md transition" onClick={() => drillTo('revenue', 'Outstanding balances')}>
+                <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6 cursor-pointer hover:shadow-md transition" onClick={() => drillTo('revenue', 'Outstanding balances')}>
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-[#755B4C]">Outstanding Balance</p>
@@ -1549,7 +1549,7 @@ function FinancialsPage() {
               </div>
 
               <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr] items-stretch">
-                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6 flex flex-col">
+                <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6 flex flex-col">
                   <div className="mb-3">
                     <h3 className="text-base font-extrabold text-[#4B2B1D]">Revenue vs. Expenses — last 6 months</h3>
                     <p className="text-xs text-[#2E527F]">Computed from real orders and the expense ledger</p>
@@ -1563,11 +1563,11 @@ function FinancialsPage() {
                           <p className="text-[11px] text-[#2E527F] font-semibold">Avg. net margin</p>
                           <p className="text-base font-extrabold text-[#4B2B1D]">{avgNetMarginPct}%</p>
                         </div>
-                        <div className="flex-1 px-4 border-l border-[#E8DCC8]">
+                        <div className="flex-1 px-4 border-l border-[#2E527F]">
                           <p className="text-[11px] text-[#2E527F] font-semibold">Best month</p>
                           <p className="text-base font-extrabold text-[#4B2B1D]">{bestMonth ? `${monthShort(bestMonth.month)} · $${bestMonth.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—'}</p>
                         </div>
-                        <div className="flex-1 pl-4 border-l border-[#E8DCC8]">
+                        <div className="flex-1 pl-4 border-l border-[#2E527F]">
                           <p className="text-[11px] text-[#2E527F] font-semibold">Trend</p>
                           <p className={`text-base font-extrabold ${trendPct >= 0 ? 'text-[#2F7A4D]' : 'text-[#B4432F]'}`}>{trendPct >= 0 ? '▲' : '▼'} {Math.abs(trendPct)}% MoM</p>
                         </div>
@@ -1605,7 +1605,7 @@ function FinancialsPage() {
                             ${trend[trend.length - 1]?.expenses.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                           </text>
                         </svg>
-                        <div className="flex gap-6 mt-3 pt-3 border-t border-[#E8DCC8] text-xs text-[#755B4C]">
+                        <div className="flex gap-6 mt-3 pt-3 border-t border-[#2E527F] text-xs text-[#755B4C]">
                           <span className="flex items-center gap-1.5"><span className="inline-block w-3.5 h-0.5 bg-[#2E527F]" />Revenue <b className="text-[#4B2B1D]">${trend[trend.length - 1]?.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}</b></span>
                           <span className="flex items-center gap-1.5"><span className="inline-block w-3.5 h-0.5 bg-[#C9692E]" style={{ borderTop: '2px dashed #C9692E' }} />Expenses <b className="text-[#4B2B1D]">${trend[trend.length - 1]?.expenses.toLocaleString('en-US', { maximumFractionDigits: 0 })}</b></span>
                         </div>
@@ -1614,7 +1614,7 @@ function FinancialsPage() {
                   )}
                 </div>
 
-                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
                   <div className="mb-3">
                     <h3 className="text-base font-extrabold text-[#4B2B1D]">Pending Balances</h3>
                     <p className="text-xs text-[#2E527F]">{pendingBalances.length} customer{pendingBalances.length === 1 ? '' : 's'} owe money</p>
@@ -1650,7 +1650,7 @@ function FinancialsPage() {
                               <button
                                 onClick={() => collectFromBalance(b.customer_id)}
                                 disabled={automationRules.length === 0 || collectingCustomerId === b.customer_id || collected}
-                                className="rounded-lg border border-[#E8DCC8] bg-white px-2.5 py-1.5 text-xs font-bold text-[#2E527F] hover:bg-[#EAF0F7] disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                                className="rounded-lg border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-2.5 py-1.5 text-xs font-bold text-[#2E527F] hover:bg-[#EAF0F7] disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
                               >
                                 {collected ? 'Enrolled' : collectingCustomerId === b.customer_id ? '...' : 'Collect'}
                               </button>
@@ -1658,7 +1658,7 @@ function FinancialsPage() {
                           )
                         })}
                       </div>
-                      <div className="flex items-center justify-between mt-3.5 pt-3.5 border-t border-[#E8DCC8]">
+                      <div className="flex items-center justify-between mt-3.5 pt-3.5 border-t border-[#2E527F]">
                         <span className="text-sm text-[#755B4C] font-semibold">Total outstanding</span>
                         <span className="text-lg font-extrabold text-[#B4432F]">${pendingBalances.reduce((s, b) => s + b.total_price, 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
                       </div>
@@ -1678,7 +1678,7 @@ function FinancialsPage() {
           ) : (
             <>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-[#755B4C]">Paid this month</p>
@@ -1688,7 +1688,7 @@ function FinancialsPage() {
                     <div className="rounded-lg bg-[#EAF4EC] p-3"><Check className="h-5 w-5 text-[#2F7A4D]" /></div>
                   </div>
                 </div>
-                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm text-[#755B4C]">Outstanding (all time)</p>
@@ -1698,7 +1698,7 @@ function FinancialsPage() {
                     <div className="rounded-lg bg-[#FBEBE8] p-3"><AlertTriangle className="h-5 w-5 text-[#B4432F]" /></div>
                   </div>
                 </div>
-                <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+                <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
                   <p className="text-sm text-[#755B4C] mb-2.5">By payment method</p>
                   {revenueData.summary.byMethod.length === 0 ? (
                     <p className="text-xs text-[#2E527F]">No paid orders with a method recorded this month.</p>
@@ -1715,7 +1715,7 @@ function FinancialsPage() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
+              <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
                 <div className="mb-3">
                   <h3 className="text-base font-extrabold text-[#4B2B1D]">Transactions by client — {monthLong(selectedMonth)}</h3>
                   <p className="text-xs text-[#2E527F]">Every order this month, grouped by client, straight from the real ledger</p>
@@ -1740,8 +1740,8 @@ function FinancialsPage() {
                       .sort((a, b) => b.total - a.total)
 
                     return (
-                      <div className="rounded-lg border border-[#E8DCC8] divide-y divide-[#E8DCC8]">
-                        <div className="flex items-center gap-3 px-3 py-2 bg-[#FDFBF7] text-xs font-bold text-[#4B2B1D]">
+                      <div className="rounded-lg border border-[#2E527F] divide-y divide-[#2E527F]">
+                        <div className="flex items-center gap-3 px-3 py-2 bg-[rgba(251,247,240,0.9)] text-xs font-bold text-[#4B2B1D]">
                           <span className="flex-1">Client</span>
                           <span className="w-20 text-center">Orders</span>
                           <span className="w-24 text-right">Total</span>
@@ -1753,7 +1753,7 @@ function FinancialsPage() {
                           const pendingCount = g.pendingIds.length
                           return (
                             <div key={g.customerId}>
-                              <div className="flex items-center gap-3 px-3 py-2.5 hover:bg-[#FDFBF7]">
+                              <div className="flex items-center gap-3 px-3 py-2.5 hover:bg-[rgba(251,247,240,0.9)]">
                                 <button onClick={() => toggleClientGroupExpanded(String(g.customerId))} className="flex-1 flex items-center gap-2 text-left min-w-0">
                                   {expanded ? <ChevronUp className="h-3.5 w-3.5 text-[#2E527F] flex-shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-[#2E527F] flex-shrink-0" />}
                                   <span className="font-semibold text-[#4B2B1D] truncate">{g.customerName}</span>
@@ -1772,7 +1772,7 @@ function FinancialsPage() {
                                     <button
                                       onClick={() => markClientOrdersPaid(g.customerId, g.pendingIds)}
                                       disabled={clientCollecting === String(g.customerId)}
-                                      className="rounded-lg border border-[#E8DCC8] bg-white px-2.5 py-1 text-[11px] font-bold text-[#2E527F] hover:bg-[#EAF0F7] disabled:opacity-50"
+                                      className="rounded-lg border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-2.5 py-1 text-[11px] font-bold text-[#2E527F] hover:bg-[#EAF0F7] disabled:opacity-50"
                                     >
                                       {clientCollecting === String(g.customerId) ? '...' : 'Mark all paid'}
                                     </button>
@@ -1780,7 +1780,7 @@ function FinancialsPage() {
                                 </span>
                               </div>
                               {expanded && (
-                                <div className="bg-[#FDFBF7] px-3 py-2 pl-9">
+                                <div className="bg-[rgba(251,247,240,0.9)] px-3 py-2 pl-9">
                                   <table className="w-full text-xs">
                                     <tbody>
                                       {g.txs.map((t) => (
@@ -1829,7 +1829,7 @@ function FinancialsPage() {
                 key={id}
                 onClick={() => setReceiptTab(id)}
                 className={`flex-1 min-w-[150px] rounded-xl border-[1.5px] p-3.5 text-left transition ${
-                  receiptTab === id ? 'border-[#C9692E] bg-[#FBEEE3]' : 'border-[#E8DCC8] bg-white hover:border-[#D8C8AE]'
+                  receiptTab === id ? 'border-[#C9692E] bg-[#FBEEE3]' : 'border-[#2E527F] bg-[rgba(251,247,240,0.9)] hover:border-[#D8C8AE]'
                 }`}
               >
                 <Icon className={`h-5 w-5 ${receiptTab === id ? 'text-[#C9692E]' : 'text-[#755B4C]'}`} />
@@ -1857,7 +1857,7 @@ function FinancialsPage() {
                     value={manualVendor}
                     onChange={(e) => setManualVendor(e.target.value)}
                     placeholder="Costco, Amazon, etc..."
-                    className="w-full px-3 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[#FDFBF7]"
+                    className="w-full px-3 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[rgba(251,247,240,0.9)]"
                   />
                 </div>
                 <div>
@@ -1866,7 +1866,7 @@ function FinancialsPage() {
                     type="date"
                     value={manualDate}
                     onChange={(e) => setManualDate(e.target.value)}
-                    className="w-full px-3 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[#FDFBF7]"
+                    className="w-full px-3 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[rgba(251,247,240,0.9)]"
                   />
                 </div>
                 <div className="flex items-end">
@@ -1890,7 +1890,7 @@ function FinancialsPage() {
               </div>
 
               {/* Items Table */}
-              <div className="overflow-x-auto border border-[#E8DCC8] rounded-lg">
+              <div className="overflow-x-auto border border-[#2E527F] rounded-lg">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-[#8B6F47] text-white">
@@ -1904,8 +1904,8 @@ function FinancialsPage() {
                   </thead>
                   <tbody>
                     {manualItems.map((item, idx) => (
-                      <tr key={idx} className="border-t border-[#E8DCC8] hover:bg-[rgba(251,247,240,0.9)]">
-                        <td className="border-r border-[#E8DCC8] px-3 py-2">
+                      <tr key={idx} className="border-t border-[#2E527F] hover:bg-[rgba(251,247,240,0.9)]">
+                        <td className="border-r border-[#2E527F] px-3 py-2">
                           <input
                             type="text"
                             value={item.productName || ''}
@@ -1918,7 +1918,7 @@ function FinancialsPage() {
                             className="w-full px-2 py-1 border border-[#D4A574] rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
                           />
                         </td>
-                        <td className="border-r border-[#E8DCC8] px-3 py-2">
+                        <td className="border-r border-[#2E527F] px-3 py-2">
                           <input
                             type="number"
                             step="0.01"
@@ -1932,7 +1932,7 @@ function FinancialsPage() {
                             className="w-full px-2 py-1 border border-[#D4A574] rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
                           />
                         </td>
-                        <td className="border-r border-[#E8DCC8] px-3 py-2">
+                        <td className="border-r border-[#2E527F] px-3 py-2">
                           <input
                             type="number"
                             min="0.01"
@@ -1947,7 +1947,7 @@ function FinancialsPage() {
                             className="w-full px-2 py-1 border border-[#D4A574] rounded text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
                           />
                         </td>
-                        <td className="border-r border-[#E8DCC8] px-3 py-2">
+                        <td className="border-r border-[#2E527F] px-3 py-2">
                           <select
                             value={item.unit || 'count'}
                             onChange={(e) => {
@@ -1962,7 +1962,7 @@ function FinancialsPage() {
                             ))}
                           </select>
                         </td>
-                        <td className="border-r border-[#E8DCC8] px-3 py-2">
+                        <td className="border-r border-[#2E527F] px-3 py-2">
                           <select
                             value={item.category}
                             onChange={(e) => {
@@ -2023,7 +2023,7 @@ function FinancialsPage() {
               </div>
 
               {pendingReceipts.length === 0 && (
-                <div className="rounded-lg bg-[#FDFBF7] p-4 border border-[#E8DCC8]">
+                <div className="rounded-lg bg-[rgba(251,247,240,0.9)] p-4 border border-[#2E527F]">
                   <p className="text-sm text-[#755B4C] mb-3">
                     <strong>Status:</strong> {syncInProgress ? 'Parsing...' : 'Ready.'}
                   </p>
@@ -2088,7 +2088,7 @@ function FinancialsPage() {
                   </div>
 
                   {pendingReceipts.map((receipt, ri) => (
-                    <div key={receipt.driveFileId} className="rounded-lg border border-[#E8DCC8] bg-[#FDFBF7] p-4">
+                    <div key={receipt.driveFileId} className="rounded-lg border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
                       <div className="flex items-start justify-between mb-3">
                         <div>
                           <p className="text-sm font-bold text-[#4B2B1D]">{receipt.vendor}</p>
@@ -2107,7 +2107,7 @@ function FinancialsPage() {
 
                       <div className="space-y-2">
                         {receipt.items.map((item, ii) => (
-                          <div key={ii} className="rounded-lg bg-white border border-[#E4D8C9] p-2 space-y-2">
+                          <div key={ii} className="rounded-lg bg-[rgba(251,247,240,0.9)] border border-[#E4D8C9] p-2 space-y-2">
                             <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
                               <div>
                                 <p className="text-[10px] text-[#2E527F]">Parsed as</p>
@@ -2172,7 +2172,7 @@ function FinancialsPage() {
                   <div className="flex gap-3">
                     <button
                       onClick={() => setPendingReceipts([])}
-                      className="flex-1 rounded-lg border border-[#B9A88F] bg-white py-3 text-sm font-semibold text-[#4B2B1D]"
+                      className="flex-1 rounded-lg border border-[#B9A88F] bg-[rgba(251,247,240,0.9)] py-3 text-sm font-semibold text-[#4B2B1D]"
                     >
                       Cancel All
                     </button>
@@ -2237,7 +2237,7 @@ function FinancialsPage() {
             <div className="space-y-4">
               {!showScreenshotForm ? (
                 <>
-                  <div className="bg-[rgba(251,247,240,0.9)] p-4 rounded-lg border border-[#E8DCC8]">
+                  <div className="bg-[rgba(251,247,240,0.9)] p-4 rounded-lg border border-[#2E527F]">
                     <p className="text-sm text-[#755B4C]"><strong>📧 Online Orders:</strong> Upload screenshot → Manually enter items below with prices and quantities</p>
                   </div>
 
@@ -2282,7 +2282,7 @@ function FinancialsPage() {
                       value={screenshotVendor}
                       onChange={(e) => setScreenshotVendor(e.target.value)}
                       placeholder="e.g., Amazon, Instacart, Costco Online..."
-                      className="w-full px-3 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[#FDFBF7] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+                      className="w-full px-3 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[rgba(251,247,240,0.9)] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
                     />
                   </div>
 
@@ -2290,7 +2290,7 @@ function FinancialsPage() {
                   <div className="space-y-3">
                     <h3 className="font-semibold text-[#4B2B1D]">Extracted Items - Confirm Details</h3>
                     {screenshotItems.map((item, idx) => (
-                      <div key={idx} className="rounded-lg bg-white border-2 border-[#D4A574] p-4 space-y-3">
+                      <div key={idx} className="rounded-lg bg-[rgba(251,247,240,0.9)] border-2 border-[#D4A574] p-4 space-y-3">
                         {/* Product Name (extracted from OCR - can edit) */}
                         <div>
                           <label className="block text-xs font-bold text-[#755B4C] mb-1">PRODUCT NAME</label>
@@ -2302,7 +2302,7 @@ function FinancialsPage() {
                               updated[idx].productName = e.target.value
                               setScreenshotItems(updated)
                             }}
-                            className="w-full px-3 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[#FDFBF7]"
+                            className="w-full px-3 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[rgba(251,247,240,0.9)]"
                           />
                         </div>
 
@@ -2320,7 +2320,7 @@ function FinancialsPage() {
                                 setScreenshotItems(updated)
                               }}
                               placeholder="0.00"
-                              className="w-full px-2 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[#FDFBF7]"
+                              className="w-full px-2 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[rgba(251,247,240,0.9)]"
                             />
                           </div>
 
@@ -2337,7 +2337,7 @@ function FinancialsPage() {
                                 setScreenshotItems(updated)
                               }}
                               placeholder="500"
-                              className="w-full px-2 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[#FDFBF7]"
+                              className="w-full px-2 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[rgba(251,247,240,0.9)]"
                             />
                           </div>
 
@@ -2350,7 +2350,7 @@ function FinancialsPage() {
                                 updated[idx].unit = e.target.value
                                 setScreenshotItems(updated)
                               }}
-                              className="w-full px-2 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[#FDFBF7]"
+                              className="w-full px-2 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[rgba(251,247,240,0.9)]"
                             >
                               {unitOptions.map(opt => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -2367,7 +2367,7 @@ function FinancialsPage() {
                                 updated[idx].category = e.target.value
                                 setScreenshotItems(updated)
                               }}
-                              className="w-full px-2 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[#FDFBF7]"
+                              className="w-full px-2 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[rgba(251,247,240,0.9)]"
                             >
                               {Object.entries(categoryColors).map(([key, val]) => (
                                 <option key={key} value={key}>{val.label}</option>
@@ -2419,21 +2419,21 @@ function FinancialsPage() {
             <div className="space-y-4 mt-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Receipt Image Preview */}
-                <div className="rounded-lg border border-[#E8DCC8] p-3">
+                <div className="rounded-lg border border-[#2E527F] p-3">
                   <img src={scannedReceipt.image} alt="Receipt" className="w-full rounded-lg max-h-64 object-cover" />
                 </div>
 
                 {/* Extracted Details */}
                 <div className="md:col-span-2 space-y-3">
-                  <div className="rounded-lg bg-[#FDFBF7] p-4 border border-[#E8DCC8]">
+                  <div className="rounded-lg bg-[rgba(251,247,240,0.9)] p-4 border border-[#2E527F]">
                     <label className="text-xs text-[#755B4C] font-semibold">Extracted Vendor</label>
                     <p className="text-lg font-bold text-[#4B2B1D]">{scannedReceipt.vendor}</p>
                   </div>
-                  <div className="rounded-lg bg-[#FDFBF7] p-4 border border-[#E8DCC8]">
+                  <div className="rounded-lg bg-[rgba(251,247,240,0.9)] p-4 border border-[#2E527F]">
                     <label className="text-xs text-[#755B4C] font-semibold">Total Amount</label>
                     <p className="text-lg font-bold text-[#4B2B1D]">${scannedReceipt.total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
                   </div>
-                  <div className="rounded-lg bg-[#FDFBF7] p-4 border border-[#E8DCC8]">
+                  <div className="rounded-lg bg-[rgba(251,247,240,0.9)] p-4 border border-[#2E527F]">
                     <label className="text-xs text-[#755B4C] font-semibold">Items Found</label>
                     <p className="text-lg font-bold text-[#4B2B1D]">{scannedReceipt.items.length} line items</p>
                   </div>
@@ -2441,9 +2441,9 @@ function FinancialsPage() {
               </div>
 
               {/* Extracted Text Preview */}
-              <details className="rounded-lg border border-[#E8DCC8] p-4 cursor-pointer hover:bg-[#FDFBF7]">
+              <details className="rounded-lg border border-[#2E527F] p-4 cursor-pointer hover:bg-[rgba(251,247,240,0.9)]">
                 <summary className="font-semibold text-[#4B2B1D]">📄 Raw OCR Text</summary>
-                <pre className="mt-3 text-xs text-[#755B4C] whitespace-pre-wrap bg-white p-3 rounded border border-[#E8DCC8] max-h-48 overflow-y-auto">
+                <pre className="mt-3 text-xs text-[#755B4C] whitespace-pre-wrap bg-[rgba(251,247,240,0.9)] p-3 rounded border border-[#2E527F] max-h-48 overflow-y-auto">
                   {scannedReceipt.text}
                 </pre>
               </details>
@@ -2452,7 +2452,7 @@ function FinancialsPage() {
               <div className="space-y-2">
                 <h3 className="font-semibold text-[#4B2B1D]">Items (Auto-Categorized)</h3>
                 {scannedReceipt.items.map((item, idx) => (
-                  <div key={idx} className="rounded-lg bg-white border-2 border-[#D4A574] p-4 space-y-4">
+                  <div key={idx} className="rounded-lg bg-[rgba(251,247,240,0.9)] border-2 border-[#D4A574] p-4 space-y-4">
                     {/* Receipt Text & Price Row */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1">
@@ -2467,7 +2467,7 @@ function FinancialsPage() {
                               step="0.01"
                               value={editingPrice}
                               onChange={(e) => setEditingPrice(e.target.value)}
-                              className="w-24 px-2 py-1 border-2 border-[#D4A574] rounded-lg text-sm font-semibold text-[#4B2B1D] bg-[#FDFBF7] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+                              className="w-24 px-2 py-1 border-2 border-[#D4A574] rounded-lg text-sm font-semibold text-[#4B2B1D] bg-[rgba(251,247,240,0.9)] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
                               autoFocus
                             />
                             <button
@@ -2521,7 +2521,7 @@ function FinancialsPage() {
                           setScannedReceipt({ ...scannedReceipt, items: updated })
                         }}
                         placeholder="e.g., Blueberries, Chicken Breast, Olive Oil..."
-                        className="w-full px-3 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[#FDFBF7] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+                        className="w-full px-3 py-2 border-2 border-[#D4A574] rounded-lg text-sm text-[#4B2B1D] bg-[rgba(251,247,240,0.9)] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
                       />
                     </div>
 
@@ -2536,7 +2536,7 @@ function FinancialsPage() {
                             updated[idx].category = e.target.value
                             setScannedReceipt({ ...scannedReceipt, items: updated })
                           }}
-                          className="w-full px-3 py-2 border-2 border-[#D4A574] rounded-lg text-sm font-semibold text-[#4B2B1D] bg-[#FDFBF7] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+                          className="w-full px-3 py-2 border-2 border-[#D4A574] rounded-lg text-sm font-semibold text-[#4B2B1D] bg-[rgba(251,247,240,0.9)] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
                         >
                           {Object.entries(categoryColors).map(([key, val]) => (
                             <option key={key} value={key}>
@@ -2564,7 +2564,7 @@ function FinancialsPage() {
                             setScannedReceipt({ ...scannedReceipt, items: updated })
                           }}
                           placeholder="500"
-                          className="w-full px-2 py-2 border-2 border-[#D4A574] rounded-lg text-sm font-semibold text-[#4B2B1D] bg-[#FDFBF7] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+                          className="w-full px-2 py-2 border-2 border-[#D4A574] rounded-lg text-sm font-semibold text-[#4B2B1D] bg-[rgba(251,247,240,0.9)] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
                         />
                       </div>
 
@@ -2578,7 +2578,7 @@ function FinancialsPage() {
                             updated[idx].unit = e.target.value
                             setScannedReceipt({ ...scannedReceipt, items: updated })
                           }}
-                          className="w-full px-2 py-2 border-2 border-[#D4A574] rounded-lg text-sm font-semibold text-[#4B2B1D] bg-[#FDFBF7] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+                          className="w-full px-2 py-2 border-2 border-[#D4A574] rounded-lg text-sm font-semibold text-[#4B2B1D] bg-[rgba(251,247,240,0.9)] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
                         >
                           {unitOptions.map(opt => (
                             <option key={opt.value} value={opt.value}>
@@ -2615,7 +2615,7 @@ function FinancialsPage() {
         <Section id="expenses" title={`Expense Management (${expenses.length} expenses)`} expandedSections={expandedSections} toggleSection={toggleSection}>
           <div className="space-y-4">
             {/* Summary by Category */}
-            <div className="bg-[#FDFBF7] p-4 rounded-lg border border-[#E8DCC8]">
+            <div className="bg-[rgba(251,247,240,0.9)] p-4 rounded-lg border border-[#2E527F]">
               <h3 className="font-semibold text-[#4B2B1D] mb-3">Spend by Category</h3>
               <div className="space-y-1">
                 {Object.entries(expensesByCategory).sort((a, b) => b[1] - a[1]).map(([cat, amount]) => {
@@ -2633,7 +2633,7 @@ function FinancialsPage() {
                 })}
               </div>
               {pendingExpenses > 0 && (
-                <div className="mt-3 pt-3 border-t border-[#E8DCC8]">
+                <div className="mt-3 pt-3 border-t border-[#2E527F]">
                   <p className="text-sm text-yellow-700 bg-yellow-50 px-3 py-2 rounded">
                     ⚠️ ${pendingExpenses.toLocaleString('en-US', { maximumFractionDigits: 2 })} pending approval
                   </p>
@@ -2648,7 +2648,7 @@ function FinancialsPage() {
                 <select
                   value={ledgerCategoryFilter}
                   onChange={(e) => setLedgerCategoryFilter(e.target.value)}
-                  className="rounded-lg border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold text-[#755B4C]"
+                  className="rounded-lg border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-1.5 text-xs font-semibold text-[#755B4C]"
                 >
                   <option value="all">All categories</option>
                   {Object.entries(categoryColors).map(([key, val]) => (
@@ -2658,7 +2658,7 @@ function FinancialsPage() {
                 <select
                   value={ledgerStatusFilter}
                   onChange={(e) => setLedgerStatusFilter(e.target.value)}
-                  className="rounded-lg border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs font-semibold text-[#755B4C]"
+                  className="rounded-lg border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-1.5 text-xs font-semibold text-[#755B4C]"
                 >
                   <option value="all">All statuses</option>
                   <option value="pending">Pending</option>
@@ -2670,7 +2670,7 @@ function FinancialsPage() {
                   value={ledgerSearch}
                   onChange={(e) => setLedgerSearch(e.target.value)}
                   placeholder="Search vendor or description..."
-                  className="flex-1 min-w-[180px] rounded-lg border border-[#E8DCC8] bg-white px-3 py-1.5 text-xs text-[#4B2B1D] outline-none"
+                  className="flex-1 min-w-[180px] rounded-lg border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-1.5 text-xs text-[#4B2B1D] outline-none"
                 />
               </div>
               {(() => {
@@ -2725,10 +2725,10 @@ function FinancialsPage() {
                           <button onClick={() => bulkActOnSelectedGroups(groups.map((g) => ({ key: g.key, ids: g.pendingIds })), 'approve')} disabled={bulkActing} className="inline-flex items-center gap-1.5 rounded-lg bg-[#2F7A4D] px-3 py-1.5 text-xs font-bold disabled:opacity-50">
                             <Check className="h-3.5 w-3.5" /> Approve selected
                           </button>
-                          <button onClick={() => bulkActOnSelectedGroups(groups.map((g) => ({ key: g.key, ids: g.pendingIds })), 'reject')} disabled={bulkActing} className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 border border-white/30 px-3 py-1.5 text-xs font-bold disabled:opacity-50">
+                          <button onClick={() => bulkActOnSelectedGroups(groups.map((g) => ({ key: g.key, ids: g.pendingIds })), 'reject')} disabled={bulkActing} className="inline-flex items-center gap-1.5 rounded-lg bg-[rgba(251,247,240,0.9)]/10 border border-white/30 px-3 py-1.5 text-xs font-bold disabled:opacity-50">
                             <X className="h-3.5 w-3.5" /> Reject selected
                           </button>
-                          <button onClick={() => setSelectedReceiptGroups(new Set())} className="rounded-lg border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-bold">Cancel</button>
+                          <button onClick={() => setSelectedReceiptGroups(new Set())} className="rounded-lg border border-white/30 bg-[rgba(251,247,240,0.9)]/10 px-3 py-1.5 text-xs font-bold">Cancel</button>
                         </div>
                       </div>
                     )}
@@ -2737,8 +2737,8 @@ function FinancialsPage() {
                     ) : groups.length === 0 ? (
                       <p className="text-sm text-[#755B4C]">No expenses match this filter.</p>
                     ) : (
-                      <div className="rounded-lg border border-[#E8DCC8] divide-y divide-[#E8DCC8]">
-                        <div className="flex items-center gap-3 px-3 py-2 bg-[#FDFBF7] text-xs font-bold text-[#4B2B1D]">
+                      <div className="rounded-lg border border-[#2E527F] divide-y divide-[#2E527F]">
+                        <div className="flex items-center gap-3 px-3 py-2 bg-[rgba(251,247,240,0.9)] text-xs font-bold text-[#4B2B1D]">
                           <input
                             type="checkbox"
                             checked={selectableGroups.length > 0 && selectedReceiptGroups.size === selectableGroups.length}
@@ -2761,7 +2761,7 @@ function FinancialsPage() {
                           const expanded = expandedReceiptGroups.has(g.key)
                           return (
                             <div key={g.key}>
-                              <div className="flex items-center gap-3 px-3 py-2.5 hover:bg-[#FDFBF7]">
+                              <div className="flex items-center gap-3 px-3 py-2.5 hover:bg-[rgba(251,247,240,0.9)]">
                                 {g.anyPending ? (
                                   <input type="checkbox" checked={selectedReceiptGroups.has(g.key)} onChange={() => toggleReceiptGroupSelected(g.key)} />
                                 ) : (
@@ -2785,7 +2785,7 @@ function FinancialsPage() {
                                         onClick={() => actOnReceiptGroup(g.key, g.pendingIds, 'approve')}
                                         disabled={groupActing === g.key}
                                         title="Approve whole receipt"
-                                        className="h-6 w-6 rounded border border-[#E8DCC8] flex items-center justify-center text-[#2F7A4D] hover:bg-[#EAF4EC] disabled:opacity-50"
+                                        className="h-6 w-6 rounded border border-[#2E527F] flex items-center justify-center text-[#2F7A4D] hover:bg-[#EAF4EC] disabled:opacity-50"
                                       >
                                         <Check className="h-3 w-3" />
                                       </button>
@@ -2793,7 +2793,7 @@ function FinancialsPage() {
                                         onClick={() => actOnReceiptGroup(g.key, g.pendingIds, 'reject')}
                                         disabled={groupActing === g.key}
                                         title="Reject whole receipt"
-                                        className="h-6 w-6 rounded border border-[#E8DCC8] flex items-center justify-center text-[#B4432F] hover:bg-[#FBEBE8] disabled:opacity-50"
+                                        className="h-6 w-6 rounded border border-[#2E527F] flex items-center justify-center text-[#B4432F] hover:bg-[#FBEBE8] disabled:opacity-50"
                                       >
                                         <X className="h-3 w-3" />
                                       </button>
@@ -2802,7 +2802,7 @@ function FinancialsPage() {
                                 </span>
                               </div>
                               {expanded && (
-                                <div className="bg-[#FDFBF7] px-3 py-2 pl-9">
+                                <div className="bg-[rgba(251,247,240,0.9)] px-3 py-2 pl-9">
                                   <table className="w-full text-xs">
                                     <tbody>
                                       {g.items.map((item) => (
@@ -2838,10 +2838,10 @@ function FinancialsPage() {
               ) : receipts.length === 0 ? (
                 <p className="text-sm text-[#755B4C]">No receipts recorded yet.</p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-[#E8DCC8]">
+                <div className="overflow-x-auto rounded-lg border border-[#2E527F]">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-[#E8DCC8] bg-[#FDFBF7]">
+                      <tr className="border-b border-[#2E527F] bg-[rgba(251,247,240,0.9)]">
                         <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Date</th>
                         <th className="px-3 py-2 text-left font-bold text-[#4B2B1D]">Vendor</th>
                         <th className="px-3 py-2 text-right font-bold text-[#4B2B1D]">Amount</th>
@@ -2853,7 +2853,7 @@ function FinancialsPage() {
                       {receipts.map((r) => {
                         const amount = r.totalAmountCents != null ? r.totalAmountCents / 100 : r.itemsTotal
                         return (
-                          <tr key={r.id} className="border-b border-[#E8DCC8] hover:bg-[#FDFBF7]">
+                          <tr key={r.id} className="border-b border-[#2E527F] hover:bg-[rgba(251,247,240,0.9)]">
                             <td className="px-3 py-2 text-[#755B4C]">
                               {r.receiptDate ? new Date(r.receiptDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '-'}
                             </td>
@@ -2896,21 +2896,21 @@ function FinancialsPage() {
                     type="date"
                     value={formData.date || ''}
                     onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="px-3 py-2 border border-[#E8DCC8] rounded-lg text-[#4B2B1D] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+                    className="px-3 py-2 border border-[#2E527F] rounded-lg text-[#4B2B1D] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
                   />
                   <input
                     type="text"
                     placeholder="Vendor/Supplier name"
                     value={formData.vendor || ''}
                     onChange={(e) => setFormData({ ...formData, vendor: e.target.value })}
-                    className="px-3 py-2 border border-[#E8DCC8] rounded-lg text-[#4B2B1D] placeholder-[#9A7E6F] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+                    className="px-3 py-2 border border-[#2E527F] rounded-lg text-[#4B2B1D] placeholder-[#9A7E6F] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
                   />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <select
                     value={formData.category || 'food_cogs'}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="px-3 py-2 border border-[#E8DCC8] rounded-lg text-[#4B2B1D] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+                    className="px-3 py-2 border border-[#2E527F] rounded-lg text-[#4B2B1D] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
                   >
                     {Object.entries(categoryColors).map(([key, val]) => (
                       <option key={key} value={key}>{val.label}</option>
@@ -2922,7 +2922,7 @@ function FinancialsPage() {
                     placeholder="Amount"
                     value={formData.amount || ''}
                     onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) })}
-                    className="px-3 py-2 border border-[#E8DCC8] rounded-lg text-[#4B2B1D] placeholder-[#9A7E6F] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+                    className="px-3 py-2 border border-[#2E527F] rounded-lg text-[#4B2B1D] placeholder-[#9A7E6F] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
                   />
                 </div>
                 <input
@@ -2930,7 +2930,7 @@ function FinancialsPage() {
                   placeholder="Description"
                   value={formData.description || ''}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-[#E8DCC8] rounded-lg text-[#4B2B1D] placeholder-[#9A7E6F] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+                  className="w-full px-3 py-2 border border-[#2E527F] rounded-lg text-[#4B2B1D] placeholder-[#9A7E6F] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
                 />
                 <button
                   onClick={addExpense}
@@ -2968,7 +2968,7 @@ function FinancialsPage() {
                 const priorNet = prior ? prior.net_profit_cents / 100 : null
                 const deltaPct = priorNet ? Math.round(((netProfit - priorNet) / Math.abs(priorNet)) * 1000) / 10 : null
                 return (
-                  <div key={r.id} className={`rounded-2xl border bg-white p-5 ${idx === 0 ? 'border-[#2E527F]' : 'border-[#E8DCC8]'}`}>
+                  <div key={r.id} className={`rounded-2xl border bg-[rgba(251,247,240,0.9)] p-5 ${idx === 0 ? 'border-[#2E527F]' : 'border-[#2E527F]'}`}>
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-bold uppercase tracking-wide text-[#2E527F]">
                         {new Date(r.period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })} – {new Date(r.period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
@@ -3003,7 +3003,7 @@ function FinancialsPage() {
         <>
           <button onClick={() => setViewingReport(null)} className="fixed inset-0 z-40 bg-black/30" />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div className="w-full max-w-lg rounded-2xl bg-[rgba(251,247,240,0.9)] p-6 shadow-2xl max-h-[85vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h2 className="text-lg font-extrabold text-[#4B2B1D] flex items-center gap-2"><FileText className="h-4 w-4" />Semi-monthly report</h2>
@@ -3011,18 +3011,18 @@ function FinancialsPage() {
                     {new Date(viewingReport.period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })} – {new Date(viewingReport.period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
                   </p>
                 </div>
-                <button onClick={() => setViewingReport(null)} className="rounded-lg border border-[#E8DCC8] p-2"><X className="h-4 w-4" /></button>
+                <button onClick={() => setViewingReport(null)} className="rounded-lg border border-[#2E527F] p-2"><X className="h-4 w-4" /></button>
               </div>
               <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="rounded-lg bg-[#FDFBF7] border border-[#E8DCC8] p-3">
+                <div className="rounded-lg bg-[rgba(251,247,240,0.9)] border border-[#2E527F] p-3">
                   <p className="text-[11px] text-[#2E527F]">Gross Revenue</p>
                   <p className="text-base font-extrabold text-[#4B2B1D]">${(viewingReport.gross_revenue_cents / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
                 </div>
-                <div className="rounded-lg bg-[#FDFBF7] border border-[#E8DCC8] p-3">
+                <div className="rounded-lg bg-[rgba(251,247,240,0.9)] border border-[#2E527F] p-3">
                   <p className="text-[11px] text-[#2E527F]">Expenses</p>
                   <p className="text-base font-extrabold text-[#4B2B1D]">${(viewingReport.total_expenses_cents / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
                 </div>
-                <div className="rounded-lg bg-[#FDFBF7] border border-[#E8DCC8] p-3">
+                <div className="rounded-lg bg-[rgba(251,247,240,0.9)] border border-[#2E527F] p-3">
                   <p className="text-[11px] text-[#2E527F]">Net Profit</p>
                   <p className="text-base font-extrabold text-[#2F7A4D]">${(viewingReport.net_profit_cents / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
                 </div>
