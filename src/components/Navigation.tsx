@@ -38,9 +38,8 @@ export function Navigation() {
   return (
     <aside className="fixed left-0 top-0 bottom-0 bg-[#E9DFD0] border-r border-[#D8CDBE] flex flex-col" style={{ width: '256px', minWidth: '256px', zIndex: 40 }}>
       {/* Logo/Branding */}
-      <div className="p-6 border-b border-[#D8CDBE]">
-        <h1 className="text-2xl font-bold text-[#4B2B1D]">Fit4Sure</h1>
-        <p className="text-xs text-[#9A8774] mt-1">Admin Dashboard</p>
+      <div className="p-4 border-b border-[#D8CDBE]">
+        <img src="/preview/new-logo.png" alt="Fit For Sure" className="h-28 w-auto mx-auto" />
       </div>
 
       {/* Navigation Links */}

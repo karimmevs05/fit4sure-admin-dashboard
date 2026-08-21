@@ -94,10 +94,13 @@ export function ListView({ tasks, today, investor, roster, currentUserId, onChan
               <option value="due">Due date</option>
               <option value="cost">Cost (high to low)</option>
             </select>
-            <div className="text-[13px] px-[10px] py-[7px] cursor-pointer" style={{ color: COLORS.textMuted }} onClick={clear}>Clear</div>
+            <div className="text-[13px] px-[10px] py-[7px] cursor-pointer font-medium" style={{ color: '#6B3410' }} onClick={clear}>Clear</div>
           </div>
 
-          <div className="flex items-center gap-[10px] px-[14px] pb-[14px] mt-1 text-[10.5px] uppercase tracking-wide" style={{ color: '#B9A88F' }}>
+          <div
+            className="flex items-center gap-[10px] px-[14px] py-[10px] mt-1 rounded-xl text-[10.5px] uppercase tracking-wide font-semibold"
+            style={{ color: '#6B3410', background: COLORS.cardBg, border: `1px solid ${COLORS.cardBorder}` }}
+          >
             <span className="w-[14px]" />
             <span className="w-[16px]" />
             <span className="flex-1">Task</span>
@@ -125,14 +128,14 @@ export function ListView({ tasks, today, investor, roster, currentUserId, onChan
 
         return (
           <div key={tag}>
-            <div className="text-[13px] font-semibold mt-5 mb-2 flex items-center gap-[10px]" style={{ color: COLORS.textSecondary }}>
+            <div className="text-[15px] font-extrabold mt-5 mb-2 flex items-center gap-[10px]" style={{ color: '#3D2314' }}>
               {TAG_LABELS[tag]}
               {investor && (
                 <>
                   <div className="flex-1 h-[5px] rounded max-w-[160px] overflow-hidden" style={{ background: '#e8e6e0' }}>
                     <div className="h-full" style={{ width: `${progress.pct}%`, background: COLORS.green }} />
                   </div>
-                  <span className="text-[11px] font-normal" style={{ color: '#B9A88F' }}>{progress.done} of {progress.total} done</span>
+                  <span className="text-[11px] font-normal" style={{ color: '#6B3410' }}>{progress.done} of {progress.total} done</span>
                 </>
               )}
             </div>
@@ -153,8 +156,8 @@ export function ListView({ tasks, today, investor, roster, currentUserId, onChan
                 />
               ) : (
                 <div
-                  className="flex items-center gap-[10px] px-[14px] py-3 border border-dashed rounded-2xl text-[14px] cursor-pointer"
-                  style={{ borderColor: COLORS.cardBorder, color: COLORS.textMuted }}
+                  className="flex items-center gap-[10px] px-[14px] py-3 border border-dashed rounded-2xl text-[14px] font-semibold cursor-pointer"
+                  style={{ borderColor: COLORS.blue, color: COLORS.blue, background: 'rgba(255,255,255,0.55)' }}
                   onClick={() => setAddingTag(tag)}
                 >
                   <span className="text-[15px] w-[14px] text-center">+</span> Add task

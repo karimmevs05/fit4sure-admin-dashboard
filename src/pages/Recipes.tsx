@@ -28,6 +28,7 @@ type RecipeIngredient = {
   name: string;
   category?: string | null;
   quantity_g: number;
+  prep_section?: string | null;
   unit_price_cents?: number;
   priced_from_receipt?: boolean;
   ingredient_cost_cents?: number;
@@ -642,6 +643,7 @@ function AddRecipeDrawer({
     name: string;
     category?: string;
     quantity_g: number;
+    prep_section: "dry" | "wet";
     unit_price_cents: number | null;
     protein_per_100g: number | null;
     carbs_per_100g: number | null;
@@ -657,6 +659,10 @@ function AddRecipeDrawer({
   });
 
   const [ingredients, setIngredients] = useState<RecipeFormIngredient[]>([]);
+
+  const addIngredient = (picked: PickedIngredient, prep_section: "dry" | "wet") => {
+    setIngredients((prev) => [...prev, { id: Date.now().toString(), ...picked, prep_section }]);
+  };
   const [steps, setSteps] = useState<RecipeStep[]>([]);
 
   // Regular Servings isn't hand-entered either -- it's how many actual
@@ -734,6 +740,7 @@ function AddRecipeDrawer({
             inventory_id: ing.inventory_id,
             name: ing.name,
             quantity_g: ing.quantity_g,
+            prep_section: ing.prep_section,
             unit_price_cents: ing.unit_price_cents ?? undefined,
           })),
           steps: steps.map((s, i) => ({
@@ -762,6 +769,7 @@ function AddRecipeDrawer({
             ingredients: ingredients.map((ing) => ({
               inventory_id: ing.inventory_id,
               quantity_g: ing.quantity_g,
+              prep_section: ing.prep_section,
             })),
             steps: steps.map((s) => ({ title: s.title, description: s.description, time_estimate_minutes: s.time_estimate_minutes })),
           },
@@ -844,7 +852,7 @@ function AddRecipeDrawer({
                 }));
                 setIngredients((prev) => [
                   ...prev,
-                  ...imported.ingredients.map((ing) => ({ id: Date.now().toString() + Math.random(), ...ing })),
+                  ...imported.ingredients.map((ing) => ({ id: Date.now().toString() + Math.random(), ...ing, prep_section: "dry" as const })),
                 ]);
                 setSteps((prev) => [...prev, ...imported.steps]);
               }}
@@ -902,43 +910,71 @@ function AddRecipeDrawer({
               </Field>
             </div>
 
-            <Field label="Ingredients">
-              <div className="space-y-2 border border-[#B9A88F] rounded-xl p-3 bg-[#FBF6EE]">
-                <div className="pb-3 border-b border-[#D8CDBE]">
-                  <IngredientPicker
-                    onAdd={(picked: PickedIngredient) =>
-                      setIngredients((prev) => [...prev, { id: Date.now().toString(), ...picked }])
-                    }
-                  />
-                </div>
-
-                {/* Ingredients List */}
-                {ingredients.length > 0 && (
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {ingredients.map((ing) => {
-                      const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
-                      return (
-                        <div key={ing.id} className="flex justify-between items-center bg-[#FBF7F0] p-2 rounded-lg border border-[#E4D8C9]">
-                          <div className="flex-1">
-                            <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
-                            <p className="text-[10px] text-[#755B4C]">
-                              {formatIngredientWeight(ing.quantity_g, ing.category)}{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeIngredient(ing.id)}
-                            className="ml-2 text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      );
-                    })}
+            <div className="flex flex-col gap-3">
+              <Field label="Dry Ingredients">
+                <div className="space-y-2 border border-[#B9A88F] rounded-xl p-3 bg-[#FBF6EE]">
+                  <div className="pb-3 border-b border-[#D8CDBE]">
+                    <IngredientPicker onAdd={(picked: PickedIngredient) => addIngredient(picked, "dry")} />
                   </div>
-                )}
-              </div>
-            </Field>
+                  {ingredients.filter((ing) => ing.prep_section === "dry").length > 0 && (
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {ingredients.filter((ing) => ing.prep_section === "dry").map((ing) => {
+                        const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
+                        return (
+                          <div key={ing.id} className="flex justify-between items-center bg-[#FBF7F0] p-2 rounded-lg border border-[#E4D8C9]">
+                            <div className="flex-1">
+                              <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
+                              <p className="text-[10px] text-[#755B4C]">
+                                {formatIngredientWeight(ing.quantity_g, ing.category)}{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeIngredient(ing.id)}
+                              className="ml-2 text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </Field>
+
+              <Field label="Wet Ingredients">
+                <div className="space-y-2 border border-[#B9A88F] rounded-xl p-3 bg-[#FBF6EE]">
+                  <div className="pb-3 border-b border-[#D8CDBE]">
+                    <IngredientPicker onAdd={(picked: PickedIngredient) => addIngredient(picked, "wet")} />
+                  </div>
+                  {ingredients.filter((ing) => ing.prep_section === "wet").length > 0 && (
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {ingredients.filter((ing) => ing.prep_section === "wet").map((ing) => {
+                        const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
+                        return (
+                          <div key={ing.id} className="flex justify-between items-center bg-[#FBF7F0] p-2 rounded-lg border border-[#E4D8C9]">
+                            <div className="flex-1">
+                              <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
+                              <p className="text-[10px] text-[#755B4C]">
+                                {formatIngredientWeight(ing.quantity_g, ing.category)}{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeIngredient(ing.id)}
+                              className="ml-2 text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </Field>
+            </div>
 
             <Field label="Prep steps">
               <RecipeStepsEditor steps={steps} onChange={setSteps} />
@@ -990,6 +1026,7 @@ function AddRecipeDrawer({
                         inventory_id: ing.inventory_id,
                         name: ing.name,
                         quantity_g: ing.quantity_g,
+                        prep_section: ing.prep_section,
                         unit_price_cents: ing.unit_price_cents ?? undefined,
                       })),
                     };
@@ -1045,6 +1082,7 @@ function EditRecipeDrawer({
     name: string;
     category?: string;
     quantity_g: number;
+    prep_section: "dry" | "wet";
     unit_price_cents: number | null;
     protein_per_100g: number | null;
     carbs_per_100g: number | null;
@@ -1065,6 +1103,7 @@ function EditRecipeDrawer({
       inventory_id: ing.inventory_id,
       name: ing.name || "",
       quantity_g: ing.quantity_g || 0,
+      prep_section: ing.prep_section === "wet" ? "wet" : "dry",
       unit_price_cents: ing.unit_price_cents ?? null,
       protein_per_100g: ing.protein_per_100g ?? null,
       carbs_per_100g: ing.carbs_per_100g ?? null,
@@ -1072,6 +1111,10 @@ function EditRecipeDrawer({
       calories_per_100g: ing.calories_per_100g ?? null,
     })) || []
   );
+
+  const addIngredient = (picked: PickedIngredient, prep_section: "dry" | "wet") => {
+    setIngredients((prev) => [...prev, { id: Date.now().toString(), ...picked, prep_section }]);
+  };
   const [steps, setSteps] = useState<RecipeStep[]>(
     recipe.steps?.map((s) => ({
       id: s.id?.toString() || Date.now().toString(),
@@ -1162,6 +1205,7 @@ function EditRecipeDrawer({
       ingredients: ingredients.map((ing) => ({
         inventory_id: ing.inventory_id,
         quantity_g: ing.quantity_g,
+        prep_section: ing.prep_section,
       })),
       steps: steps.map((s) => ({ title: s.title, description: s.description, time_estimate_minutes: s.time_estimate_minutes })),
     };
@@ -1292,49 +1336,85 @@ function EditRecipeDrawer({
               <RecipeStepsEditor steps={steps} onChange={setSteps} />
             </Field>
 
-            <Field label="Ingredients">
-              <div className="space-y-2 border border-[#B9A88F] rounded-xl p-3 bg-[#FBF6EE]">
-                {/* Existing Ingredients */}
-                {ingredients.length > 0 && (
-                  <div className="space-y-1 max-h-40 overflow-y-auto pb-2 border-b border-[#D8CDBE]">
-                    {ingredients.map((ing) => {
-                      const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
-                      return (
-                        <div key={ing.id} className="flex justify-between items-center bg-[#FBF7F0] p-2 rounded-lg border border-[#E4D8C9]">
-                          <div className="flex-1">
-                            <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <input
-                                type="number"
-                                value={ing.quantity_g}
-                                onChange={(e) => updateIngredientQuantity(ing.id, Number(e.target.value))}
-                                className="w-16 text-[10px] text-[#755B4C] bg-white border border-[#D8CDBE] rounded px-1 outline-none"
-                              />
-                              <span className="text-[10px] text-[#755B4C]">
-                                g{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
-                              </span>
+            <div className="flex flex-col gap-3">
+              <Field label="Dry Ingredients">
+                <div className="space-y-2 border border-[#B9A88F] rounded-xl p-3 bg-[#FBF6EE]">
+                  {ingredients.filter((ing) => ing.prep_section === "dry").length > 0 && (
+                    <div className="space-y-1 max-h-40 overflow-y-auto pb-2 border-b border-[#D8CDBE]">
+                      {ingredients.filter((ing) => ing.prep_section === "dry").map((ing) => {
+                        const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
+                        return (
+                          <div key={ing.id} className="flex justify-between items-center bg-[#FBF7F0] p-2 rounded-lg border border-[#E4D8C9]">
+                            <div className="flex-1">
+                              <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <input
+                                  type="number"
+                                  value={ing.quantity_g}
+                                  onChange={(e) => updateIngredientQuantity(ing.id, Number(e.target.value))}
+                                  className="w-16 text-[10px] text-[#755B4C] bg-white border border-[#D8CDBE] rounded px-1 outline-none"
+                                />
+                                <span className="text-[10px] text-[#755B4C]">
+                                  g{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
+                                </span>
+                              </div>
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => removeIngredient(ing.id)}
+                              className="ml-2 text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition"
+                            >
+                              ✕
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => removeIngredient(ing.id)}
-                            className="ml-2 text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        );
+                      })}
+                    </div>
+                  )}
 
-                <IngredientPicker
-                  onAdd={(picked: PickedIngredient) =>
-                    setIngredients((prev) => [...prev, { id: Date.now().toString(), ...picked }])
-                  }
-                />
-              </div>
-            </Field>
+                  <IngredientPicker onAdd={(picked: PickedIngredient) => addIngredient(picked, "dry")} />
+                </div>
+              </Field>
+
+              <Field label="Wet Ingredients">
+                <div className="space-y-2 border border-[#B9A88F] rounded-xl p-3 bg-[#FBF6EE]">
+                  {ingredients.filter((ing) => ing.prep_section === "wet").length > 0 && (
+                    <div className="space-y-1 max-h-40 overflow-y-auto pb-2 border-b border-[#D8CDBE]">
+                      {ingredients.filter((ing) => ing.prep_section === "wet").map((ing) => {
+                        const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
+                        return (
+                          <div key={ing.id} className="flex justify-between items-center bg-[#FBF7F0] p-2 rounded-lg border border-[#E4D8C9]">
+                            <div className="flex-1">
+                              <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <input
+                                  type="number"
+                                  value={ing.quantity_g}
+                                  onChange={(e) => updateIngredientQuantity(ing.id, Number(e.target.value))}
+                                  className="w-16 text-[10px] text-[#755B4C] bg-white border border-[#D8CDBE] rounded px-1 outline-none"
+                                />
+                                <span className="text-[10px] text-[#755B4C]">
+                                  g{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeIngredient(ing.id)}
+                              className="ml-2 text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <IngredientPicker onAdd={(picked: PickedIngredient) => addIngredient(picked, "wet")} />
+                </div>
+              </Field>
+            </div>
 
             <Field label="Image URL">
               <input
@@ -1492,41 +1572,54 @@ function RecipeDetailsDrawer({
           {recipe.ingredients && recipe.ingredients.length > 0 && (
             <div className="rounded-xl bg-[#F5F0E8] p-4 border border-[#E4D8C9]">
               <p className="text-xs text-[#755B4C] font-bold mb-3">INGREDIENTS</p>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {recipe.ingredients.map((ing) => (
-                  <div key={ing.id} className="flex justify-between items-center py-2 border-b border-[#E4D8C9] last:border-0">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-[#4B2B1D]">{ing.name}</p>
-                      <p className="text-xs text-[#755B4C]">
-                        {formatIngredientWeight(ing.quantity_g, ing.category)}
-                        {ing.priced_from_receipt && (
-                          <span className="ml-1.5 text-[#D97706]" title="No price set in Inventory — using the real price last paid on a scanned receipt">
-                            ≈ from receipt
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <div className="text-right ml-3">
-                      {ing.ingredient_cost_cents !== undefined && ing.ingredient_cost_cents !== null && ing.ingredient_cost_cents > 0 ? (
-                        <>
-                          <p className="text-sm font-extrabold text-[#16813D]">
-                            ${(ing.ingredient_cost_cents / 100).toFixed(2)}
-                          </p>
-                          {ing.unit_price_cents && typeof ing.unit_price_cents === 'number' && (
+              {(["dry", "wet"] as const).map((section) => {
+                const sectionIngredients = recipe.ingredients!.filter((ing) =>
+                  section === "dry" ? ing.prep_section !== "wet" : ing.prep_section === "wet"
+                );
+                if (sectionIngredients.length === 0) return null;
+                return (
+                  <div key={section} className="mb-4 last:mb-0">
+                    <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#9A7E6F] mb-1.5">
+                      {section === "dry" ? "Dry" : "Wet"}
+                    </p>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {sectionIngredients.map((ing) => (
+                        <div key={ing.id} className="flex justify-between items-center py-2 border-b border-[#E4D8C9] last:border-0">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-[#4B2B1D]">{ing.name}</p>
                             <p className="text-xs text-[#755B4C]">
-                              ${(ing.unit_price_cents / 100).toFixed(2)}/lb
+                              {formatIngredientWeight(ing.quantity_g, ing.category)}
+                              {ing.priced_from_receipt && (
+                                <span className="ml-1.5 text-[#D97706]" title="No price set in Inventory — using the real price last paid on a scanned receipt">
+                                  ≈ from receipt
+                                </span>
+                              )}
                             </p>
-                          )}
-                        </>
-                      ) : (
-                        <span className="inline-block bg-[#FFF0E1] text-[#DC6500] text-xs font-extrabold px-2 py-1 rounded">
-                          Not in Inventory
-                        </span>
-                      )}
+                          </div>
+                          <div className="text-right ml-3">
+                            {ing.ingredient_cost_cents !== undefined && ing.ingredient_cost_cents !== null && ing.ingredient_cost_cents > 0 ? (
+                              <>
+                                <p className="text-sm font-extrabold text-[#16813D]">
+                                  ${(ing.ingredient_cost_cents / 100).toFixed(2)}
+                                </p>
+                                {ing.unit_price_cents && typeof ing.unit_price_cents === 'number' && (
+                                  <p className="text-xs text-[#755B4C]">
+                                    ${(ing.unit_price_cents / 100).toFixed(2)}/lb
+                                  </p>
+                                )}
+                              </>
+                            ) : (
+                              <span className="inline-block bg-[#FFF0E1] text-[#DC6500] text-xs font-extrabold px-2 py-1 rounded">
+                                Not in Inventory
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
 
               {recipe.total_recipe_cost_cents !== undefined && (
                 <div className="mt-3 pt-3 border-t border-[#D8CDBE] flex justify-between items-center">

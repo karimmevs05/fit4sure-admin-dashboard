@@ -50,7 +50,7 @@ export function CalendarMeetingPanel({ tasks, today }: { tasks: Task[]; today: D
           </div>
         </div>
         <div className="grid grid-cols-7 gap-[5px]">
-          {DOW.map((d) => <div key={d} className="text-[10px] text-center pb-1 uppercase tracking-wide" style={{ color: '#B9A88F' }}>{d}</div>)}
+          {DOW.map((d) => <div key={d} className="text-[10px] text-center pb-1 uppercase tracking-wide" style={{ color: '#6B3410' }}>{d}</div>)}
           {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} />)}
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const d = i + 1
@@ -65,11 +65,11 @@ export function CalendarMeetingPanel({ tasks, today }: { tasks: Task[]; today: D
                 className="rounded-xl p-[6px]"
                 style={{
                   minHeight: 50,
-                  background: COLORS.cardBg,
-                  boxShadow: isToday ? `inset 0 0 0 1.5px ${COLORS.textPrimary}` : undefined,
+                  background: '#ffffff',
+                  border: isToday ? `2px solid ${COLORS.textPrimary}` : '1px solid #DDCBB0',
                 }}
               >
-                <div className="text-[11.5px]" style={{ color: COLORS.textSecondary }}>{d}</div>
+                <div className="text-[11.5px] font-semibold" style={{ color: COLORS.textPrimary }}>{d}</div>
                 {dayTasks.length > 0 && (
                   <div className="flex gap-[3px] flex-wrap mt-[7px]">
                     {(['critical', 'workon', 'eventually'] as Urgency[]).filter((u) => counts[u] > 0).map((u) => (
@@ -92,22 +92,22 @@ export function CalendarMeetingPanel({ tasks, today }: { tasks: Task[]; today: D
         </div>
       </div>
 
-      <div className="flex-1 min-w-0 border-l pl-[22px] flex flex-col" style={{ borderColor: '#f0efe9' }}>
-        <div className="text-[13px] font-extrabold mb-[1px]" style={{ color: COLORS.textPrimary }}>Next meeting notes</div>
-        <div className="text-[11px] mb-3" style={{ color: '#B9A88F' }}>Everything that needs a decision or a status check, ready to pull up live.</div>
+      <div className="flex-1 min-w-0 border-l pl-[22px] flex flex-col" style={{ borderColor: '#CDBDA8' }}>
+        <div className="text-[13px] font-extrabold mb-[1px]" style={{ color: '#3D2314' }}>Next meeting notes</div>
+        <div className="text-[11px] mb-3" style={{ color: '#6B3410' }}>Everything that needs a decision or a status check, ready to pull up live.</div>
         {meetingGroups.length === 0 ? (
-          <div className="text-[13px]" style={{ color: '#CDBDA8' }}>Nothing outstanding — clean agenda.</div>
+          <div className="text-[13px]" style={{ color: '#6B3410' }}>Nothing outstanding — clean agenda.</div>
         ) : meetingGroups.map((g) => (
           <div key={g.key} className="mb-3 last:mb-0">
-            <div className="text-[10.5px] font-semibold uppercase tracking-wide mb-[6px] flex items-center gap-[6px]" style={{ color: '#B9A88F' }}>
-              {g.label} <span className="rounded-full px-[7px] py-[1px] text-[10px]" style={{ background: COLORS.divider, color: COLORS.textMuted }}>{g.items.length}</span>
+            <div className="text-[10.5px] font-semibold uppercase tracking-wide mb-[6px] flex items-center gap-[6px]" style={{ color: '#6B3410' }}>
+              {g.label} <span className="rounded-full px-[7px] py-[1px] text-[10px]" style={{ background: COLORS.divider, color: '#3D2314' }}>{g.items.length}</span>
             </div>
             {g.items.map((it, i) => (
-              <div key={i} className="flex items-start gap-[10px] py-[7px] border-t first:border-t-0" style={{ borderColor: '#f0efe9' }}>
+              <div key={i} className="flex items-start gap-[10px] py-[7px] border-t first:border-t-0" style={{ borderColor: '#CDBDA8' }}>
                 <span className="mt-[4px]"><AttentionIconDot icon={g.key} /></span>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-[13.5px]" style={{ color: COLORS.textPrimary }}>{it.name}</div>
-                  <div className="text-[11px] mt-[2px]" style={{ color: '#B9A88F' }}>{it.meta}</div>
+                  <div className="font-medium text-[13.5px]" style={{ color: '#3D2314' }}>{it.name}</div>
+                  <div className="text-[11px] mt-[2px]" style={{ color: '#6B3410' }}>{it.meta}</div>
                 </div>
               </div>
             ))}

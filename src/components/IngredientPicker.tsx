@@ -7,6 +7,7 @@ export type PickedIngredient = {
   name: string
   category: string
   quantity_g: number
+  prep_section?: string | null
   unit_price_cents: number | null
   protein_per_100g: number | null
   carbs_per_100g: number | null

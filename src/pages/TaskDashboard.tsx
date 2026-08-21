@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { PieChart } from 'lucide-react'
 import type { Task, ActivityLogEntry, StaffUser } from '../lib/launchTasks/types'
 import { COLORS, Card, AttentionIconDot } from '../lib/launchTasks/ui'
 import { buildAttention, formatCents } from '../lib/launchTasks/selectors'
@@ -76,47 +77,45 @@ export default function TaskDashboardPage() {
   }, [tasks])
 
   if (loading) {
-    return <div className="p-8" style={{ background: COLORS.pageBg, minHeight: '100vh' }}><p style={{ color: COLORS.textSecondary }}>Loading task dashboard…</p></div>
+    return <div className="p-8" style={{ background: 'transparent', minHeight: '100vh' }}><p style={{ color: COLORS.textSecondary }}>Loading task dashboard…</p></div>
   }
   if (error) {
-    return <div className="p-8" style={{ background: COLORS.pageBg, minHeight: '100vh' }}><p style={{ color: COLORS.red }}>{error}</p></div>
+    return <div className="p-8" style={{ background: 'transparent', minHeight: '100vh' }}><p style={{ color: COLORS.red }}>{error}</p></div>
   }
 
   return (
-    <div style={{ background: COLORS.pageBg, minHeight: '100vh', padding: 32 }}>
+    <div style={{ background: 'transparent', minHeight: '100vh', padding: 32 }}>
       <div style={{ maxWidth: 960, margin: '0 auto' }}>
 
-        <div className="border-b mb-4 flex items-center justify-between" style={{ borderColor: COLORS.cardBorder }}>
-          <div className="flex gap-6">
-            <div className="text-[15px] font-extrabold pb-[10px]" style={{ color: COLORS.textPrimary, borderBottom: `2px solid ${COLORS.green}` }}>
-              Task management dashboard
+        <header className="flex items-start justify-between gap-4 mb-4">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#D7C9B7] bg-[#FBF7F0] text-[#2E527F]">
+              <PieChart className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-extrabold tracking-[-0.03em]">Task management dashboard</h1>
+              <p className="mt-1 text-sm">Where the team tracks what's due, what's overdue, and what needs a decision before launch.</p>
             </div>
           </div>
-          {!investor && currentUser && (
-            <div className="pb-[10px] text-[12px]" style={{ color: COLORS.textMuted }}>
-              Logged in as <b style={{ color: COLORS.textSecondary }}>{currentUser.display_name}</b>
-            </div>
-          )}
-        </div>
-
-        <div className="flex justify-between items-center mb-3 gap-3">
-          {!investor ? (
-            <p className="text-[13px]" style={{ color: COLORS.textSecondary }}>
-              Where the team tracks what's due, what's overdue, and what needs a decision before launch.
-            </p>
-          ) : <div />}
-          <button
-            className="text-[12px] font-bold rounded-full border px-[14px] py-[6px] flex-shrink-0"
-            style={{
-              borderColor: investor ? COLORS.blue : COLORS.cardBorder,
-              background: investor ? COLORS.blue : COLORS.cardBg,
-              color: investor ? '#fff' : COLORS.textSecondary,
-            }}
-            onClick={() => setInvestor((v) => !v)}
-          >
-            Investor view
-          </button>
-        </div>
+          <div className="flex flex-col items-end gap-2 flex-shrink-0">
+            {!investor && currentUser && (
+              <div className="text-[12px]" style={{ color: '#6B3410' }}>
+                Logged in as <b style={{ color: '#3D2314' }}>{currentUser.display_name}</b>
+              </div>
+            )}
+            <button
+              className="text-[12px] font-bold rounded-full border px-[14px] py-[6px]"
+              style={{
+                borderColor: investor ? COLORS.blue : COLORS.cardBorder,
+                background: investor ? COLORS.blue : COLORS.cardBg,
+                color: investor ? '#fff' : COLORS.textSecondary,
+              }}
+              onClick={() => setInvestor((v) => !v)}
+            >
+              Investor view
+            </button>
+          </div>
+        </header>
 
         {!investor && <CalendarMeetingPanel tasks={tasks} today={today} />}
 
