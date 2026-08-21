@@ -70,7 +70,7 @@ export default function RecipePlanSection({
   return (
     <div>
       <div className="mb-4">
-        <h2 className="text-2xl font-extrabold text-[#4B2B1D]">Weekly Recipe Plan</h2>
+        <h2 className="text-2xl font-extrabold text-[#4B2B1D]">Weekly Menu Planner</h2>
         <p className="mt-1 text-sm text-[#755B4C]">
           What's live for {weekStart ? new Date(weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'next week'} --
           feeds both delivery orders and counter sales. Forecasts are in lb; macros/cost are per lb (455g).
