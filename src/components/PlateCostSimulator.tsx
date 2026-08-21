@@ -261,8 +261,7 @@ export function PlateCostSimulator({
                     </button>
                     <p className="font-medium text-[#4B2B1D] truncate w-32 flex-shrink-0 text-sm">{p.recipe.name}</p>
                     <p className="text-[11px] text-[#2E527F] flex-1 truncate">
-                      {macroLine(m)}
-                      {regularG != null && ` · regular ${formatServingSize(regularG, p.recipe.category)}`}
+                      {regularG != null ? `regular ${formatServingSize(regularG, p.recipe.category)}` : ''}
                     </p>
                     <input
                       type="number"
