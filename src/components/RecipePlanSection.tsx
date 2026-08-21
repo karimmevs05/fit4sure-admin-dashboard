@@ -15,6 +15,7 @@ export type PlanRecipeRow = {
   carbs_g: number
   fat_g: number
   costPerPoundCents: number
+  suggestedServingG?: number | null
 }
 
 export type Block = 'monday' | 'thursday'
@@ -36,6 +37,20 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 export const rowKey = (r: PlanRecipeRow) => (r.recipe_id != null ? `r${r.recipe_id}` : `c${r.id ?? r.tempId}`)
+
+const GRAMS_PER_POUND = 455
+
+// Quick-glance line for the add-recipe picker: $/lb, how many regular
+// servings that works out to per lb, and $/serving -- no calories, since
+// this is about what to buy/charge, not nutrition, at the moment you're
+// deciding whether to add it.
+function pickerInfoLine(r: PlanRecipeRow) {
+  const pricePerLb = `$${(r.costPerPoundCents / 100).toFixed(2)}/lb`
+  if (!r.suggestedServingG || r.suggestedServingG <= 0) return pricePerLb
+  const servingsPerLb = GRAMS_PER_POUND / r.suggestedServingG
+  const pricePerServing = (r.costPerPoundCents / 100) / servingsPerLb
+  return `${pricePerLb} · ${servingsPerLb.toFixed(1)} srv/lb · $${pricePerServing.toFixed(2)}/srv`
+}
 
 // Same recipe pool feeds delivery orders and walk-up counter sales -- this
 // section is the single place the chef decides what's live for a block and
@@ -254,9 +269,7 @@ function AddRecipePanel({
             >
               <Plus className="h-3 w-3 text-[#2E527F] flex-shrink-0" />
               <p className="font-medium text-[#4B2B1D] truncate w-32 flex-shrink-0 text-xs">{r.name}</p>
-              <p className="text-[10.5px] text-[#2E527F] flex-1 truncate">
-                {r.calories} cal · ${(r.costPerPoundCents / 100).toFixed(2)}/lb
-              </p>
+              <p className="text-[10.5px] text-[#2E527F] flex-1 truncate">{pickerInfoLine(r)}</p>
             </button>
           ))
         )}

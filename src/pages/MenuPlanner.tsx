@@ -89,7 +89,7 @@ export default function MenuPlannerPage() {
         axios.get(`${apiUrl}/api/admin/recipes`, { headers }),
       ])
 
-      const macrosById: Record<number, { calories: number; protein_g: number; carbs_g: number; fat_g: number; costPerPoundCents: number }> = {}
+      const macrosById: Record<number, { calories: number; protein_g: number; carbs_g: number; fat_g: number; costPerPoundCents: number; suggestedServingG: number | null }> = {}
       for (const r of recipesRes.data.data || []) {
         macrosById[r.recipe_id] = {
           calories: r.per_pound?.calories ?? 0,
@@ -97,13 +97,14 @@ export default function MenuPlannerPage() {
           carbs_g: parseFloat(r.per_pound?.carbs_g ?? '0'),
           fat_g: parseFloat(r.per_pound?.fat_g ?? '0'),
           costPerPoundCents: r.cost_per_pound_cents ?? 0,
+          suggestedServingG: r.suggested_serving_g != null ? parseFloat(r.suggested_serving_g) : null,
         }
       }
 
       // Custom rows already carry their own macros/cost straight from the
       // server -- don't stomp them with the (nonexistent) recipe lookup.
       const withMacros = (list: any[]): PlanRecipeRow[] =>
-        list.map((r) => (r.isCustom ? r : { ...r, ...(macrosById[r.recipe_id] || { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, costPerPoundCents: 0 }) }))
+        list.map((r) => (r.isCustom ? r : { ...r, ...(macrosById[r.recipe_id] || { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, costPerPoundCents: 0, suggestedServingG: null }) }))
 
       setRows({
         monday: withMacros(planRes.data.data?.monday || []),
