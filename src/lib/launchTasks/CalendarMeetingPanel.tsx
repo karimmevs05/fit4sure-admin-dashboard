@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import type { Task, Urgency } from './types'
-import { COLORS, AttentionIconDot } from './ui'
+import { COLORS } from './ui'
 import { buildMeetingZone } from './selectors'
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -93,7 +93,7 @@ export function CalendarMeetingPanel({ tasks, today }: { tasks: Task[]; today: D
       </div>
 
       <div className="flex-1 min-w-0 border-l pl-[22px] flex flex-col" style={{ borderColor: '#CDBDA8' }}>
-        <div className="text-[13px] font-extrabold mb-[1px]" style={{ color: '#3D2314' }}>Next meeting notes</div>
+        <div className="text-[13px] font-extrabold mb-[1px]" style={{ color: '#3D2314' }}>Next meeting topics</div>
         <div className="text-[11px] mb-3" style={{ color: '#6B3410' }}>Everything that needs a decision or a status check, ready to pull up live.</div>
         {meetingGroups.length === 0 ? (
           <div className="text-[13px]" style={{ color: '#6B3410' }}>Nothing outstanding — clean agenda.</div>
@@ -102,15 +102,14 @@ export function CalendarMeetingPanel({ tasks, today }: { tasks: Task[]; today: D
             <div className="text-[10.5px] font-semibold uppercase tracking-wide mb-[6px] flex items-center gap-[6px]" style={{ color: '#6B3410' }}>
               {g.label} <span className="rounded-full px-[7px] py-[1px] text-[10px]" style={{ background: COLORS.divider, color: '#3D2314' }}>{g.items.length}</span>
             </div>
-            {g.items.map((it, i) => (
-              <div key={i} className="flex items-start gap-[10px] py-[7px] border-t first:border-t-0" style={{ borderColor: '#CDBDA8' }}>
-                <span className="mt-[4px]"><AttentionIconDot icon={g.key} /></span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-[13.5px]" style={{ color: '#3D2314' }}>{it.name}</div>
-                  <div className="text-[11px] mt-[2px]" style={{ color: '#6B3410' }}>{it.meta}</div>
-                </div>
-              </div>
-            ))}
+            <ul className="list-disc pl-[18px] space-y-[6px] marker:text-[#6B3410]">
+              {g.items.map((it, i) => (
+                <li key={i} className="text-[13px] leading-snug" style={{ color: '#3D2314' }}>
+                  <span className="font-medium">{it.name}</span>
+                  {it.meta && <span style={{ color: '#6B3410' }}> — {it.meta}</span>}
+                </li>
+              ))}
+            </ul>
           </div>
         ))}
       </div>
