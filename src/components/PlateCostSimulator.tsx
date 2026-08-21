@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import axios from 'axios'
-import { Calculator, ChevronDown, ChevronUp, X, Check, Plus } from 'lucide-react'
-import { RecipePicker, formatServingSize } from './RecipePicker'
+import { Calculator, ChevronDown, ChevronUp, Check, Plus } from 'lucide-react'
+import { RecipePicker } from './RecipePicker'
 import type { PickerRecipe } from './RecipePicker'
 
 type Recipe = {
@@ -307,56 +307,43 @@ export function PlateCostSimulator({
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 space-y-2 border-t border-[#E4D8C9] pt-3">
-          {/* Selected list -- what's in the plate so far, nothing to scroll past */}
-          <div className="space-y-1.5 mb-2">
-            {plate.length === 0 ? (
-              <p className="text-xs text-[#755B4C] italic px-1 py-2">Nothing added yet</p>
-            ) : (
-              plate.map((p) => {
-                const grams = parseFloat(p.servingSizeG) || 0
-                const m = macrosAtGrams(p.recipe, grams)
-                const regularG = p.recipe.suggested_serving_g != null ? parseFloat(String(p.recipe.suggested_serving_g)) : null
-                return (
-                  <div key={p.recipe.recipe_id} className="flex items-center gap-2 rounded-lg bg-white border border-[#E4D8C9] px-2.5 py-1.5">
-                    <button
-                      onClick={() => removeRecipe(p.recipe.recipe_id)}
-                      className="flex-shrink-0 text-[#9A7E6F] hover:text-[#D62F3D] transition"
-                      aria-label={`Remove ${p.recipe.name}`}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                    <p className="font-medium text-[#4B2B1D] truncate w-32 flex-shrink-0 text-sm">{p.recipe.name}</p>
-                    <p className="text-[11px] text-[#2E527F] flex-1 truncate">
-                      {regularG != null ? `regular ${formatServingSize(regularG, p.recipe.category)}` : ''}
-                    </p>
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={p.servingSizeG}
-                      onChange={(e) => updateServingSize(p.recipe.recipe_id, e.target.value)}
-                      className="w-14 h-7 rounded border border-[#B9A88F] bg-white px-1 text-xs text-center outline-none flex-shrink-0"
-                    />
-                    <span className="text-[10px] text-[#2E527F] flex-shrink-0 w-3">g</span>
-                    <span className="w-14 text-right text-xs font-bold text-[#2E527F] flex-shrink-0">${(m.cost_cents / 100).toFixed(2)}</span>
-                  </div>
-                )
-              })
+        <div className="px-4 pb-4 space-y-3 border-t border-[#E4D8C9] pt-3">
+          {/* Recipes live in one place: this picker. Anything already in
+              the plate shows checked-in with an editable gram amount right
+              here, instead of duplicating into a second "what's in the
+              plate" list below with the same names. */}
+          <div>
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[#9A7E6F]">Recipes</p>
+            <button
+              onClick={() => setAddOpen((v) => !v)}
+              className="w-full flex items-center justify-between gap-1 rounded-lg border border-dashed border-[#2E527F] px-3 py-1.5 text-xs font-bold text-[#2E527F] hover:bg-[#EAF0F7] transition"
+            >
+              <span className="flex items-center gap-1">
+                <Plus className="h-3.5 w-3.5" /> Add recipe
+              </span>
+              {plate.length > 0 && !addOpen && (
+                <span className="font-medium text-[#755B4C] normal-case truncate max-w-[60%]">{autoName}</span>
+              )}
+            </button>
+            {addOpen && (
+              <div className="mt-1.5">
+                <RecipePicker
+                  recipes={pickerRecipes}
+                  excludeIds={plateIds}
+                  onAdd={addRecipe}
+                  selectedAmounts={new Map(plate.map((p) => [p.recipe.recipe_id, p.servingSizeG]))}
+                  onUpdateAmount={updateServingSize}
+                  onRemoveSelected={removeRecipe}
+                  selectedMacros={
+                    new Map(plate.map((p) => [p.recipe.recipe_id, macroLine(macrosAtGrams(p.recipe, parseFloat(p.servingSizeG) || 0))]))
+                  }
+                />
+              </div>
             )}
           </div>
 
-          <button
-            onClick={() => setAddOpen((v) => !v)}
-            className="w-full flex items-center justify-center gap-1 rounded-lg border border-dashed border-[#2E527F] py-1.5 text-xs font-bold text-[#2E527F] hover:bg-[#EAF0F7] transition mb-1"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add recipe
-          </button>
-
-          {addOpen && <RecipePicker recipes={pickerRecipes} excludeIds={plateIds} onAdd={addRecipe} />}
-
           {/* Stats footer -- summarizes the plate built above */}
-          <div className="pt-3 border-t border-[#E4D8C9] flex items-center justify-between">
+          <div className="pt-1 flex items-center justify-between">
             <p className="text-xs text-[#2E527F]">{macroLine(totals)}</p>
             <p className="text-sm font-extrabold text-[#16A34A]">${(totals.cost_cents / 100).toFixed(2)}</p>
           </div>
@@ -369,68 +356,75 @@ export function PlateCostSimulator({
                   combo but are editable, since a plan meant to stick around
                   usually wants a real name and a set price, not the raw
                   ingredient cost. */}
-              <div className="pt-2 border-t border-[#E4D8C9] space-y-1.5">
-                <div className="flex items-center gap-1.5">
-                  <input
-                    value={plateName}
-                    onChange={(e) => setPlateName(e.target.value)}
-                    placeholder={autoName || 'Plate name'}
-                    className="h-8 flex-1 min-w-0 rounded-md border border-[#E4D8C9] bg-white px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#2E527F]"
-                  />
-                  <span className="text-xs text-[#2E527F] flex-shrink-0">$</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={priceOverride}
-                    onChange={(e) => setPriceOverride(e.target.value)}
-                    placeholder={(totals.cost_cents / 100).toFixed(2)}
-                    className="h-8 w-16 flex-shrink-0 rounded-md border border-[#E4D8C9] bg-white px-1.5 text-xs text-[#4B2B1D] outline-none focus:border-[#2E527F]"
-                  />
+              <div className="pt-3 border-t border-[#E4D8C9] space-y-3">
+                <div>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[#9A7E6F]">Name &amp; price</p>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      value={plateName}
+                      onChange={(e) => setPlateName(e.target.value)}
+                      placeholder={autoName || 'Plate name'}
+                      className="h-8 flex-1 min-w-0 rounded-md border border-[#E4D8C9] bg-white px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#2E527F]"
+                    />
+                    <span className="text-xs text-[#2E527F] flex-shrink-0">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={priceOverride}
+                      onChange={(e) => setPriceOverride(e.target.value)}
+                      placeholder={(totals.cost_cents / 100).toFixed(2)}
+                      className="h-8 w-16 flex-shrink-0 rounded-md border border-[#E4D8C9] bg-white px-1.5 text-xs text-[#4B2B1D] outline-none focus:border-[#2E527F]"
+                    />
+                  </div>
                 </div>
-                <div className="relative flex items-center gap-1.5">
-                  <input
-                    value={selectedCustomer ? selectedCustomer.name : customerQuery}
-                    onChange={(e) => {
-                      setSelectedCustomer(null)
-                      setCustomerQuery(e.target.value)
-                      setShowCustomerMatches(true)
-                    }}
-                    onFocus={() => setShowCustomerMatches(true)}
-                    onBlur={() => setTimeout(() => setShowCustomerMatches(false), 150)}
-                    placeholder="Assign to client..."
-                    className="h-8 flex-1 min-w-0 rounded-md border border-[#E4D8C9] bg-white px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#2E527F]"
-                  />
-                  <button
-                    onClick={assignToClient}
-                    disabled={!selectedCustomer || assigning}
-                    className="h-8 flex-shrink-0 rounded-md bg-[#16A34A] px-2.5 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#15873F] transition"
-                  >
-                    {assigning ? '...' : 'Assign'}
-                  </button>
-                  {assignMessage && (
-                    <span className="flex items-center gap-1 text-[11px] font-medium text-[#755B4C] flex-shrink-0">
-                      <Check className="h-3 w-3 text-[#16A34A]" />
-                      {assignMessage}
-                    </span>
-                  )}
-                  {showCustomerMatches && customerMatches.length > 0 && (
-                    <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-md border border-[#E4D8C9] bg-white shadow-md max-h-40 overflow-y-auto">
-                      {customerMatches.map((c) => (
-                        <button
-                          key={c.id}
-                          onMouseDown={() => {
-                            setSelectedCustomer(c)
-                            setCustomerQuery('')
-                            setShowCustomerMatches(false)
-                          }}
-                          className="block w-full px-2.5 py-1.5 text-left text-xs text-[#4B2B1D] hover:bg-[#F1EAE0]"
-                        >
-                          {c.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+
+                <div>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[#9A7E6F]">Add to a client's order</p>
+                  <div className="relative flex items-center gap-1.5">
+                    <input
+                      value={selectedCustomer ? selectedCustomer.name : customerQuery}
+                      onChange={(e) => {
+                        setSelectedCustomer(null)
+                        setCustomerQuery(e.target.value)
+                        setShowCustomerMatches(true)
+                      }}
+                      onFocus={() => setShowCustomerMatches(true)}
+                      onBlur={() => setTimeout(() => setShowCustomerMatches(false), 150)}
+                      placeholder="Search client name..."
+                      className="h-8 flex-1 min-w-0 rounded-md border border-[#E4D8C9] bg-white px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#2E527F]"
+                    />
+                    <button
+                      onClick={assignToClient}
+                      disabled={!selectedCustomer || assigning}
+                      className="h-8 flex-shrink-0 rounded-md bg-[#16A34A] px-2.5 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#15873F] transition"
+                    >
+                      {assigning ? '...' : 'Assign'}
+                    </button>
+                    {assignMessage && (
+                      <span className="flex items-center gap-1 text-[11px] font-medium text-[#755B4C] flex-shrink-0">
+                        <Check className="h-3 w-3 text-[#16A34A]" />
+                        {assignMessage}
+                      </span>
+                    )}
+                    {showCustomerMatches && customerMatches.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-md border border-[#E4D8C9] bg-white shadow-md max-h-40 overflow-y-auto">
+                        {customerMatches.map((c) => (
+                          <button
+                            key={c.id}
+                            onMouseDown={() => {
+                              setSelectedCustomer(c)
+                              setCustomerQuery('')
+                              setShowCustomerMatches(false)
+                            }}
+                            className="block w-full px-2.5 py-1.5 text-left text-xs text-[#4B2B1D] hover:bg-[#F1EAE0]"
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Diets are named, reusable plate collections (e.g. "Keto
@@ -438,50 +432,53 @@ export function PlateCostSimulator({
                     name shows matching existing diets to file into, or a
                     "create new" option if nothing matches, so there's no
                     separate setup step before this plate can be filed. */}
-                <div className="relative flex items-center gap-1.5">
-                  <input
-                    value={dietQuery}
-                    onChange={(e) => {
-                      setDietQuery(e.target.value)
-                      setShowDietMatches(true)
-                    }}
-                    onFocus={() => setShowDietMatches(true)}
-                    onBlur={() => setTimeout(() => setShowDietMatches(false), 150)}
-                    placeholder="Add plate to custom diet..."
-                    className="h-8 flex-1 min-w-0 rounded-md border border-[#E4D8C9] bg-white px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#2E527F]"
-                  />
-                  {dietMessage && (
-                    <span className="flex items-center gap-1 text-[11px] font-medium text-[#755B4C] flex-shrink-0">
-                      <Check className="h-3 w-3 text-[#16A34A]" />
-                      {dietMessage}
-                    </span>
-                  )}
-                  {showDietMatches && (dietMatches.length > 0 || dietQuery.trim()) && (
-                    <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-md border border-[#E4D8C9] bg-white shadow-md max-h-40 overflow-y-auto">
-                      {dietMatches.map((d) => (
-                        <button
-                          key={d.id}
-                          onMouseDown={() => addPlateToDiet(d)}
-                          disabled={addingToDiet}
-                          className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs text-[#4B2B1D] hover:bg-[#F1EAE0]"
-                        >
-                          <span>{d.name}</span>
-                          <span className="text-[10px] text-[#9A7E6F]">
-                            {d.plate_count} plate{d.plate_count === 1 ? '' : 's'}
-                          </span>
-                        </button>
-                      ))}
-                      {dietQuery.trim() && !exactDietMatch && (
-                        <button
-                          onMouseDown={() => addPlateToDiet(null, dietQuery.trim())}
-                          disabled={addingToDiet}
-                          className="block w-full px-2.5 py-1.5 text-left text-xs font-bold text-[#2E527F] hover:bg-[#F1EAE0]"
-                        >
-                          + Create "{dietQuery.trim()}" as new diet
-                        </button>
-                      )}
-                    </div>
-                  )}
+                <div>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[#9A7E6F]">File into a custom diet</p>
+                  <div className="relative flex items-center gap-1.5">
+                    <input
+                      value={dietQuery}
+                      onChange={(e) => {
+                        setDietQuery(e.target.value)
+                        setShowDietMatches(true)
+                      }}
+                      onFocus={() => setShowDietMatches(true)}
+                      onBlur={() => setTimeout(() => setShowDietMatches(false), 150)}
+                      placeholder="Search or name a new diet..."
+                      className="h-8 flex-1 min-w-0 rounded-md border border-[#E4D8C9] bg-white px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#2E527F]"
+                    />
+                    {dietMessage && (
+                      <span className="flex items-center gap-1 text-[11px] font-medium text-[#755B4C] flex-shrink-0">
+                        <Check className="h-3 w-3 text-[#16A34A]" />
+                        {dietMessage}
+                      </span>
+                    )}
+                    {showDietMatches && (dietMatches.length > 0 || dietQuery.trim()) && (
+                      <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-md border border-[#E4D8C9] bg-white shadow-md max-h-40 overflow-y-auto">
+                        {dietMatches.map((d) => (
+                          <button
+                            key={d.id}
+                            onMouseDown={() => addPlateToDiet(d)}
+                            disabled={addingToDiet}
+                            className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs text-[#4B2B1D] hover:bg-[#F1EAE0]"
+                          >
+                            <span>{d.name}</span>
+                            <span className="text-[10px] text-[#9A7E6F]">
+                              {d.plate_count} plate{d.plate_count === 1 ? '' : 's'}
+                            </span>
+                          </button>
+                        ))}
+                        {dietQuery.trim() && !exactDietMatch && (
+                          <button
+                            onMouseDown={() => addPlateToDiet(null, dietQuery.trim())}
+                            disabled={addingToDiet}
+                            className="block w-full px-2.5 py-1.5 text-left text-xs font-bold text-[#2E527F] hover:bg-[#F1EAE0]"
+                          >
+                            + Create "{dietQuery.trim()}" as new diet
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Hybrid path: this same named/priced combo can also become
@@ -490,36 +487,39 @@ export function PlateCostSimulator({
                     combo's per-lb macros/cost so it scales correctly if the
                     block's forecasted lb is edited later. */}
                 {onAddToBlock && (
-                  <div className="flex items-center gap-1.5">
-                    <select
-                      value={blockTarget}
-                      onChange={(e) => setBlockTarget(e.target.value as 'monday' | 'thursday')}
-                      className="h-8 flex-shrink-0 rounded-md border border-[#E4D8C9] bg-white px-1.5 text-xs text-[#4B2B1D] outline-none focus:border-[#2E527F]"
-                    >
-                      <option value="monday">Block 1 (Mon–Wed)</option>
-                      <option value="thursday">Block 2 (Thu–Sun)</option>
-                    </select>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={blockLb}
-                      onChange={(e) => setBlockLb(e.target.value)}
-                      placeholder="lb"
-                      className="h-8 w-16 flex-shrink-0 rounded-md border border-[#E4D8C9] bg-white px-1.5 text-xs text-[#4B2B1D] outline-none focus:border-[#2E527F]"
-                    />
-                    <button
-                      onClick={addToBlock}
-                      disabled={!blockLb.trim() || parseFloat(blockLb) <= 0}
-                      className="h-8 flex-1 flex-shrink-0 rounded-md bg-[#2E527F] px-2.5 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#24466E] transition"
-                    >
-                      Add to Block
-                    </button>
-                    {addedToBlock && (
-                      <span className="flex items-center gap-1 text-[11px] font-medium text-[#755B4C] flex-shrink-0">
-                        <Check className="h-3 w-3 text-[#16A34A]" /> Added
-                      </span>
-                    )}
+                  <div>
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-[#9A7E6F]">Add to a weekly block</p>
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={blockTarget}
+                        onChange={(e) => setBlockTarget(e.target.value as 'monday' | 'thursday')}
+                        className="h-8 flex-shrink-0 rounded-md border border-[#E4D8C9] bg-white px-1.5 text-xs text-[#4B2B1D] outline-none focus:border-[#2E527F]"
+                      >
+                        <option value="monday">Block 1 (Mon–Wed)</option>
+                        <option value="thursday">Block 2 (Thu–Sun)</option>
+                      </select>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={blockLb}
+                        onChange={(e) => setBlockLb(e.target.value)}
+                        placeholder="lb"
+                        className="h-8 w-16 flex-shrink-0 rounded-md border border-[#E4D8C9] bg-white px-1.5 text-xs text-[#4B2B1D] outline-none focus:border-[#2E527F]"
+                      />
+                      <button
+                        onClick={addToBlock}
+                        disabled={!blockLb.trim() || parseFloat(blockLb) <= 0}
+                        className="h-8 flex-1 flex-shrink-0 rounded-md bg-[#2E527F] px-2.5 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#24466E] transition"
+                      >
+                        Add to Block
+                      </button>
+                      {addedToBlock && (
+                        <span className="flex items-center gap-1 text-[11px] font-medium text-[#755B4C] flex-shrink-0">
+                          <Check className="h-3 w-3 text-[#16A34A]" /> Added
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

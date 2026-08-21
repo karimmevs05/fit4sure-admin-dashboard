@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Search } from 'lucide-react'
+import { Plus, Search, X } from 'lucide-react'
 
 export type PickerRecipe = {
   recipe_id: number
@@ -50,23 +50,44 @@ const CATEGORY_LABELS: Record<string, string> = {
 // $/serving, and a supplier tag. Used by both the Weekly Recipe Plan blocks
 // and the Custom Plate Builder so adding a recipe reads and behaves
 // identically in both places.
+//
+// selectedAmounts/onUpdateAmount/onRemoveSelected are optional: when passed
+// (Plate Builder only), a recipe that's already in the plate stays visible
+// in this same list instead of being excluded, shown checked with an
+// editable gram amount, its macros at that amount, and a remove control --
+// so there's one list to scan, not a picker plus a separate "what's in the
+// plate" list saying the same names twice. Selected items sit in their own
+// section above the category/search filters, so switching category or
+// searching never hides what's already in the plate.
 export function RecipePicker({
   recipes,
   excludeIds,
   onAdd,
+  selectedAmounts,
+  onUpdateAmount,
+  onRemoveSelected,
+  selectedMacros,
 }: {
   recipes: PickerRecipe[]
   excludeIds: Set<number>
   onAdd: (recipe: PickerRecipe) => void
+  selectedAmounts?: Map<number, string>
+  onUpdateAmount?: (recipeId: number, grams: string) => void
+  onRemoveSelected?: (recipeId: number) => void
+  selectedMacros?: Map<number, string>
 }) {
   const [category, setCategory] = useState('all')
   const [search, setSearch] = useState('')
 
   const categories = Array.from(new Set(recipes.map((r) => r.category)))
+  // Already-selected recipes bypass the category filter (never disappear
+  // just because you're browsing a different category) but stay in their
+  // natural position in this one list -- no separate "added" block pinned
+  // above the picker.
   const available = recipes.filter(
     (r) =>
-      !excludeIds.has(r.recipe_id) &&
-      (category === 'all' || r.category === category) &&
+      (selectedAmounts?.has(r.recipe_id) || !excludeIds.has(r.recipe_id)) &&
+      (selectedAmounts?.has(r.recipe_id) || category === 'all' || r.category === category) &&
       (search.trim() === '' || r.name.toLowerCase().includes(search.trim().toLowerCase()))
   )
 
@@ -105,30 +126,68 @@ export function RecipePicker({
         ))}
       </div>
 
-      <div className="max-h-[220px] overflow-y-auto space-y-1">
+      <div className="max-h-[260px] overflow-y-auto space-y-1">
         {available.length === 0 ? (
           <p className="text-xs text-[#755B4C] italic px-1 py-1">
-            {recipes.every((r) => excludeIds.has(r.recipe_id)) ? 'Everything in this category is already added' : 'No matches'}
+            {recipes.every((r) => excludeIds.has(r.recipe_id) || selectedAmounts?.has(r.recipe_id))
+              ? 'Everything in this category is already added'
+              : 'No matches'}
           </p>
         ) : (
-          available.map((r) => (
-            <button
-              key={r.recipe_id}
-              onClick={() => onAdd(r)}
-              className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-[#F1EAE0] transition"
-            >
-              <Plus className="h-3 w-3 text-[#2E527F] flex-shrink-0 mt-[3px]" />
-              <span className="flex-1 min-w-0">
-                <span className="flex items-center gap-1.5">
-                  <p className="font-medium text-[#4B2B1D] truncate text-xs">{r.name}</p>
-                  {r.supplierName && (
-                    <span className="shrink-0 rounded-full bg-[#F1EAE0] px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">{r.supplierName}</span>
-                  )}
+          available.map((r) => {
+            const amount = selectedAmounts?.get(r.recipe_id)
+            if (amount != null) {
+              return (
+                <div key={r.recipe_id} className="flex items-center gap-2 rounded-md bg-[#EAF0F7] px-2 py-1.5">
+                  <button
+                    onClick={() => onRemoveSelected?.(r.recipe_id)}
+                    className="flex-shrink-0 text-[#2E527F] hover:text-[#D62F3D] transition"
+                    aria-label={`Remove ${r.name}`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                  <span className="flex-1 min-w-0">
+                    <span className="flex items-center gap-1.5">
+                      <p className="font-medium text-[#4B2B1D] truncate text-xs">{r.name}</p>
+                      {r.supplierName && (
+                        <span className="shrink-0 rounded-full bg-white px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">{r.supplierName}</span>
+                      )}
+                    </span>
+                    {selectedMacros?.get(r.recipe_id) && (
+                      <p className="text-[10.5px] text-[#2E527F] truncate">{selectedMacros.get(r.recipe_id)}</p>
+                    )}
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={amount}
+                    onChange={(e) => onUpdateAmount?.(r.recipe_id, e.target.value)}
+                    className="w-14 h-7 flex-shrink-0 rounded border border-[#2E527F] bg-white px-1 text-xs text-center outline-none"
+                  />
+                  <span className="text-[10px] text-[#2E527F] flex-shrink-0 w-3">g</span>
+                </div>
+              )
+            }
+            return (
+              <button
+                key={r.recipe_id}
+                onClick={() => onAdd(r)}
+                className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-[#F1EAE0] transition"
+              >
+                <Plus className="h-3 w-3 text-[#2E527F] flex-shrink-0 mt-[3px]" />
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-center gap-1.5">
+                    <p className="font-medium text-[#4B2B1D] truncate text-xs">{r.name}</p>
+                    {r.supplierName && (
+                      <span className="shrink-0 rounded-full bg-[#F1EAE0] px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">{r.supplierName}</span>
+                    )}
+                  </span>
+                  <p className="text-[10.5px] text-[#2E527F] truncate">{pickerInfoLine(r)}</p>
                 </span>
-                <p className="text-[10.5px] text-[#2E527F] truncate">{pickerInfoLine(r)}</p>
-              </span>
-            </button>
-          ))
+              </button>
+            )
+          })
         )}
       </div>
     </div>
