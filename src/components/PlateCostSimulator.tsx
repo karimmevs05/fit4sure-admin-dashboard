@@ -186,11 +186,12 @@ export function PlateCostSimulator({
   // Sends this combo into a Weekly Recipe Plan block as one line item --
   // the hybrid path between "just testing a combo" and "assign to a client
   // order" above. Block state lives in the parent page, not here, so this
-  // is a callback rather than its own save call.
+  // is a callback rather than its own save call. Forecasted lb isn't
+  // required up front -- it defaults to 1 and stays editable on the
+  // block's own row afterward, same as any other recipe there.
   const addToBlock = () => {
     if (!onAddToBlock || plate.length === 0) return
-    const lb = parseFloat(blockLb) || 0
-    if (lb <= 0) return
+    const lb = parseFloat(blockLb) || 1
     onAddToBlock(blockTarget, {
       name: (plateName.trim() || autoName).slice(0, 120),
       lb,
@@ -326,7 +327,7 @@ export function PlateCostSimulator({
               )}
             </button>
             {addOpen && (
-              <div className="mt-1.5">
+              <div className="mt-1.5 space-y-1.5">
                 <RecipePicker
                   recipes={pickerRecipes}
                   excludeIds={plateIds}
@@ -338,6 +339,14 @@ export function PlateCostSimulator({
                     new Map(plate.map((p) => [p.recipe.recipe_id, macroLine(macrosAtGrams(p.recipe, parseFloat(p.servingSizeG) || 0))]))
                   }
                 />
+                {plate.length > 0 && (
+                  <button
+                    onClick={() => setAddOpen(false)}
+                    className="w-full flex items-center justify-center gap-1 rounded-lg bg-[#16A34A] py-1.5 text-xs font-bold text-white hover:bg-[#15873F] transition"
+                  >
+                    <Check className="h-3.5 w-3.5" /> Confirm Plate
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -504,13 +513,12 @@ export function PlateCostSimulator({
                         step="1"
                         value={blockLb}
                         onChange={(e) => setBlockLb(e.target.value)}
-                        placeholder="lb"
+                        placeholder="1 lb"
                         className="h-8 w-16 flex-shrink-0 rounded-md border border-[#E4D8C9] bg-white px-1.5 text-xs text-[#4B2B1D] outline-none focus:border-[#2E527F]"
                       />
                       <button
                         onClick={addToBlock}
-                        disabled={!blockLb.trim() || parseFloat(blockLb) <= 0}
-                        className="h-8 flex-1 flex-shrink-0 rounded-md bg-[#2E527F] px-2.5 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#24466E] transition"
+                        className="h-8 flex-1 flex-shrink-0 rounded-md bg-[#2E527F] px-2.5 text-xs font-bold text-white hover:bg-[#24466E] transition"
                       >
                         Add to Block
                       </button>
