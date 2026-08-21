@@ -75,6 +75,13 @@ export type DayNote = {
   updated_at?: string
 }
 
+export type MeetingHighlight = {
+  id: number
+  text: string
+  created_by: string | null
+  created_at: string
+}
+
 export type AttentionIcon = 'overdue' | 'critical' | 'decision'
 
 export type AttentionItem = {

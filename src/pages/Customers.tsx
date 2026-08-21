@@ -217,7 +217,7 @@ export default function CustomersPage() {
   if (loading) {
     return (
       <main className="flex-1 space-y-6 p-8">
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-8 text-center">
+        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-8 text-center">
           <p className="text-[#755B4C]">Loading customers...</p>
         </div>
       </main>
@@ -270,7 +270,7 @@ export default function CustomersPage() {
 
       {/* Search Bar */}
       <div className="relative">
-        <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-[#9A8774]" />
+        <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-[#2E527F]" />
         <input
           type="text"
           value={searchTerm}
@@ -288,7 +288,7 @@ export default function CustomersPage() {
       {activeTab === 'pipeline' ? (
         <div className="space-y-3">
           {filteredCustomers.length === 0 ? (
-            <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-8 text-center">
+            <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-8 text-center">
               <p className="text-[#755B4C]">No customers in pipeline</p>
             </div>
           ) : (
@@ -314,7 +314,7 @@ export default function CustomersPage() {
                     setSelectedCustomer(customer)
                     setShowCustomerDetail(true)
                   }}
-                  className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4 hover:shadow-md transition cursor-pointer"
+                  className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4 hover:shadow-md transition cursor-pointer"
                 >
                   <div className="flex items-start gap-3">
                     <input
@@ -405,7 +405,7 @@ export default function CustomersPage() {
       ) : activeTab === 'active' || activeTab === 'prospects' || activeTab === 'at_risk' ? (
         <div className="space-y-3">
           {filteredCustomers.length === 0 ? (
-            <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-8 text-center">
+            <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-8 text-center">
               <p className="text-[#755B4C]">No customers found</p>
             </div>
           ) : (
@@ -416,7 +416,7 @@ export default function CustomersPage() {
                   setSelectedCustomer(customer)
                   setShowCustomerDetail(true)
                 }}
-                className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4 hover:shadow-md transition cursor-pointer"
+                className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4 hover:shadow-md transition cursor-pointer"
               >
                 <div className="flex items-start gap-3">
                   <input
@@ -486,7 +486,7 @@ export default function CustomersPage() {
       ) : activeTab === 'insights' ? (
         <div className="grid gap-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+            <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-[#755B4C]">Total Customers</p>
@@ -496,7 +496,7 @@ export default function CustomersPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+            <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-[#755B4C]">Active</p>
@@ -508,7 +508,7 @@ export default function CustomersPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+            <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-[#755B4C]">Total Revenue</p>
@@ -520,7 +520,7 @@ export default function CustomersPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+            <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-[#755B4C]">Avg Customer Value</p>
@@ -534,7 +534,7 @@ export default function CustomersPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+            <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-[#755B4C]">Prospects (Never Ordered)</p>
@@ -546,7 +546,7 @@ export default function CustomersPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+            <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-[#755B4C]">Lost Prospects</p>
@@ -559,7 +559,7 @@ export default function CustomersPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+          <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
             <h3 className="text-lg font-extrabold text-[#4B2B1D] mb-4">Top Customers</h3>
             <div className="space-y-2">
               {customers.slice(0, 5).map((c, idx) => (
@@ -581,7 +581,7 @@ export default function CustomersPage() {
       ) : activeTab === 'activities' ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Templates -- read-only here, actually used from each customer's own detail modal */}
-          <div className="md:col-span-2 rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+          <div className="md:col-span-2 rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
             <h3 className="font-extrabold text-[#4B2B1D] mb-1 flex items-center gap-2">
               <MessageCircle className="h-5 w-5" /> Templates
             </h3>
@@ -600,10 +600,10 @@ export default function CustomersPage() {
           </div>
 
           {/* Real Activity Log, org-wide */}
-          <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+          <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
             <h3 className="font-extrabold text-[#4B2B1D] mb-4">Recent Activity</h3>
             <div className="space-y-3 text-sm max-h-96 overflow-y-auto">
-              {recentActivity.length === 0 && <p className="text-xs text-[#9A7E6F]">No activity logged yet.</p>}
+              {recentActivity.length === 0 && <p className="text-xs text-[#2E527F]">No activity logged yet.</p>}
               {recentActivity.map((a) => (
                 <div key={a.id} className="bg-white rounded-lg p-3">
                   <p className="font-bold text-[#4B2B1D] text-xs">
@@ -626,8 +626,8 @@ export default function CustomersPage() {
       {/* Add/Edit Customer Modal */}
       {showAddCustomer && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-[#FBF7F0] rounded-2xl border border-[#CDBDA8] max-w-3xl w-full my-8">
-            <div className="sticky top-0 bg-[#FBF7F0] border-b border-[#E4D8C9] p-6 flex items-center justify-between">
+          <div className="bg-[rgba(251,247,240,0.9)] rounded-2xl border border-[#2E527F] max-w-3xl w-full my-8">
+            <div className="sticky top-0 bg-[rgba(251,247,240,0.9)] border-b border-[#E4D8C9] p-6 flex items-center justify-between">
               <h2 className="text-2xl font-extrabold text-[#4B2B1D]">
                 {editingCustomer ? 'Edit Customer' : 'Add New Customer'}
               </h2>
@@ -915,8 +915,8 @@ export default function CustomersPage() {
       {/* Customer Detail Modal */}
       {showCustomerDetail && selectedCustomer && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-[#FBF7F0] rounded-2xl border border-[#CDBDA8] max-w-3xl w-full my-8">
-            <div className="sticky top-0 bg-[#FBF7F0] border-b border-[#E4D8C9] p-6 flex items-center justify-between">
+          <div className="bg-[rgba(251,247,240,0.9)] rounded-2xl border border-[#2E527F] max-w-3xl w-full my-8">
+            <div className="sticky top-0 bg-[rgba(251,247,240,0.9)] border-b border-[#E4D8C9] p-6 flex items-center justify-between">
               <h2 className="text-2xl font-extrabold text-[#4B2B1D]">{selectedCustomer.name}</h2>
               <button
                 onClick={() => setShowCustomerDetail(false)}

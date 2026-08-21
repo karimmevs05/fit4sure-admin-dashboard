@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Task, ActivityLogEntry, DayNote, Expense, StaffUser, Tag, Urgency } from './types'
+import type { Task, ActivityLogEntry, DayNote, Expense, StaffUser, Tag, Urgency, MeetingHighlight } from './types'
 
 function apiUrl() {
   return import.meta.env.VITE_API_BASE_URL
@@ -106,4 +106,23 @@ export async function fetchDayNote(date: string): Promise<DayNote> {
 export async function saveDayNote(date: string, note: string): Promise<DayNote> {
   const res = await axios.put(`${apiUrl()}/api/admin/launch-day-notes/${date}`, { note }, authConfig())
   return res.data.data
+}
+
+export async function fetchMeetingHighlights(): Promise<MeetingHighlight[]> {
+  const res = await axios.get(`${apiUrl()}/api/admin/launch-meeting-highlights`, authConfig())
+  return res.data.data
+}
+
+export async function addMeetingHighlight(text: string): Promise<MeetingHighlight> {
+  const res = await axios.post(`${apiUrl()}/api/admin/launch-meeting-highlights`, { text }, authConfig())
+  return res.data.data
+}
+
+export async function updateMeetingHighlight(id: number, text: string): Promise<MeetingHighlight> {
+  const res = await axios.patch(`${apiUrl()}/api/admin/launch-meeting-highlights/${id}`, { text }, authConfig())
+  return res.data.data
+}
+
+export async function deleteMeetingHighlight(id: number): Promise<void> {
+  await axios.delete(`${apiUrl()}/api/admin/launch-meeting-highlights/${id}`, authConfig())
 }

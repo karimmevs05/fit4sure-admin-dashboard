@@ -166,12 +166,12 @@ export function PlateCostSimulator() {
   }
 
   return (
-    <div className="rounded-xl border border-[#E4D8C9] bg-[#FBF7F0]">
+    <div className="rounded-xl border border-[#E4D8C9] bg-[rgba(251,247,240,0.9)]">
       <button onClick={() => setExpanded((v) => !v)} className="flex w-full items-center justify-between px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <Calculator className="h-3.5 w-3.5 text-[#9A8774]" />
+          <Calculator className="h-3.5 w-3.5 text-[#2E527F]" />
           <span className="text-xs font-bold text-[#4B2B1D]">Custom Plate Builder</span>
-          <span className="hidden sm:inline text-[11px] text-[#9A8774]">test a combo before committing to a plate</span>
+          <span className="hidden sm:inline text-[11px] text-[#2E527F]">test a combo before committing to a plate</span>
         </div>
         <div className="flex items-center gap-2.5">
           {plate.length > 0 && (
@@ -179,7 +179,7 @@ export function PlateCostSimulator() {
               {plate.length} recipe{plate.length === 1 ? '' : 's'} · ${(totals.cost_cents / 100).toFixed(2)}
             </span>
           )}
-          {expanded ? <ChevronUp className="h-3.5 w-3.5 text-[#9A8774]" /> : <ChevronDown className="h-3.5 w-3.5 text-[#9A8774]" />}
+          {expanded ? <ChevronUp className="h-3.5 w-3.5 text-[#2E527F]" /> : <ChevronDown className="h-3.5 w-3.5 text-[#2E527F]" />}
         </div>
       </button>
 
@@ -227,7 +227,7 @@ export function PlateCostSimulator() {
                 return (
                   <div key={p.recipe.recipe_id} className="flex items-center gap-2 px-3 py-1.5 border-t border-[#F0EAE0]">
                     <span className="flex-1 truncate text-xs font-medium text-[#4B2B1D]">{p.recipe.name}</span>
-                    <span className="hidden md:inline text-[11px] text-[#9A8774] truncate">{macroLine(m)}</span>
+                    <span className="hidden md:inline text-[11px] text-[#2E527F] truncate">{macroLine(m)}</span>
                     <input
                       type="number"
                       min="1"
@@ -236,7 +236,7 @@ export function PlateCostSimulator() {
                       onChange={(e) => updateServingSize(p.recipe.recipe_id, e.target.value)}
                       className="w-14 h-6 rounded border border-[#D8CDBE] bg-white px-1.5 text-[11px] text-center outline-none flex-shrink-0"
                     />
-                    <span className="text-[10px] text-[#9A8774] flex-shrink-0">g</span>
+                    <span className="text-[10px] text-[#2E527F] flex-shrink-0">g</span>
                     <span className="w-14 text-right text-xs font-bold text-[#2E527F] flex-shrink-0">${(m.cost_cents / 100).toFixed(2)}</span>
                     <button onClick={() => removeRecipe(p.recipe.recipe_id)} className="text-[#B0242F] hover:text-[#D62F3D] flex-shrink-0">
                       <X className="h-3.5 w-3.5" />
@@ -259,7 +259,7 @@ export function PlateCostSimulator() {
                     placeholder={autoName || 'Plate name'}
                     className="h-7 flex-1 min-w-0 rounded-md border border-[#D8CDBE] bg-white px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#3E6594]"
                   />
-                  <span className="text-xs text-[#9A8774] flex-shrink-0">$</span>
+                  <span className="text-xs text-[#2E527F] flex-shrink-0">$</span>
                   <input
                     type="number"
                     min="0"
@@ -319,12 +319,12 @@ export function PlateCostSimulator() {
           )}
 
           <div>
-            <p className="text-[11px] text-[#9A8774] mb-1.5">
+            <p className="text-[11px] text-[#2E527F] mb-1.5">
               Select a recipe to add{defaultServingSizeG && ` — shown at ${defaultServingSizeG}g`}
             </p>
             <div className="max-h-[260px] overflow-y-auto rounded-lg border border-[#E4D8C9] bg-white">
               {filteredRecipes.length === 0 ? (
-                <p className="p-3 text-xs text-[#9A8774]">No recipes in this category</p>
+                <p className="p-3 text-xs text-[#2E527F]">No recipes in this category</p>
               ) : (
                 filteredRecipes.map((recipe, idx) => {
                   const requestedG = parseFloat(defaultServingSizeG)
@@ -341,8 +341,8 @@ export function PlateCostSimulator() {
                       }`}
                     >
                       <span className="text-xs font-medium text-[#4B2B1D] truncate">{recipe.name}</span>
-                      <span className="text-[10px] uppercase text-[#9A8774] flex-shrink-0">{CATEGORY_LABELS[recipe.category] || recipe.category}</span>
-                      <span className="flex-1 text-[11px] text-[#9A8774] truncate text-right">
+                      <span className="text-[10px] uppercase text-[#2E527F] flex-shrink-0">{CATEGORY_LABELS[recipe.category] || recipe.category}</span>
+                      <span className="flex-1 text-[11px] text-[#2E527F] truncate text-right">
                         {preview ? macroLine(preview) : ''}
                       </span>
                       <span className="w-16 text-right text-xs font-bold text-[#2E527F] flex-shrink-0">

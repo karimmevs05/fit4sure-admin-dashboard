@@ -36,9 +36,9 @@ export function Navigation() {
   }
 
   return (
-    <aside className="fixed left-0 top-0 bottom-0 bg-[#E9DFD0] border-r border-[#D8CDBE] flex flex-col" style={{ width: '256px', minWidth: '256px', zIndex: 40 }}>
+    <aside className="fixed left-0 top-0 bottom-0 border-r flex flex-col" style={{ width: '256px', minWidth: '256px', zIndex: 40, background: 'rgba(233, 223, 208, 0.9)', borderColor: '#2E527F' }}>
       {/* Logo/Branding */}
-      <div className="p-4 border-b border-[#D8CDBE]">
+      <div className="p-4 border-b" style={{ borderColor: '#2E527F' }}>
         <img src="/preview/new-logo.png" alt="Fit For Sure" className="h-28 w-auto mx-auto" />
       </div>
 
@@ -69,7 +69,7 @@ export function Navigation() {
       </nav>
 
       {/* Logout Button */}
-      <div className="p-4 border-t border-[#D8CDBE]">
+      <div className="p-4 border-t" style={{ borderColor: '#2E527F' }}>
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 w-full px-4 py-3 rounded-lg text-[#4B2B1D] hover:bg-[#D8CDBE] transition-colors"

@@ -1453,7 +1453,7 @@ function FinancialsPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 text-xs text-[#9A7E6F] -mt-2">
+      <div className="flex items-center gap-2 text-xs text-[#2E527F] -mt-2">
         <RefreshCw className="h-3.5 w-3.5" />
         <span>Synced with orders &amp; the expense ledger · {lastSyncedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
         <span className="opacity-50">·</span>
@@ -1471,7 +1471,7 @@ function FinancialsPage() {
             key={id}
             onClick={() => { setActiveTab(id); setFilterChip(null) }}
             className={`px-4 py-2.5 text-sm font-bold transition border-b-2 -mb-px ${
-              activeTab === id ? 'border-[#2E527F] text-[#2E527F]' : 'border-transparent text-[#9A7E6F] hover:text-[#4B2B1D]'
+              activeTab === id ? 'border-[#2E527F] text-[#2E527F]' : 'border-transparent text-[#2E527F] hover:text-[#4B2B1D]'
             }`}
           >
             {label}
@@ -1503,7 +1503,7 @@ function FinancialsPage() {
                       <p className={`mt-1 text-xs font-bold flex items-center gap-1 ${compare && compare.grossRevenuePct >= 0 ? 'text-[#16813D]' : 'text-[#D62F3D]'}`}>
                         {compare && compare.grossRevenuePct >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
                         {compare ? `${compare.grossRevenuePct >= 0 ? '+' : ''}${compare.grossRevenuePct}%` : ''}
-                        <span className="font-normal text-[#9A7E6F]">{compareLabel}</span>
+                        <span className="font-normal text-[#2E527F]">{compareLabel}</span>
                       </p>
                     </div>
                     <div className="rounded-lg bg-[#EAF0F7] p-3"><DollarSign className="h-5 w-5 text-[#2E527F]" /></div>
@@ -1518,7 +1518,7 @@ function FinancialsPage() {
                       <p className={`mt-1 text-xs font-bold flex items-center gap-1 ${compare && compare.totalExpensesPct <= 0 ? 'text-[#16813D]' : 'text-[#D62F3D]'}`}>
                         {compare && compare.totalExpensesPct <= 0 ? <TrendingDown className="h-3 w-3" /> : <TrendingUp className="h-3 w-3" />}
                         {compare ? `${compare.totalExpensesPct >= 0 ? '+' : ''}${compare.totalExpensesPct}%` : ''}
-                        <span className="font-normal text-[#9A7E6F]">{compareLabel}</span>
+                        <span className="font-normal text-[#2E527F]">{compareLabel}</span>
                       </p>
                     </div>
                     <div className="rounded-lg bg-[#FBEEE3] p-3"><Package className="h-5 w-5 text-[#C9692E]" /></div>
@@ -1541,7 +1541,7 @@ function FinancialsPage() {
                     <div>
                       <p className="text-sm text-[#755B4C]">Outstanding Balance</p>
                       <p className="mt-2 text-2xl font-extrabold text-[#4B2B1D]">${overview.outstandingBalance.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
-                      <p className="mt-1 text-xs text-[#9A7E6F]">{overview.outstandingCount} order{overview.outstandingCount === 1 ? '' : 's'} not yet marked paid</p>
+                      <p className="mt-1 text-xs text-[#2E527F]">{overview.outstandingCount} order{overview.outstandingCount === 1 ? '' : 's'} not yet marked paid</p>
                     </div>
                     <div className="rounded-lg bg-[#FBEBE8] p-3"><AlertTriangle className="h-5 w-5 text-[#B4432F]" /></div>
                   </div>
@@ -1552,7 +1552,7 @@ function FinancialsPage() {
                 <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6 flex flex-col">
                   <div className="mb-3">
                     <h3 className="text-base font-extrabold text-[#4B2B1D]">Revenue vs. Expenses — last 6 months</h3>
-                    <p className="text-xs text-[#9A7E6F]">Computed from real orders and the expense ledger</p>
+                    <p className="text-xs text-[#2E527F]">Computed from real orders and the expense ledger</p>
                   </div>
                   {trend.length === 0 ? (
                     <p className="text-sm text-[#755B4C]">No data yet.</p>
@@ -1560,15 +1560,15 @@ function FinancialsPage() {
                     <>
                       <div className="flex gap-0 mb-1.5">
                         <div className="flex-1 pr-4">
-                          <p className="text-[11px] text-[#9A7E6F] font-semibold">Avg. net margin</p>
+                          <p className="text-[11px] text-[#2E527F] font-semibold">Avg. net margin</p>
                           <p className="text-base font-extrabold text-[#4B2B1D]">{avgNetMarginPct}%</p>
                         </div>
                         <div className="flex-1 px-4 border-l border-[#E8DCC8]">
-                          <p className="text-[11px] text-[#9A7E6F] font-semibold">Best month</p>
+                          <p className="text-[11px] text-[#2E527F] font-semibold">Best month</p>
                           <p className="text-base font-extrabold text-[#4B2B1D]">{bestMonth ? `${monthShort(bestMonth.month)} · $${bestMonth.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—'}</p>
                         </div>
                         <div className="flex-1 pl-4 border-l border-[#E8DCC8]">
-                          <p className="text-[11px] text-[#9A7E6F] font-semibold">Trend</p>
+                          <p className="text-[11px] text-[#2E527F] font-semibold">Trend</p>
                           <p className={`text-base font-extrabold ${trendPct >= 0 ? 'text-[#2F7A4D]' : 'text-[#B4432F]'}`}>{trendPct >= 0 ? '▲' : '▼'} {Math.abs(trendPct)}% MoM</p>
                         </div>
                       </div>
@@ -1617,7 +1617,7 @@ function FinancialsPage() {
                 <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
                   <div className="mb-3">
                     <h3 className="text-base font-extrabold text-[#4B2B1D]">Pending Balances</h3>
-                    <p className="text-xs text-[#9A7E6F]">{pendingBalances.length} customer{pendingBalances.length === 1 ? '' : 's'} owe money</p>
+                    <p className="text-xs text-[#2E527F]">{pendingBalances.length} customer{pendingBalances.length === 1 ? '' : 's'} owe money</p>
                   </div>
                   <div className="rounded-xl bg-[#EAF0F7] text-[#2E527F] px-3.5 py-3 text-xs font-semibold mb-3.5 flex items-center gap-2.5 flex-wrap">
                     <LinkIcon className="h-3.5 w-3.5 flex-shrink-0" />
@@ -1630,7 +1630,7 @@ function FinancialsPage() {
                   {pendingBalancesLoading ? (
                     <p className="text-sm text-[#755B4C]">Loading...</p>
                   ) : pendingBalances.length === 0 ? (
-                    <p className="text-sm text-[#9A7E6F]">Nothing outstanding right now.</p>
+                    <p className="text-sm text-[#2E527F]">Nothing outstanding right now.</p>
                   ) : (
                     <>
                       <div className="space-y-0.5 max-h-[280px] overflow-y-auto">
@@ -1642,7 +1642,7 @@ function FinancialsPage() {
                               <div className="h-8 w-8 rounded-full bg-[#EAF0F7] text-[#2E527F] flex items-center justify-center font-extrabold text-xs flex-shrink-0">{initials}</div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-bold text-[#4B2B1D] truncate">{b.customer_name}</p>
-                                <p className="text-xs text-[#9A7E6F]">{b.days_outstanding} day{b.days_outstanding === 1 ? '' : 's'} outstanding</p>
+                                <p className="text-xs text-[#2E527F]">{b.days_outstanding} day{b.days_outstanding === 1 ? '' : 's'} outstanding</p>
                               </div>
                               <div className="text-right flex-shrink-0">
                                 <p className="text-sm font-extrabold text-[#4B2B1D]">${b.total_price.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
@@ -1683,7 +1683,7 @@ function FinancialsPage() {
                     <div>
                       <p className="text-sm text-[#755B4C]">Paid this month</p>
                       <p className="mt-2 text-2xl font-extrabold text-[#4B2B1D]">${revenueData.summary.paidTotal.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
-                      <p className="mt-1 text-xs text-[#9A7E6F]">{revenueData.summary.paidCount} order{revenueData.summary.paidCount === 1 ? '' : 's'}</p>
+                      <p className="mt-1 text-xs text-[#2E527F]">{revenueData.summary.paidCount} order{revenueData.summary.paidCount === 1 ? '' : 's'}</p>
                     </div>
                     <div className="rounded-lg bg-[#EAF4EC] p-3"><Check className="h-5 w-5 text-[#2F7A4D]" /></div>
                   </div>
@@ -1693,7 +1693,7 @@ function FinancialsPage() {
                     <div>
                       <p className="text-sm text-[#755B4C]">Outstanding (all time)</p>
                       <p className="mt-2 text-2xl font-extrabold text-[#4B2B1D]">${revenueData.summary.outstandingTotal.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
-                      <p className="mt-1 text-xs text-[#9A7E6F]">{revenueData.summary.outstandingCount} order{revenueData.summary.outstandingCount === 1 ? '' : 's'} not yet marked paid</p>
+                      <p className="mt-1 text-xs text-[#2E527F]">{revenueData.summary.outstandingCount} order{revenueData.summary.outstandingCount === 1 ? '' : 's'} not yet marked paid</p>
                     </div>
                     <div className="rounded-lg bg-[#FBEBE8] p-3"><AlertTriangle className="h-5 w-5 text-[#B4432F]" /></div>
                   </div>
@@ -1701,7 +1701,7 @@ function FinancialsPage() {
                 <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
                   <p className="text-sm text-[#755B4C] mb-2.5">By payment method</p>
                   {revenueData.summary.byMethod.length === 0 ? (
-                    <p className="text-xs text-[#9A7E6F]">No paid orders with a method recorded this month.</p>
+                    <p className="text-xs text-[#2E527F]">No paid orders with a method recorded this month.</p>
                   ) : (
                     <div className="space-y-1.5">
                       {revenueData.summary.byMethod.map((m) => (
@@ -1718,10 +1718,10 @@ function FinancialsPage() {
               <div className="rounded-2xl border border-[#E8DCC8] bg-white p-6">
                 <div className="mb-3">
                   <h3 className="text-base font-extrabold text-[#4B2B1D]">Transactions by client — {monthLong(selectedMonth)}</h3>
-                  <p className="text-xs text-[#9A7E6F]">Every order this month, grouped by client, straight from the real ledger</p>
+                  <p className="text-xs text-[#2E527F]">Every order this month, grouped by client, straight from the real ledger</p>
                 </div>
                 {revenueData.transactions.length === 0 ? (
-                  <p className="text-sm text-[#9A7E6F]">No orders this month.</p>
+                  <p className="text-sm text-[#2E527F]">No orders this month.</p>
                 ) : (
                   (() => {
                     const clientMap = new Map<number, Transaction[]>()
@@ -1755,7 +1755,7 @@ function FinancialsPage() {
                             <div key={g.customerId}>
                               <div className="flex items-center gap-3 px-3 py-2.5 hover:bg-[#FDFBF7]">
                                 <button onClick={() => toggleClientGroupExpanded(String(g.customerId))} className="flex-1 flex items-center gap-2 text-left min-w-0">
-                                  {expanded ? <ChevronUp className="h-3.5 w-3.5 text-[#9A7E6F] flex-shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-[#9A7E6F] flex-shrink-0" />}
+                                  {expanded ? <ChevronUp className="h-3.5 w-3.5 text-[#2E527F] flex-shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-[#2E527F] flex-shrink-0" />}
                                   <span className="font-semibold text-[#4B2B1D] truncate">{g.customerName}</span>
                                 </button>
                                 <span className="w-20 text-center text-xs text-[#755B4C]">{g.txs.length}</span>
@@ -1816,7 +1816,7 @@ function FinancialsPage() {
       <div className="space-y-4">
         {/* Receipt Scanner */}
         <Section id="receiptScanner" title="Add Expense" expandedSections={expandedSections} toggleSection={toggleSection}>
-          <p className="text-xs text-[#9A7E6F] -mt-2 mb-4">One entry, one ledger — however you capture it, it lands in the same place</p>
+          <p className="text-xs text-[#2E527F] -mt-2 mb-4">One entry, one ledger — however you capture it, it lands in the same place</p>
           {/* Method chooser -- Physical Receipt and Online Order retired per
               the rebuild spec; Scan Receipt / Quick Entry supersede them. */}
           <div className="flex gap-2.5 mb-4 flex-wrap">
@@ -1904,7 +1904,7 @@ function FinancialsPage() {
                   </thead>
                   <tbody>
                     {manualItems.map((item, idx) => (
-                      <tr key={idx} className="border-t border-[#E8DCC8] hover:bg-[#FBF7F0]">
+                      <tr key={idx} className="border-t border-[#E8DCC8] hover:bg-[rgba(251,247,240,0.9)]">
                         <td className="border-r border-[#E8DCC8] px-3 py-2">
                           <input
                             type="text"
@@ -2092,14 +2092,14 @@ function FinancialsPage() {
                       <div className="flex items-start justify-between mb-3">
                         <div>
                           <p className="text-sm font-bold text-[#4B2B1D]">{receipt.vendor}</p>
-                          <p className="text-xs text-[#9A7E6F]">{receipt.fileName}{receipt.receiptTotal != null && ` · $${receipt.receiptTotal.toFixed(2)}`}</p>
+                          <p className="text-xs text-[#2E527F]">{receipt.fileName}{receipt.receiptTotal != null && ` · $${receipt.receiptTotal.toFixed(2)}`}</p>
                           {receipt.lowConfidence && (
                             <p className="text-xs font-semibold text-[#D62F3D] mt-1">⚠ Item total doesn't match receipt total — double-check amounts</p>
                           )}
                         </div>
                         <button
                           onClick={() => discardPendingReceipt(ri)}
-                          className="text-xs font-semibold text-[#9A7E6F] hover:text-[#D62F3D]"
+                          className="text-xs font-semibold text-[#2E527F] hover:text-[#D62F3D]"
                         >
                           Discard
                         </button>
@@ -2110,11 +2110,11 @@ function FinancialsPage() {
                           <div key={ii} className="rounded-lg bg-white border border-[#E4D8C9] p-2 space-y-2">
                             <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
                               <div>
-                                <p className="text-[10px] text-[#9A7E6F]">Parsed as</p>
+                                <p className="text-[10px] text-[#2E527F]">Parsed as</p>
                                 <p className="text-xs text-[#755B4C] truncate">{item.productName}</p>
                               </div>
                               <div>
-                                <p className="text-[10px] text-[#9A7E6F]">Display name (inventory)</p>
+                                <p className="text-[10px] text-[#2E527F]">Display name (inventory)</p>
                                 <input
                                   value={item.displayName}
                                   onChange={(e) => updatePendingItemDisplayName(ri, ii, e.target.value)}
@@ -2125,7 +2125,7 @@ function FinancialsPage() {
                             </div>
                             <div className="grid grid-cols-[1fr_1.2fr_1fr] gap-2 items-end">
                               <div>
-                                <p className="text-[10px] text-[#9A7E6F]" title="How many discrete units this price covers">Item count (@ price above)</p>
+                                <p className="text-[10px] text-[#2E527F]" title="How many discrete units this price covers">Item count (@ price above)</p>
                                 <input
                                   type="number"
                                   min={1}
@@ -2148,7 +2148,7 @@ function FinancialsPage() {
                                 />
                               </div>
                               <div>
-                                <p className="text-[10px] text-[#9A7E6F]">Cost category</p>
+                                <p className="text-[10px] text-[#2E527F]">Cost category</p>
                                 <select
                                   value={item.category}
                                   onChange={(e) => updatePendingItemField(ri, ii, 'category', e.target.value)}
@@ -2187,7 +2187,7 @@ function FinancialsPage() {
                 </div>
               )}
 
-              <div className="text-xs text-[#9A7E6F] bg-[#FBF7F0] p-3 rounded">
+              <div className="text-xs text-[#2E527F] bg-[rgba(251,247,240,0.9)] p-3 rounded">
                 <p><strong>📁 Folder name:</strong> "Fit4Sure Receipts"</p>
                 <p><strong>✅ Confirmed receipts:</strong> Automatically moved to "Fit4Sure Receipts/Processed"</p>
               </div>
@@ -2210,7 +2210,7 @@ function FinancialsPage() {
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleFileDrop}
                 onClick={() => !isProcessing && fileInputRef.current?.click()}
-                className={`border-2 border-dashed border-[#8B6F47] rounded-lg p-8 text-center cursor-pointer hover:bg-[#FBF7F0] transition ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                className={`border-2 border-dashed border-[#8B6F47] rounded-lg p-8 text-center cursor-pointer hover:bg-[rgba(251,247,240,0.9)] transition ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <div className="flex flex-col items-center gap-3">
                   {isProcessing ? (
@@ -2237,7 +2237,7 @@ function FinancialsPage() {
             <div className="space-y-4">
               {!showScreenshotForm ? (
                 <>
-                  <div className="bg-[#FBF7F0] p-4 rounded-lg border border-[#E8DCC8]">
+                  <div className="bg-[rgba(251,247,240,0.9)] p-4 rounded-lg border border-[#E8DCC8]">
                     <p className="text-sm text-[#755B4C]"><strong>📧 Online Orders:</strong> Upload screenshot → Manually enter items below with prices and quantities</p>
                   </div>
 
@@ -2252,7 +2252,7 @@ function FinancialsPage() {
 
                   <div
                     onClick={() => !isProcessing && screenshotInputRef.current?.click()}
-                    className={`border-2 border-dashed border-[#8B6F47] rounded-lg p-8 text-center cursor-pointer hover:bg-[#FBF7F0] transition ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`border-2 border-dashed border-[#8B6F47] rounded-lg p-8 text-center cursor-pointer hover:bg-[rgba(251,247,240,0.9)] transition ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     <div className="flex flex-col items-center gap-3">
                       {isProcessing ? (
@@ -2457,7 +2457,7 @@ function FinancialsPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1">
                         <p className="font-semibold text-[#4B2B1D] text-sm text-gray-600 italic">{item.description}</p>
-                        <span className="text-xs text-[#9A7E6F] block">OCR confidence: {Math.round(item.confidence * 100)}%</span>
+                        <span className="text-xs text-[#2E527F] block">OCR confidence: {Math.round(item.confidence * 100)}%</span>
                       </div>
                       <div className="text-right">
                         {editingPriceIdx === idx ? (
@@ -2768,7 +2768,7 @@ function FinancialsPage() {
                                   <span className="w-[13px]" />
                                 )}
                                 <button onClick={() => toggleReceiptGroupExpanded(g.key)} className="flex-1 flex items-center gap-2 text-left min-w-0">
-                                  {expanded ? <ChevronUp className="h-3.5 w-3.5 text-[#9A7E6F] flex-shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-[#9A7E6F] flex-shrink-0" />}
+                                  {expanded ? <ChevronUp className="h-3.5 w-3.5 text-[#2E527F] flex-shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-[#2E527F] flex-shrink-0" />}
                                   <span className="text-xs text-[#755B4C] whitespace-nowrap">{new Date(g.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</span>
                                   <span className="font-semibold text-[#4B2B1D] truncate">{g.vendor}</span>
                                   <span className="inline-flex items-center gap-1 rounded-full bg-[#F0ECE3] text-[#755B4C] px-2 py-0.5 text-[11px] font-bold flex-shrink-0">{sourceIcon}{sourceLabel}</span>
@@ -2810,13 +2810,13 @@ function FinancialsPage() {
                                           <td className="py-1.5 pr-3 text-[#4B2B1D]">{item.description || item.vendor}</td>
                                           <td className="py-1.5 pr-3 text-[#755B4C]">{categoryColors[item.category]?.label || item.category}</td>
                                           <td className="py-1.5 pr-3 text-right font-bold text-[#4B2B1D] whitespace-nowrap">${item.amount.toFixed(2)}</td>
-                                          <td className="py-1.5 text-[#9A7E6F] capitalize whitespace-nowrap">{item.status}</td>
+                                          <td className="py-1.5 text-[#2E527F] capitalize whitespace-nowrap">{item.status}</td>
                                         </tr>
                                       ))}
                                     </tbody>
                                   </table>
                                   {g.items[0]?.approvedByName && g.items[0]?.approvedAt && (
-                                    <p className="mt-1.5 text-[10px] text-[#9A7E6F]">by {g.items[0].approvedByName} · {new Date(g.items[0].approvedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                                    <p className="mt-1.5 text-[10px] text-[#2E527F]">by {g.items[0].approvedByName} · {new Date(g.items[0].approvedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
                                   )}
                                 </div>
                               )}
@@ -2876,7 +2876,7 @@ function FinancialsPage() {
                                   View
                                 </a>
                               ) : (
-                                <span className="text-xs text-[#9A7E6F]">No image</span>
+                                <span className="text-xs text-[#2E527F]">No image</span>
                               )}
                             </td>
                           </tr>
@@ -2970,7 +2970,7 @@ function FinancialsPage() {
                 return (
                   <div key={r.id} className={`rounded-2xl border bg-white p-5 ${idx === 0 ? 'border-[#2E527F]' : 'border-[#E8DCC8]'}`}>
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold uppercase tracking-wide text-[#9A7E6F]">
+                      <p className="text-xs font-bold uppercase tracking-wide text-[#2E527F]">
                         {new Date(r.period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })} – {new Date(r.period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
                       </p>
                       {idx === 0 && <span className="rounded-full bg-[#EAF0F7] text-[#2E527F] px-2 py-0.5 text-[10px] font-bold">LATEST</span>}
@@ -2978,12 +2978,12 @@ function FinancialsPage() {
                     <p className="mt-1 text-base font-extrabold text-[#4B2B1D]">Semi-monthly report</p>
                     <div className="mt-3 flex gap-8">
                       <div>
-                        <p className="text-[11px] text-[#9A7E6F]">Net profit</p>
+                        <p className="text-[11px] text-[#2E527F]">Net profit</p>
                         <p className="text-lg font-extrabold text-[#4B2B1D]">${netProfit.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
                       </div>
                       {deltaPct !== null && (
                         <div>
-                          <p className="text-[11px] text-[#9A7E6F]">vs. prior period</p>
+                          <p className="text-[11px] text-[#2E527F]">vs. prior period</p>
                           <p className={`text-lg font-extrabold ${deltaPct >= 0 ? 'text-[#2F7A4D]' : 'text-[#B4432F]'}`}>{deltaPct >= 0 ? '▲' : '▼'} {Math.abs(deltaPct)}%</p>
                         </div>
                       )}
@@ -3007,7 +3007,7 @@ function FinancialsPage() {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h2 className="text-lg font-extrabold text-[#4B2B1D] flex items-center gap-2"><FileText className="h-4 w-4" />Semi-monthly report</h2>
-                  <p className="text-xs text-[#9A7E6F] mt-0.5">
+                  <p className="text-xs text-[#2E527F] mt-0.5">
                     {new Date(viewingReport.period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })} – {new Date(viewingReport.period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
                   </p>
                 </div>
@@ -3015,15 +3015,15 @@ function FinancialsPage() {
               </div>
               <div className="grid grid-cols-3 gap-3 mb-4">
                 <div className="rounded-lg bg-[#FDFBF7] border border-[#E8DCC8] p-3">
-                  <p className="text-[11px] text-[#9A7E6F]">Gross Revenue</p>
+                  <p className="text-[11px] text-[#2E527F]">Gross Revenue</p>
                   <p className="text-base font-extrabold text-[#4B2B1D]">${(viewingReport.gross_revenue_cents / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
                 </div>
                 <div className="rounded-lg bg-[#FDFBF7] border border-[#E8DCC8] p-3">
-                  <p className="text-[11px] text-[#9A7E6F]">Expenses</p>
+                  <p className="text-[11px] text-[#2E527F]">Expenses</p>
                   <p className="text-base font-extrabold text-[#4B2B1D]">${(viewingReport.total_expenses_cents / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
                 </div>
                 <div className="rounded-lg bg-[#FDFBF7] border border-[#E8DCC8] p-3">
-                  <p className="text-[11px] text-[#9A7E6F]">Net Profit</p>
+                  <p className="text-[11px] text-[#2E527F]">Net Profit</p>
                   <p className="text-base font-extrabold text-[#2F7A4D]">${(viewingReport.net_profit_cents / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
                 </div>
               </div>

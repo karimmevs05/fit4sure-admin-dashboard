@@ -9,7 +9,18 @@ import * as api from './api'
 const TAGS: Tag[] = ['operations', 'admin', 'marketing', 'sales']
 
 function selectCls() {
-  return 'text-[13px] px-[10px] py-[7px] rounded-xl border font-[inherit]'
+  return 'text-[13px] pl-[10px] pr-6 py-[7px] rounded-xl border font-[inherit] appearance-none bg-no-repeat'
+}
+
+const SELECT_ARROW = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23755B4C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")"
+
+function selectArrowStyle(): React.CSSProperties {
+  return {
+    backgroundImage: SELECT_ARROW,
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'right 10px center',
+    backgroundSize: '10px 6px',
+  }
 }
 
 export function ListView({ tasks, today, investor, roster, currentUserId, onChanged, onDeleted, onCreated }: {
@@ -66,30 +77,30 @@ export function ListView({ tasks, today, investor, roster, currentUserId, onChan
             />
           </div>
           <div className="flex gap-2 mb-4 flex-wrap items-center">
-            <select className={selectCls()} style={{ borderColor: COLORS.cardBorder, background: COLORS.cardBg, color: COLORS.textSecondary }} value={fOwner} onChange={(e) => setFOwner(e.target.value)}>
+            <select className={selectCls()} style={{ borderColor: COLORS.cardBorder, backgroundColor: COLORS.cardBg, color: COLORS.textSecondary, ...selectArrowStyle() }} value={fOwner} onChange={(e) => setFOwner(e.target.value)}>
               <option value="">Owner: all</option>
               {roster.map((u) => <option key={u.user_id} value={u.user_id}>{u.display_name}</option>)}
             </select>
-            <select className={selectCls()} style={{ borderColor: COLORS.cardBorder, background: COLORS.cardBg, color: COLORS.textSecondary }} value={fUrgency} onChange={(e) => setFUrgency(e.target.value)}>
+            <select className={selectCls()} style={{ borderColor: COLORS.cardBorder, backgroundColor: COLORS.cardBg, color: COLORS.textSecondary, ...selectArrowStyle() }} value={fUrgency} onChange={(e) => setFUrgency(e.target.value)}>
               <option value="">Urgency: all</option>
               <option value="critical">Critical</option>
               <option value="workon">To work on</option>
               <option value="eventually">Eventually</option>
             </select>
-            <select className={selectCls()} style={{ borderColor: COLORS.cardBorder, background: COLORS.cardBg, color: COLORS.textSecondary }} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+            <select className={selectCls()} style={{ borderColor: COLORS.cardBorder, backgroundColor: COLORS.cardBg, color: COLORS.textSecondary, ...selectArrowStyle() }} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
               <option value="">Status: all</option>
               <option value="done">Done</option>
               <option value="open">Open</option>
               <option value="needs-decision">Needs decision</option>
             </select>
-            <select className={selectCls()} style={{ borderColor: COLORS.cardBorder, background: COLORS.cardBg, color: COLORS.textSecondary }} value={fDue} onChange={(e) => setFDue(e.target.value)}>
+            <select className={selectCls()} style={{ borderColor: COLORS.cardBorder, backgroundColor: COLORS.cardBg, color: COLORS.textSecondary, ...selectArrowStyle() }} value={fDue} onChange={(e) => setFDue(e.target.value)}>
               <option value="">Due: all</option>
               <option value="overdue">Overdue</option>
               <option value="thisweek">This week</option>
               <option value="later">Later</option>
               <option value="done">Done</option>
             </select>
-            <select className={selectCls()} style={{ borderColor: COLORS.cardBorder, background: COLORS.cardBg, color: COLORS.textSecondary }} value={sort} onChange={(e) => setSort(e.target.value)}>
+            <select className={selectCls()} style={{ borderColor: COLORS.cardBorder, backgroundColor: COLORS.cardBg, color: COLORS.textSecondary, ...selectArrowStyle() }} value={sort} onChange={(e) => setSort(e.target.value)}>
               <option value="">Sort: default</option>
               <option value="due">Due date</option>
               <option value="cost">Cost (high to low)</option>

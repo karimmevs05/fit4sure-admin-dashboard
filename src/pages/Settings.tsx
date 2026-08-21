@@ -75,7 +75,7 @@ export default function SettingsPage() {
       ) : (
         <div className="space-y-3">
           {users.map((u) => (
-            <div key={u.user_id} className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+            <div key={u.user_id} className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
               {editingId === u.user_id ? (
                 <EditUserForm
                   user={u}
@@ -104,7 +104,7 @@ export default function SettingsPage() {
                     <div>
                       <div className="font-bold text-[#4B2B1D] flex items-center gap-2">
                         {u.display_name}
-                        {me?.user_id === u.user_id && <span className="text-[10px] font-semibold uppercase tracking-wide text-[#9A8774]">you</span>}
+                        {me?.user_id === u.user_id && <span className="text-[10px] font-semibold uppercase tracking-wide text-[#2E527F]">you</span>}
                         {!u.is_active && <span className="text-[10px] font-semibold uppercase tracking-wide text-[#D62F3D]">deactivated</span>}
                       </div>
                       <div className="text-xs text-[#755B4C]">{u.email}{u.department ? ` · ${u.department}` : ''}</div>
@@ -176,7 +176,7 @@ function AddUserForm({ apiUrl, authConfig, onCancel, onCreated }: { apiUrl: stri
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-[#4B2B1D]">Add team member</h2>
-          <button onClick={onCancel} className="text-[#9A8774] hover:text-[#4B2B1D]"><X className="h-5 w-5" /></button>
+          <button onClick={onCancel} className="text-[#2E527F] hover:text-[#4B2B1D]"><X className="h-5 w-5" /></button>
         </div>
         {error && <div className="rounded-lg border border-[#E8B4B9] bg-[#FFF4F5] text-[#D62F3D] px-3 py-2 text-sm">{error}</div>}
         <div>
@@ -196,7 +196,7 @@ function AddUserForm({ apiUrl, authConfig, onCancel, onCreated }: { apiUrl: stri
           <input className={INPUT_CLASS} type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" />
         </div>
         <div className="flex justify-end gap-2 pt-2">
-          <button onClick={onCancel} className="px-4 py-2 rounded-lg border border-[#CDBDA8] text-[#755B4C] font-semibold" disabled={saving}>Cancel</button>
+          <button onClick={onCancel} className="px-4 py-2 rounded-lg border border-[#2E527F] text-[#755B4C] font-semibold" disabled={saving}>Cancel</button>
           <button onClick={submit} className="px-4 py-2 rounded-lg bg-[#2E527F] text-white font-semibold hover:bg-[#24466E]" disabled={saving}>
             {saving ? 'Creating…' : 'Create account'}
           </button>
@@ -238,7 +238,7 @@ function EditUserForm({ user, apiUrl, authConfig, onCancel, onSaved }: { user: S
         </select>
       </div>
       <div className="flex justify-end gap-2">
-        <button onClick={onCancel} className="px-3 py-1.5 rounded-lg border border-[#CDBDA8] text-[#755B4C] text-sm font-semibold" disabled={saving}>Cancel</button>
+        <button onClick={onCancel} className="px-3 py-1.5 rounded-lg border border-[#2E527F] text-[#755B4C] text-sm font-semibold" disabled={saving}>Cancel</button>
         <button onClick={save} className="px-3 py-1.5 rounded-lg bg-[#2E527F] text-white text-sm font-semibold hover:bg-[#24466E]" disabled={saving}>
           {saving ? 'Saving…' : 'Save'}
         </button>
@@ -289,7 +289,7 @@ function ResetPasswordForm({ user, isSelf, apiUrl, authConfig, onCancel, onDone 
         <input className={`${INPUT_CLASS} flex-1 min-w-[140px]`} type="password" placeholder="New password (8+ characters)" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
       </div>
       <div className="flex justify-end gap-2">
-        <button onClick={onCancel} className="px-3 py-1.5 rounded-lg border border-[#CDBDA8] text-[#755B4C] text-sm font-semibold" disabled={saving}>Cancel</button>
+        <button onClick={onCancel} className="px-3 py-1.5 rounded-lg border border-[#2E527F] text-[#755B4C] text-sm font-semibold" disabled={saving}>Cancel</button>
         <button onClick={submit} className="px-3 py-1.5 rounded-lg bg-[#2E527F] text-white text-sm font-semibold hover:bg-[#24466E]" disabled={saving}>
           {saving ? 'Saving…' : 'Update password'}
         </button>

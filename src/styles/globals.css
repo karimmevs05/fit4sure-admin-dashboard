@@ -16,9 +16,9 @@ body {
   font-family: system-ui, -apple-system, sans-serif;
 }
 
-/* TEMP PREVIEW ONLY -- swaps every page's background for the new texture so
-   it can be eyeballed on localhost. Not meant to ship as-is; revert before
-   committing. Sidebar nav (aside) is deliberately excluded -- stays cream. */
+/* Warm background texture behind every page. Sidebar nav (aside) keeps its
+   own translucent tan background + navy outline (set inline in
+   Navigation.tsx) instead of the page texture. */
 body,
 main.min-h-screen,
 .bg-gradient-to-br {
@@ -31,19 +31,7 @@ main.min-h-screen,
 
 aside {
   background-image: none !important;
-  background-color: #E9DFD0 !important;
 }
-
-/* These three "muted/secondary" tans were tuned to be subtle against a
-   plain cream card -- darkening them only ever improves contrast on a
-   light card background, so this is safe to apply globally (unlike the
-   primary/secondary browns below, which are also used as on-orange text
-   and would break if changed the same way here). Safe because Tailwind
-   generates a distinct class per CSS property, so .text-[...] never
-   collides with .border-[...] or .bg-[...] using the same hex. */
-.text-\[\#CDBDA8\] { color: #9C8368 !important; }
-.text-\[\#B9A88F\] { color: #8B7355 !important; }
-.text-\[\#9A8774\] { color: #6B5842 !important; }
 
 /* Page title + subtitle sit directly on the orange background now (no card
    behind them) -- the <header> tag is only ever used for this exact
@@ -54,11 +42,6 @@ aside {
    description is bumped 2px (14px -> 16px) per request. */
 header h1 { color: #3D2314 !important; }
 header p { color: #6B3410 !important; font-size: 16px !important; }
-
-/* Task zone labels/prompts (ListView.tsx) that float directly on the
-   orange page background with no card behind them -- same chocolate
-   treatment as page headers, just at label scale. */
-.text-\[\#B9A88F\] { color: #6B3410 !important; }
 
 .card {
   background: white;

@@ -107,12 +107,12 @@ export function AutomationBuilder() {
 
       <div className="space-y-3">
         {rules.map((rule) => (
-          <div key={rule.id} className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+          <div key={rule.id} className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
             <div className="flex items-start justify-between mb-3">
               <div>
                 <p className="font-extrabold text-[#4B2B1D] text-sm">{rule.name}</p>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[10px] font-bold bg-white border border-[#CDBDA8] text-[#755B4C] px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] font-bold bg-white border border-[#2E527F] text-[#755B4C] px-2 py-0.5 rounded-full">
                     {rule.trigger_type === 'time_since_last_order'
                       ? `Trigger: no order in ${rule.trigger_config?.days ?? '?'} days`
                       : rule.trigger_type === 'stage_enter'
@@ -140,7 +140,7 @@ export function AutomationBuilder() {
                 const Icon = ACTION_ICON[s.action_type]
                 return (
                   <div key={i} className="shrink-0 bg-white rounded-lg px-3 py-2 text-center min-w-[110px]">
-                    <p className="text-[9px] font-extrabold text-[#9A8774]">DAY {s.delay_days}</p>
+                    <p className="text-[9px] font-extrabold text-[#2E527F]">DAY {s.delay_days}</p>
                     <p className="text-[10px] font-bold text-[#2E527F] flex items-center justify-center gap-1 mt-0.5">
                       <Icon className="h-3 w-3" />
                       {s.action_type === 'create_task' ? s.task_title || 'Task' : s.action_type === 'send_email' ? 'Auto-send email' : 'Auto-send SMS'}
@@ -155,8 +155,8 @@ export function AutomationBuilder() {
 
       {showBuilder && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-[#FBF7F0] rounded-2xl border border-[#CDBDA8] max-w-2xl w-full my-8">
-            <div className="sticky top-0 bg-[#FBF7F0] border-b border-[#E4D8C9] p-5 flex items-center justify-between">
+          <div className="bg-[rgba(251,247,240,0.9)] rounded-2xl border border-[#2E527F] max-w-2xl w-full my-8">
+            <div className="sticky top-0 bg-[rgba(251,247,240,0.9)] border-b border-[#E4D8C9] p-5 flex items-center justify-between">
               <h2 className="text-xl font-extrabold text-[#4B2B1D] flex items-center gap-2">
                 <Zap className="h-5 w-5" /> New automation
               </h2>
@@ -221,7 +221,7 @@ export function AutomationBuilder() {
                     <div key={i} className="rounded-lg border border-[#D8CDBE] bg-white p-3">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-extrabold text-[#9A8774]">STEP {i + 1}</span>
+                          <span className="text-[10px] font-extrabold text-[#2E527F]">STEP {i + 1}</span>
                           <span className="text-xs text-[#755B4C]">delay</span>
                           <input
                             type="number"

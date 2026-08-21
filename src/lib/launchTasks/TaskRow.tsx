@@ -39,7 +39,7 @@ export function EditTaskForm({ task, roster, onSave, onCancel }: { task: Task; r
   }
 
   return (
-    <div className="rounded-2xl p-[14px] mb-2 border" style={{ background: COLORS.cardBg, borderColor: COLORS.cardBorder }}>
+    <div className="rounded-3xl p-4 mb-2 border" style={{ background: COLORS.cardBg, borderColor: COLORS.cardBorder }}>
       <div className="flex gap-2 mb-2 flex-wrap">
         <input className={`${inputCls()} flex-1 min-w-[160px]`} style={{ borderColor: COLORS.cardBorder }} value={name} onChange={(e) => setName(e.target.value)} />
       </div>
@@ -193,7 +193,7 @@ export function TaskRow({ task, today, investor, roster, onChanged, onDeleted }:
   }
 
   return (
-    <div className="rounded-2xl mb-2 border overflow-hidden" style={{ background: COLORS.cardBg, borderColor: COLORS.cardBorder }}>
+    <div className="rounded-3xl mb-2 border overflow-hidden" style={{ background: COLORS.cardBg, borderColor: COLORS.cardBorder }}>
       <div
         className="flex items-center gap-[10px] px-[14px] py-3"
         style={{ cursor: investor ? 'default' : 'pointer' }}
@@ -215,7 +215,7 @@ export function TaskRow({ task, today, investor, roster, onChanged, onDeleted }:
         </span>
         <span className="w-[76px] text-right">
           <div className="text-[13px]" style={{ color: COLORS.textSecondary }}>{task.paid_cents > 0 ? formatCents(task.paid_cents) : '—'}</div>
-          <div className="text-[10px] mt-[1px]" style={{ color: '#CDBDA8' }}>
+          <div className="text-[10px] mt-[1px]" style={{ color: COLORS.textMuted }}>
             {task.budget_cents > 0 ? `of ${formatCents(task.budget_cents)}` : (task.paid_cents > 0 ? 'logged' : 'no budget set')}
           </div>
         </span>

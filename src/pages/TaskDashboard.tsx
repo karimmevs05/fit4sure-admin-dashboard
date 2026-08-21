@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { PieChart } from 'lucide-react'
-import type { Task, ActivityLogEntry, StaffUser } from '../lib/launchTasks/types'
+import type { Task, ActivityLogEntry, StaffUser, MeetingHighlight } from '../lib/launchTasks/types'
 import { COLORS, Card, AttentionIconDot } from '../lib/launchTasks/ui'
 import { buildAttention, formatCents } from '../lib/launchTasks/selectors'
 import { ListView } from '../lib/launchTasks/ListView'
@@ -12,6 +12,7 @@ export default function TaskDashboardPage() {
   const [roster, setRoster] = useState<StaffUser[]>([])
   const [currentUser, setCurrentUser] = useState<{ user_id: number; display_name: string } | null>(null)
   const [activity, setActivity] = useState<ActivityLogEntry[]>([])
+  const [highlights, setHighlights] = useState<MeetingHighlight[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -44,7 +45,23 @@ export default function TaskDashboardPage() {
     }
   }
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => {
+    loadAll()
+    api.fetchMeetingHighlights().then(setHighlights)
+  }, [])
+
+  const addHighlight = async (text: string) => {
+    const created = await api.addMeetingHighlight(text)
+    setHighlights((prev) => [...prev, created])
+  }
+  const editHighlight = async (id: number, text: string) => {
+    setHighlights((prev) => prev.map((h) => (h.id === id ? { ...h, text } : h)))
+    await api.updateMeetingHighlight(id, text)
+  }
+  const deleteHighlight = async (id: number) => {
+    setHighlights((prev) => prev.filter((h) => h.id !== id))
+    await api.deleteMeetingHighlight(id)
+  }
 
   const refreshActivity = () => api.fetchActivityLog(20).then(setActivity)
 
@@ -117,7 +134,16 @@ export default function TaskDashboardPage() {
           </div>
         </header>
 
-        {!investor && <CalendarMeetingPanel tasks={tasks} today={today} />}
+        {!investor && (
+          <CalendarMeetingPanel
+            tasks={tasks}
+            today={today}
+            highlights={highlights}
+            onAddHighlight={addHighlight}
+            onEditHighlight={editHighlight}
+            onDeleteHighlight={deleteHighlight}
+          />
+        )}
 
         {investor && (
           <div className="grid grid-cols-4 gap-3 mb-3">
@@ -129,25 +155,25 @@ export default function TaskDashboardPage() {
         )}
 
         {!investor && (
-          <Card className="px-4 py-3 mb-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wide mb-[6px]" style={{ color: '#9A8774' }}>Needs attention</div>
+          <Card className="px-5 py-4 mb-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide mb-[6px]" style={{ color: COLORS.textMuted }}>Needs attention</div>
             {attention.length === 0 ? (
-              <div className="text-[13px] py-1" style={{ color: '#CDBDA8' }}>Nothing urgent right now.</div>
+              <div className="text-[13px] py-1" style={{ color: COLORS.textMuted }}>Nothing urgent right now.</div>
             ) : attention.map((it, i) => (
               <div key={i} className="flex items-center gap-[10px] py-[7px] text-[13px] border-t first:border-t-0" style={{ borderColor: '#f5f4f0' }}>
                 <AttentionIconDot icon={it.icon} />
                 <span className="flex-1" style={{ color: COLORS.textPrimary }}>{it.name}</span>
-                <span className="text-[11px]" style={{ color: '#B9A88F' }}>{it.task} · {it.reason}</span>
+                <span className="text-[11px]" style={{ color: COLORS.textMuted }}>{it.task} · {it.reason}</span>
               </div>
             ))}
           </Card>
         )}
 
         {investor && (
-          <Card className="px-4 py-[14px] mb-3">
-            <div className="text-[11px] font-extrabold uppercase tracking-wide mb-[6px]" style={{ color: '#9A8774' }}>Completed</div>
+          <Card className="px-5 py-4 mb-3">
+            <div className="text-[11px] font-extrabold uppercase tracking-wide mb-[6px]" style={{ color: COLORS.textMuted }}>Completed</div>
             {accomplishments.length === 0 ? (
-              <div className="text-[13px]" style={{ color: '#CDBDA8' }}>Nothing completed yet.</div>
+              <div className="text-[13px]" style={{ color: COLORS.textMuted }}>Nothing completed yet.</div>
             ) : accomplishments.map((t) => (
               <div key={t.id} className="text-[13px] py-[5px]" style={{ color: COLORS.textSecondary }}>
                 ✓ {t.name} — done {new Date(t.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toLowerCase()}
@@ -160,14 +186,14 @@ export default function TaskDashboardPage() {
 
         {!investor && (
           <div className="mt-6 mb-2">
-            <div className="text-[11px] font-semibold uppercase tracking-wide mb-[6px] cursor-pointer flex items-center gap-[6px]" style={{ color: '#9A8774' }} onClick={() => setActivityOpen((o) => !o)}>
-              <span className="text-[9px] inline-block" style={{ transform: activityOpen ? 'rotate(90deg)' : undefined }}>▶</span> Recent activity <span style={{ color: '#CDBDA8', fontWeight: 400, textTransform: 'none' }}>({activity.length})</span>
+            <div className="text-[11px] font-semibold uppercase tracking-wide mb-[6px] cursor-pointer flex items-center gap-[6px]" style={{ color: COLORS.textMuted }} onClick={() => setActivityOpen((o) => !o)}>
+              <span className="text-[9px] inline-block" style={{ transform: activityOpen ? 'rotate(90deg)' : undefined }}>▶</span> Recent activity <span style={{ color: COLORS.textMuted, fontWeight: 400, textTransform: 'none' }}>({activity.length})</span>
             </div>
             {activityOpen && activity.map((a) => (
               <div key={a.id} className="flex gap-[10px] text-[13px] py-[7px] border-t first:border-t-0 items-baseline" style={{ borderColor: COLORS.divider }}>
                 <span className="text-[12px] w-4 flex-shrink-0">{activityIcon(a.type)}</span>
                 <span className="flex-1" style={{ color: COLORS.textSecondary }}><b>{a.actor}</b> {stripActor(a.text, a.actor)}</span>
-                <span className="text-[11px] whitespace-nowrap" style={{ color: '#B9A88F' }}>{new Date(a.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).toLowerCase()}</span>
+                <span className="text-[11px] whitespace-nowrap" style={{ color: COLORS.textMuted }}>{new Date(a.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).toLowerCase()}</span>
               </div>
             ))}
           </div>
@@ -194,8 +220,8 @@ function activityIcon(type: ActivityLogEntry['type']) {
 
 function FinTile({ label, value }: { label: string; value: string }) {
   return (
-    <Card className="p-[14px] text-center">
-      <div className="text-[12px] mb-1" style={{ color: '#9A8774' }}>{label}</div>
+    <Card className="p-4 text-center">
+      <div className="text-[12px] mb-1" style={{ color: COLORS.textMuted }}>{label}</div>
       <div className="text-[22px] font-semibold" style={{ color: COLORS.textPrimary }}>{value}</div>
     </Card>
   )

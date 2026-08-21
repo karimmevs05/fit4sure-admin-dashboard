@@ -71,7 +71,7 @@ const CATEGORY_CLASSES: Record<Category, string> = {
 };
 
 const INPUT_CLASS =
-  "h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none transition placeholder:text-[#9A8774] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10";
+  "h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none transition placeholder:text-[#2E527F] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10";
 
 // Same look as INPUT_CLASS but non-interactive -- used for values computed
 // from ingredients (calories/macros) that would just get overwritten on
@@ -223,7 +223,7 @@ export default function Fit4SureRecipesPage() {
 
           <div className={drawerOpen ? "mt-6 xl:pr-[380px]" : "mt-6"}>
             {loading ? (
-              <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-10 text-center">
+              <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-10 text-center">
                 <p className="text-lg font-extrabold">Loading recipes...</p>
               </div>
             ) : (
@@ -274,7 +274,7 @@ export default function Fit4SureRecipesPage() {
                 </div>
 
                 {filtered.length === 0 && (
-                  <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-10 text-center">
+                  <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-10 text-center">
                     <p className="text-lg font-extrabold">No recipes found.</p>
                     <p className="mt-1 text-sm text-[#755B4C]">
                       Try a different search or category.
@@ -347,7 +347,7 @@ function Header({
   return (
     <header className="flex flex-col gap-5">
       <div className="flex items-start gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#D7C9B7] bg-[#FBF7F0] text-[#2E527F]">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#D7C9B7] bg-[rgba(251,247,240,0.9)] text-[#2E527F]">
           <BookOpen className="h-6 w-6" />
         </div>
         <div>
@@ -389,7 +389,7 @@ function Header({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search recipes..."
-            className="h-12 w-full rounded-xl border border-[#B7A58F] bg-[#FBF7F0] pl-11 pr-4 text-sm font-medium text-[#4B2B1D] outline-none transition placeholder:text-[#8D7A69] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+            className="h-12 w-full rounded-xl border border-[#B7A58F] bg-[rgba(251,247,240,0.9)] pl-11 pr-4 text-sm font-medium text-[#4B2B1D] outline-none transition placeholder:text-[#2E527F] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
           />
         </div>
 
@@ -400,7 +400,7 @@ function Header({
             onChange={(event) =>
               setActiveCategory(event.target.value as "ALL" | Category)
             }
-            className="h-12 appearance-none rounded-xl border border-[#B7A58F] bg-[#FBF7F0] pl-11 pr-10 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+            className="h-12 appearance-none rounded-xl border border-[#B7A58F] bg-[rgba(251,247,240,0.9)] pl-11 pr-10 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
           >
             <option value="ALL">All categories</option>
             <option value="beef">Beef</option>
@@ -420,7 +420,7 @@ function Header({
           <select
             value={structureIdx == null ? "" : String(structureIdx)}
             onChange={(event) => setStructureIdx(event.target.value === "" ? null : Number(event.target.value))}
-            className="h-12 appearance-none rounded-xl border border-[#B7A58F] bg-[#FBF7F0] pl-11 pr-10 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+            className="h-12 appearance-none rounded-xl border border-[#B7A58F] bg-[rgba(251,247,240,0.9)] pl-11 pr-10 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
           >
             <option value="">Plate format: Per lb</option>
             {PLATE_STRUCTURE_SERVINGS.map((row, idx) => (
@@ -481,7 +481,7 @@ function RecipeCard({
     : "per lb (455g)";
 
   return (
-    <article onClick={() => onSelect(recipe)} className="group cursor-pointer overflow-hidden rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] shadow-[0_8px_24px_rgba(75,43,29,0.06)] transition duration-200 hover:-translate-y-0.5 hover:border-[#3E6594]/50 hover:shadow-[0_14px_32px_rgba(75,43,29,0.10)]">
+    <article onClick={() => onSelect(recipe)} className="group cursor-pointer overflow-hidden rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] shadow-[0_8px_24px_rgba(75,43,29,0.06)] transition duration-200 hover:-translate-y-0.5 hover:border-[#3E6594]/50 hover:shadow-[0_14px_32px_rgba(75,43,29,0.10)]">
       <div className="relative h-[140px] overflow-hidden bg-[#E3D8C9]">
         <img
           src={recipe.image || defaultImage}
@@ -507,7 +507,7 @@ function RecipeCard({
           <MacroBadge value={`${displayCarbs}g`} label="CARB" className="bg-[#FFF0E1] text-[#DC6500]" />
           <MacroBadge value={`${displayFat}g`} label="FAT" className="bg-[#FDEBEC] text-[#D62F3D]" />
         </div>
-        <p className="mt-0.5 text-[9px] text-[#9A8774]">{servingLabel}</p>
+        <p className="mt-0.5 text-[9px] text-[#2E527F]">{servingLabel}</p>
 
         <div className="mt-auto pt-2 border-t border-[#E4D8C9]">
           <div className="flex items-center justify-between mb-2 relative">
@@ -539,7 +539,7 @@ function RecipeCard({
             {showStructureMenu && component && (
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="absolute bottom-full left-0 z-20 mb-2 w-44 rounded-xl border border-[#CDBDA8] bg-white p-1.5 shadow-[0_12px_28px_rgba(75,43,29,0.16)]"
+                className="absolute bottom-full left-0 z-20 mb-2 w-44 rounded-xl border border-[#2E527F] bg-white p-1.5 shadow-[0_12px_28px_rgba(75,43,29,0.16)]"
               >
                 <button
                   onClick={() => {
@@ -572,7 +572,7 @@ function RecipeCard({
                       }`}
                     >
                       {row.structure}
-                      <span className="text-[10px] font-normal text-[#9A8774]">
+                      <span className="text-[10px] font-normal text-[#2E527F]">
                         {disabled ? "n/a" : component === "protein" ? `${row.proteinOz}oz` : `${grams}g`}
                       </span>
                     </button>
@@ -581,7 +581,7 @@ function RecipeCard({
               </div>
             )}
           </div>
-          <p className="text-[9px] text-[#9A8774]">{servingLabel}</p>
+          <p className="text-[9px] text-[#2E527F]">{servingLabel}</p>
         </div>
 
         <div className="mt-2 flex justify-end gap-2 pt-2 border-t border-[#E4D8C9]">
@@ -817,7 +817,7 @@ function AddRecipeDrawer({
           </div>
           <button
             onClick={onClose}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#B9A88F] bg-[#FBF7F0]"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#B9A88F] bg-[rgba(251,247,240,0.9)]"
           >
             <X className="h-5 w-5" />
           </button>
@@ -868,7 +868,7 @@ function AddRecipeDrawer({
                     className={`h-9 rounded-lg border text-[10px] font-extrabold transition ${
                       form.category === category
                         ? CATEGORY_CLASSES[category]
-                        : "border-[#B9A88F] bg-[#FBF7F0] text-[#4B2B1D] hover:bg-[#EDF2F7]"
+                        : "border-[#B9A88F] bg-[rgba(251,247,240,0.9)] text-[#4B2B1D] hover:bg-[#EDF2F7]"
                     }`}
                   >
                     {category === "carbohydrates" ? "carb" : category === "vegetables" ? "veg" : category}
@@ -921,7 +921,7 @@ function AddRecipeDrawer({
                       {ingredients.filter((ing) => ing.prep_section === "dry").map((ing) => {
                         const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
                         return (
-                          <div key={ing.id} className="flex justify-between items-center bg-[#FBF7F0] p-2 rounded-lg border border-[#E4D8C9]">
+                          <div key={ing.id} className="flex justify-between items-center bg-[rgba(251,247,240,0.9)] p-2 rounded-lg border border-[#E4D8C9]">
                             <div className="flex-1">
                               <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
                               <p className="text-[10px] text-[#755B4C]">
@@ -953,7 +953,7 @@ function AddRecipeDrawer({
                       {ingredients.filter((ing) => ing.prep_section === "wet").map((ing) => {
                         const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
                         return (
-                          <div key={ing.id} className="flex justify-between items-center bg-[#FBF7F0] p-2 rounded-lg border border-[#E4D8C9]">
+                          <div key={ing.id} className="flex justify-between items-center bg-[rgba(251,247,240,0.9)] p-2 rounded-lg border border-[#E4D8C9]">
                             <div className="flex-1">
                               <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
                               <p className="text-[10px] text-[#755B4C]">
@@ -1003,7 +1003,7 @@ function AddRecipeDrawer({
             <button
               type="button"
               onClick={onClose}
-              className="h-12 rounded-xl border border-[#B9A88F] bg-[#FBF7F0] text-sm font-extrabold text-[#4B2B1D]"
+              className="h-12 rounded-xl border border-[#B9A88F] bg-[rgba(251,247,240,0.9)] text-sm font-extrabold text-[#4B2B1D]"
             >
               Cancel
             </button>
@@ -1256,7 +1256,7 @@ function EditRecipeDrawer({
           </div>
           <button
             onClick={onClose}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#B9A88F] bg-[#FBF7F0]"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#B9A88F] bg-[rgba(251,247,240,0.9)]"
           >
             <X className="h-5 w-5" />
           </button>
@@ -1290,7 +1290,7 @@ function EditRecipeDrawer({
                     className={`h-9 rounded-lg border text-[10px] font-extrabold transition ${
                       form.category === category
                         ? CATEGORY_CLASSES[category]
-                        : "border-[#B9A88F] bg-[#FBF7F0] text-[#4B2B1D] hover:bg-[#EDF2F7]"
+                        : "border-[#B9A88F] bg-[rgba(251,247,240,0.9)] text-[#4B2B1D] hover:bg-[#EDF2F7]"
                     }`}
                   >
                     {category === "carbohydrates" ? "carb" : category === "vegetables" ? "veg" : category}
@@ -1344,7 +1344,7 @@ function EditRecipeDrawer({
                       {ingredients.filter((ing) => ing.prep_section === "dry").map((ing) => {
                         const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
                         return (
-                          <div key={ing.id} className="flex justify-between items-center bg-[#FBF7F0] p-2 rounded-lg border border-[#E4D8C9]">
+                          <div key={ing.id} className="flex justify-between items-center bg-[rgba(251,247,240,0.9)] p-2 rounded-lg border border-[#E4D8C9]">
                             <div className="flex-1">
                               <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
                               <div className="flex items-center gap-2 mt-0.5">
@@ -1383,7 +1383,7 @@ function EditRecipeDrawer({
                       {ingredients.filter((ing) => ing.prep_section === "wet").map((ing) => {
                         const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
                         return (
-                          <div key={ing.id} className="flex justify-between items-center bg-[#FBF7F0] p-2 rounded-lg border border-[#E4D8C9]">
+                          <div key={ing.id} className="flex justify-between items-center bg-[rgba(251,247,240,0.9)] p-2 rounded-lg border border-[#E4D8C9]">
                             <div className="flex-1">
                               <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
                               <div className="flex items-center gap-2 mt-0.5">
@@ -1442,7 +1442,7 @@ function EditRecipeDrawer({
             <button
               type="button"
               onClick={onClose}
-              className="h-12 rounded-xl border border-[#B9A88F] bg-[#FBF7F0] text-sm font-extrabold text-[#4B2B1D]"
+              className="h-12 rounded-xl border border-[#B9A88F] bg-[rgba(251,247,240,0.9)] text-sm font-extrabold text-[#4B2B1D]"
             >
               Cancel
             </button>
@@ -1502,7 +1502,7 @@ function RecipeDetailsDrawer({
           </div>
           <button
             onClick={onClose}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#B9A88F] bg-[#FBF7F0]"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#B9A88F] bg-[rgba(251,247,240,0.9)]"
           >
             <X className="h-5 w-5" />
           </button>
@@ -1540,7 +1540,7 @@ function RecipeDetailsDrawer({
               <p className="text-xl font-extrabold text-[#D62F3D]">{fat.toFixed(1)}g</p>
             </div>
           </div>
-          <p className="-mt-3 text-[10px] text-[#9A8774]">per lb (455g)</p>
+          <p className="-mt-3 text-[10px] text-[#2E527F]">per lb (455g)</p>
 
           {/* Cost and Servings */}
           <div className="grid grid-cols-2 gap-4 border-t border-[#D8CDBE] pt-4">
@@ -1579,7 +1579,7 @@ function RecipeDetailsDrawer({
                 if (sectionIngredients.length === 0) return null;
                 return (
                   <div key={section} className="mb-4 last:mb-0">
-                    <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#9A7E6F] mb-1.5">
+                    <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#2E527F] mb-1.5">
                       {section === "dry" ? "Dry" : "Wet"}
                     </p>
                     <div className="space-y-2 max-h-64 overflow-y-auto">

@@ -174,7 +174,7 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
                 if (idx < allWeeks.length - 1) setCurrentWeek(allWeeks[idx + 1].week)
               }}
               disabled={allWeeks.findIndex((w) => w.week === currentWeek) >= allWeeks.length - 1}
-              className="rounded-lg border border-[#CDBDA8] bg-white px-3 py-2 text-[#4B2B1D] font-medium hover:bg-[#F8F2E8] disabled:opacity-50"
+              className="rounded-lg border border-[#2E527F] bg-white px-3 py-2 text-[#4B2B1D] font-medium hover:bg-[#F8F2E8] disabled:opacity-50"
             >
               ← Prev
             </button>
@@ -187,7 +187,7 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
                 if (idx > 0) setCurrentWeek(allWeeks[idx - 1].week)
               }}
               disabled={allWeeks.findIndex((w) => w.week === currentWeek) <= 0}
-              className="rounded-lg border border-[#CDBDA8] bg-white px-3 py-2 text-[#4B2B1D] font-medium hover:bg-[#F8F2E8] disabled:opacity-50"
+              className="rounded-lg border border-[#2E527F] bg-white px-3 py-2 text-[#4B2B1D] font-medium hover:bg-[#F8F2E8] disabled:opacity-50"
             >
               Next →
             </button>
@@ -203,12 +203,12 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
 
       {/* Summary Cards */}
       <div className="grid gap-4 lg:grid-cols-4">
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-[#755B4C]">Total Meals</p>
               <p className="text-3xl font-extrabold text-[#2E527F]">{prepData.summary.total_servings}</p>
-              <p className="mt-1 text-[11px] text-[#9A8774]">
+              <p className="mt-1 text-[11px] text-[#2E527F]">
                 Mon {prepData.summary.monday_meals} · Thu {prepData.summary.thursday_meals} · Breakfast {prepData.summary.breakfast_meals}
               </p>
             </div>
@@ -216,18 +216,18 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-[#755B4C]">Ingredients Needed</p>
               <p className="text-3xl font-extrabold text-[#2E527F]">{prepData.summary.total_ingredients}</p>
-              <p className="mt-1 text-[11px] text-[#9A8774]">from recipe-linked items only</p>
+              <p className="mt-1 text-[11px] text-[#2E527F]">from recipe-linked items only</p>
             </div>
             <Package className="h-8 w-8 text-[#0EA5E9]" />
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-[#755B4C]">Known COGS</p>
@@ -239,7 +239,7 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-[#755B4C]">Cost Per Meal</p>
@@ -255,10 +255,10 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
       </div>
 
       {/* Menu Items Overview */}
-      <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+      <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
         <h2 className="mb-4 text-lg font-extrabold text-[#4B2B1D]">Menu This Week</h2>
         {prepData.recipes.length === 0 ? (
-          <p className="text-sm text-[#9A7E6F]">No menu items ordered this week.</p>
+          <p className="text-sm text-[#2E527F]">No menu items ordered this week.</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {prepData.recipes.map((item) => {
@@ -297,7 +297,7 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
                         <Link2 className="h-3 w-3" /> Recipe linked
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#9A8774]">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#2E527F]">
                         <Link2Off className="h-3 w-3" /> No recipe linked
                       </span>
                     )}
@@ -314,12 +314,12 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
         <h2 className="text-lg font-extrabold text-[#4B2B1D]">Ingredients Needed This Week</h2>
 
         {prepData.ingredients.length === 0 ? (
-          <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6 text-sm text-[#9A7E6F]">
+          <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6 text-sm text-[#2E527F]">
             No recipe-linked menu items this week yet, so real ingredient needs can't be computed. Link a recipe to a
             menu item in Menu Planner to see it here.
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
+          <div className="overflow-x-auto rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)]">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#E4D8C9]">
@@ -368,7 +368,7 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
       {/* Customer Orders & Fulfillment */}
       <div className="space-y-4">
         <h2 className="text-lg font-extrabold text-[#4B2B1D]">Customer Orders & Fulfillment</h2>
-        <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
+        <div className="overflow-x-auto rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)]">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#E4D8C9]">
@@ -406,7 +406,7 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
                       className={`rounded-full px-3 py-1 text-xs font-bold transition ${
                         fulfillment[order.id]
                           ? 'bg-[#EAF5EC] text-[#16834A]'
-                          : 'border border-[#D8CDBE] bg-[#FBF7F0] text-[#755B4C] hover:border-[#3E6594]'
+                          : 'border border-[#D8CDBE] bg-[rgba(251,247,240,0.9)] text-[#755B4C] hover:border-[#3E6594]'
                       }`}
                     >
                       {fulfillment[order.id] ? '✓ Ready' : 'Pending'}
@@ -422,12 +422,12 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
       {/* Menu Item Details Modal */}
       {(itemLoading || selectedItem) && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-[#FBF7F0] rounded-2xl border border-[#CDBDA8] max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-[rgba(251,247,240,0.9)] rounded-2xl border border-[#2E527F] max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             {itemLoading || !selectedItem ? (
               <div className="p-10 text-center text-[#755B4C]">Loading...</div>
             ) : (
               <>
-                <div className="sticky top-0 bg-[#FBF7F0] border-b border-[#E4D8C9] p-6 flex items-center justify-between">
+                <div className="sticky top-0 bg-[rgba(251,247,240,0.9)] border-b border-[#E4D8C9] p-6 flex items-center justify-between">
                   <div>
                     <h2 className="text-2xl font-extrabold text-[#4B2B1D]">{selectedItem.recipe.name}</h2>
                     {selectedItem.recipe.category && (
@@ -486,7 +486,7 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
                     selectedItem.ingredients.length > 0 && (
                       <div>
                         <h3 className="font-extrabold text-[#4B2B1D] mb-4">Ingredients & COGS</h3>
-                        <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
+                        <div className="overflow-x-auto rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)]">
                           <table className="w-full text-sm">
                             <thead>
                               <tr className="border-b border-[#E4D8C9]">
@@ -517,7 +517,7 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
                       </div>
                     )
                   ) : (
-                    <div className="rounded-lg border border-[#E4D8C9] bg-white p-4 text-sm text-[#9A7E6F] flex items-center gap-2">
+                    <div className="rounded-lg border border-[#E4D8C9] bg-white p-4 text-sm text-[#2E527F] flex items-center gap-2">
                       <Link2Off className="h-4 w-4 shrink-0" />
                       No recipe linked to this menu item yet — link one in Menu Planner to see real ingredient needs and cost.
                     </div>

@@ -144,7 +144,7 @@ export default function RecipePlanSection({ onSaved }: { onSaved?: () => void })
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-8 text-center">
+      <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-8 text-center">
         <p className="text-[#755B4C]">Loading recipe plan...</p>
       </div>
     )
@@ -168,12 +168,12 @@ export default function RecipePlanSection({ onSaved }: { onSaved?: () => void })
           const totalLb = rows[block].filter((r) => r.selected).reduce((sum, r) => sum + (r.expected_volume || 0), 0)
 
           return (
-            <div key={block} className="rounded-xl border border-[#E4D8C9] bg-[#FBF7F0] p-4">
+            <div key={block} className="rounded-xl border border-[#E4D8C9] bg-[rgba(251,247,240,0.9)] p-4">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
                   <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cfg.color }}></div>
                   <h3 className="text-sm font-extrabold" style={{ color: cfg.color }}>{cfg.label}</h3>
-                  <span className="text-xs text-[#9A8774]">{cfg.sub}</span>
+                  <span className="text-xs text-[#2E527F]">{cfg.sub}</span>
                 </div>
                 <button
                   onClick={() => saveBlock(block)}
@@ -185,7 +185,7 @@ export default function RecipePlanSection({ onSaved }: { onSaved?: () => void })
                 </button>
               </div>
 
-              <p className="text-xs text-[#9A8774] mb-3">
+              <p className="text-xs text-[#2E527F] mb-3">
                 {selectedCount} recipe{selectedCount === 1 ? '' : 's'} live · {totalLb} lb forecasted
               </p>
 
@@ -195,7 +195,7 @@ export default function RecipePlanSection({ onSaved }: { onSaved?: () => void })
                 ) : (
                   Object.entries(grouped).map(([category, list]) => (
                     <div key={category}>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-[#B9A88F] mb-1 px-1">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-[#2E527F] mb-1 px-1">
                         {CATEGORY_LABELS[category] || category}
                       </p>
                       {list.map((r) => (
@@ -207,7 +207,7 @@ export default function RecipePlanSection({ onSaved }: { onSaved?: () => void })
                             className="h-3.5 w-3.5 rounded border-[#B9A88F] flex-shrink-0"
                           />
                           <p className="font-medium text-[#4B2B1D] truncate w-40 flex-shrink-0">{r.name}</p>
-                          <p className="text-xs text-[#9A8774] flex-1 truncate">
+                          <p className="text-xs text-[#2E527F] flex-1 truncate">
                             {r.calories} cal · {r.protein_g.toFixed(0)}g P · {r.carbs_g.toFixed(0)}g C · {r.fat_g.toFixed(0)}g F · ${(r.costPerPoundCents / 100).toFixed(2)}/lb
                           </p>
                           <input
@@ -218,7 +218,7 @@ export default function RecipePlanSection({ onSaved }: { onSaved?: () => void })
                             disabled={!r.selected}
                             onChange={(e) => updateVolume(block, r.recipe_id, parseInt(e.target.value) || 0)}
                             placeholder="lb"
-                            className="w-14 h-7 rounded border border-[#B9A88F] bg-white px-1 text-xs text-center outline-none disabled:bg-[#F5F0E8] disabled:text-[#B9A88F] flex-shrink-0"
+                            className="w-14 h-7 rounded border border-[#B9A88F] bg-white px-1 text-xs text-center outline-none disabled:bg-[#F5F0E8] disabled:text-[#2E527F] flex-shrink-0"
                           />
                         </div>
                       ))}

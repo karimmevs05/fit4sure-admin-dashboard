@@ -84,7 +84,7 @@ export function KitchenConverter({
 
   return (
     <aside
-      className="fixed left-[256px] top-0 bottom-0 flex flex-col bg-[#FBF7F0] border-r border-[#D8CDBE] overflow-y-auto z-[45]"
+      className="fixed left-[256px] top-0 bottom-0 flex flex-col bg-[rgba(251,247,240,0.9)] border-r border-[#D8CDBE] overflow-y-auto z-[45]"
       style={{ width: '288px' }}
     >
       <div className="flex items-center justify-between p-4 border-b border-[#D8CDBE]">
@@ -145,7 +145,7 @@ export function KitchenConverter({
         {/* Live results */}
         <div className="rounded-lg border border-[#E4D8C9] bg-white divide-y divide-[#F0EAE0]">
           {results === null ? (
-            <p className="p-3 text-xs text-[#9A7E6F]">Enter a number above</p>
+            <p className="p-3 text-xs text-[#2E527F]">Enter a number above</p>
           ) : (
             results.map((r) => (
               <div
@@ -159,7 +159,7 @@ export function KitchenConverter({
           )}
         </div>
         {mode === 'weight' && (
-          <p className="text-[10px] text-[#9A8774] leading-snug">
+          <p className="text-[10px] text-[#2E527F] leading-snug">
             tsp/tbsp/cup for dry weight are a generic reference (~227g/cup) — actual grams per cup varies by ingredient
             density. oz and lb are exact.
           </p>
@@ -167,7 +167,7 @@ export function KitchenConverter({
 
         {/* Quick reference, same as the printed card */}
         <div className="pt-2 border-t border-[#E4D8C9] space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-[#9A8774]">Quick reference</p>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-[#2E527F]">Quick reference</p>
           <div className="grid grid-cols-2 gap-1.5 text-xs text-[#4B2B1D]">
             <p>1 tsp = 5 mL</p>
             <p>1 tbsp = 15 mL</p>

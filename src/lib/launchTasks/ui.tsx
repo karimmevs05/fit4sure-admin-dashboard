@@ -5,12 +5,12 @@ import type { Tag, Urgency } from './types'
 // verbatim rather than the (slightly different) named tailwind colors.
 export const COLORS = {
   pageBg: '#E9DFD0',
-  cardBg: '#FBF7F0',
-  cardBorder: '#CDBDA8',
+  cardBg: 'rgba(251, 247, 240, 0.9)',
+  cardBorder: '#2E527F',
   divider: '#E4D8C9',
   textPrimary: '#4B2B1D',
   textSecondary: '#755B4C',
-  textMuted: '#9A8774',
+  textMuted: '#2E527F',
   blue: '#2E527F',
   blueHover: '#24466E',
   green: '#16813D',
@@ -86,7 +86,7 @@ export function DecisionBadge() {
 
 export function Card({ children, className = '', style = {} }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
   return (
-    <div className={`rounded-2xl ${className}`} style={{ background: COLORS.cardBg, boxShadow: CARD_SHADOW, ...style }}>
+    <div className={`rounded-3xl border ${className}`} style={{ background: COLORS.cardBg, borderColor: COLORS.cardBorder, boxShadow: CARD_SHADOW, ...style }}>
       {children}
     </div>
   )

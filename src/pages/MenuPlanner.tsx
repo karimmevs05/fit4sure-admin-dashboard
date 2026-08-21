@@ -87,7 +87,7 @@ export default function MenuPlannerPage() {
   if (loading) {
     return (
       <main className="flex-1 space-y-6 p-8">
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-8 text-center">
+        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-8 text-center">
           <p className="text-[#755B4C]">Loading...</p>
         </div>
       </main>
@@ -111,7 +111,7 @@ export default function MenuPlannerPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Last Week's Menu (real data) */}
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
           <h2 className="mb-4 text-lg font-extrabold text-[#4B2B1D]">Last Week's Menu</h2>
 
           <div className="mb-6">
@@ -168,7 +168,7 @@ function PrepInfoColumn({ ingredients }: { ingredients: PrepIngredient[] }) {
     ing.category?.toLowerCase() === 'protein' ? formatIngredientWeight(g, ing.category) : `${formatLb(g)} lb`
 
   return (
-    <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+    <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
       <h2 className="mb-1 text-lg font-extrabold text-[#4B2B1D]">Prep Info</h2>
       <p className="mb-4 text-xs text-[#755B4C]">Needed per ingredient, from this week's recipe plan</p>
 
@@ -202,7 +202,7 @@ function FinancialsColumn({ financials }: { financials: PrepAndFinancials['finan
   ]
 
   return (
-    <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+    <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
       <h2 className="mb-1 text-lg font-extrabold text-[#4B2B1D]">Financials</h2>
       <p className="mb-4 text-xs text-[#755B4C]">Forecasted ingredient cost, from this week's recipe plan</p>
 
@@ -215,7 +215,7 @@ function FinancialsColumn({ financials }: { financials: PrepAndFinancials['finan
             </div>
             <div className="flex items-center justify-between">
               <p className="text-xl font-extrabold" style={{ color: row.color }}>${(row.data.costCents / 100).toFixed(2)}</p>
-              <p className="text-xs text-[#9A8774]">{row.data.recipeCount} recipe{row.data.recipeCount === 1 ? '' : 's'} · {row.data.lb} lb</p>
+              <p className="text-xs text-[#2E527F]">{row.data.recipeCount} recipe{row.data.recipeCount === 1 ? '' : 's'} · {row.data.lb} lb</p>
             </div>
           </div>
         ))}
@@ -224,7 +224,7 @@ function FinancialsColumn({ financials }: { financials: PrepAndFinancials['finan
           <p className="text-xs font-bold text-[#E9DFD0] mb-1">Combined</p>
           <div className="flex items-center justify-between">
             <p className="text-xl font-extrabold text-white">${(financials.combined.costCents / 100).toFixed(2)}</p>
-            <p className="text-xs text-[#CDBDA8]">{financials.combined.recipeCount} recipes · {financials.combined.lb} lb</p>
+            <p className="text-xs text-[#2E527F]">{financials.combined.recipeCount} recipes · {financials.combined.lb} lb</p>
           </div>
         </div>
       </div>

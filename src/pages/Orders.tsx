@@ -239,12 +239,16 @@ export default function OrdersPage() {
     return `${y}-${m}-${d}`
   }, [])
 
-  const deleteLine = async (line: OrderLine) => {
-    if (!confirm(`Delete ${line.menu_name} × ${line.quantity} for ${line.customer_name}?`)) return
+  // Delete every line that makes up one day's plate (protein + its sides +
+  // sauces) in one confirm, instead of one confirm per recipe.
+  const deletePlate = async (lines: OrderLine[]) => {
+    if (lines.length === 0) return
+    const summary = lines.map((l) => `${l.menu_name} × ${l.quantity}`).join(', ')
+    if (!confirm(`Delete ${summary} for ${lines[0].customer_name}?`)) return
     try {
-      await axios.delete(`${apiUrl}/api/admin/orders/${line.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      await Promise.all(
+        lines.map((l) => axios.delete(`${apiUrl}/api/admin/orders/${l.id}`, { headers: { Authorization: `Bearer ${token}` } }))
+      )
       fetchOrdersData()
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to delete order')
@@ -299,7 +303,7 @@ export default function OrdersPage() {
         </button>
         <button
           onClick={() => setShowImportModal(true)}
-          className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[#B9A88F] bg-[#FBF7F0] px-6 text-sm font-bold text-[#2E527F] transition hover:bg-[#EDF2F7]"
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[#B9A88F] bg-[rgba(251,247,240,0.9)] px-6 text-sm font-bold text-[#2E527F] transition hover:bg-[#EDF2F7]"
         >
           <Upload className="h-5 w-5" />
           Paste Import (fallback)
@@ -309,7 +313,7 @@ export default function OrdersPage() {
             setPrefillCustomer(null)
             setShowAddOrderModal(true)
           }}
-          className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[#B9A88F] bg-[#FBF7F0] px-6 text-sm font-bold text-[#2E527F] transition hover:bg-[#EDF2F7]"
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[#B9A88F] bg-[rgba(251,247,240,0.9)] px-6 text-sm font-bold text-[#2E527F] transition hover:bg-[#EDF2F7]"
         >
           <Plus className="h-5 w-5" />
           Add Manual Order
@@ -373,7 +377,7 @@ export default function OrdersPage() {
         </div>
 
         {loading ? (
-          <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-8 text-center">
+          <div className="rounded-3xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-9 text-center">
             <p className="text-[#755B4C]">Loading orders data...</p>
           </div>
         ) : (
@@ -388,7 +392,7 @@ export default function OrdersPage() {
                   setShowAddOrderModal(true)
                 }}
                 onEditLine={(line) => setEditingLine(line)}
-                onDeleteLine={deleteLine}
+                onDeletePlate={deletePlate}
               />
             )}
             {activeTab === 'packing-sheet' && thisWeekData && <PackingSheetTab orders={thisWeekData.orders} />}
@@ -441,7 +445,7 @@ export default function OrdersPage() {
 function Header() {
   return (
     <header className="flex items-start gap-4">
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#D7C9B7] bg-[#FBF7F0] text-[#2E527F]">
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#D7C9B7] bg-[rgba(251,247,240,0.9)] text-[#2E527F]">
         <UtensilsCrossed className="h-6 w-6" />
       </div>
       <div>
@@ -454,22 +458,70 @@ function Header() {
   )
 }
 
+// A customer builds one plate per day (protein + its included sides + sauce
+// add-ons) -- group that day's lines together and split into the main
+// (protein + size) vs its add-ons, so it reads as a descriptive plate name
+// ("Balsamic Chuck (Large) with Asparagus, Greek Potatoes") instead of a
+// flat list of recipe rows. Shared by ThisWeekTab and PackingSheetTab.
+function groupLinesByDay(lines: OrderLine[]) {
+  const groups: { day: string | null; mains: OrderLine[]; addOns: OrderLine[] }[] = []
+  const indexByDay = new Map<string, number>()
+  for (const l of lines) {
+    const key = l.day_of_week || ''
+    if (!indexByDay.has(key)) {
+      indexByDay.set(key, groups.length)
+      groups.push({ day: l.day_of_week, mains: [], addOns: [] })
+    }
+    const group = groups[indexByDay.get(key)!]
+    if (ADD_ON_FORMATS.includes(l.category || '')) group.addOns.push(l)
+    else group.mains.push(l)
+  }
+  return groups
+}
+
+// Read-only descriptive rendering of one plate group -- "Balsamic Chuck
+// (Large) with Asparagus, Greek Potatoes" -- used by the Packing Sheet grid.
+function PlateLabel({ group }: { group: { mains: OrderLine[]; addOns: OrderLine[] } }) {
+  const items = group.mains.length > 0 ? group.mains : group.addOns
+  const rest = group.mains.length > 0 ? group.addOns : []
+  return (
+    <>
+      {items.map((l, i) => (
+        <span key={l.id} className="font-semibold text-[#4B2B1D]">
+          {i > 0 && <span className="font-normal text-[#9A7E6F]">&amp; </span>}
+          {l.menu_name}
+          {l.category ? ` (${l.category})` : ''}
+          {l.quantity > 1 ? ` × ${l.quantity}` : ''}
+        </span>
+      ))}
+      {rest.length > 0 && <span className="text-[#9A7E6F]"> with </span>}
+      {rest.map((l, i) => (
+        <span key={l.id}>
+          {i > 0 && <span className="text-[#9A7E6F]">, </span>}
+          {l.menu_name}
+          {l.quantity > 1 ? ` × ${l.quantity}` : ''}
+        </span>
+      ))}
+    </>
+  )
+}
+
 function ThisWeekTab({
   data,
   searchCustomer,
   setSearchCustomer,
   onAddOrderFor,
   onEditLine,
-  onDeleteLine,
+  onDeletePlate,
 }: {
   data: ThisWeekData
   searchCustomer: string
   setSearchCustomer: (s: string) => void
   onAddOrderFor: (customer: NonResponder) => void
   onEditLine: (line: OrderLine) => void
-  onDeleteLine: (line: OrderLine) => void
+  onDeletePlate: (lines: OrderLine[]) => void
 }) {
-  const { orders, menuTotals, summary, alerts, nonResponders } = data
+  const { orders, summary, alerts, nonResponders } = data
 
   const filteredOrders = useMemo(
     () => orders.filter((o) => o.customer_name.toLowerCase().includes(searchCustomer.toLowerCase())),
@@ -488,45 +540,8 @@ function ThisWeekTab({
     return Array.from(map.values())
   }, [filteredOrders])
 
-  const mondayItems = menuTotals.filter((m) => m.day_of_week?.toLowerCase() === 'monday')
-  const thursdayItems = menuTotals.filter((m) => m.day_of_week?.toLowerCase() === 'thursday')
-  const otherItems = menuTotals.filter((m) => !['monday', 'thursday'].includes((m.day_of_week || '').toLowerCase()))
-
   const monDelta = summary.monday_meals - summary.monday_meals_last_week
   const thuDelta = summary.thursday_meals - summary.thursday_meals_last_week
-
-  const statusBadge = (status: MenuTotal['status']) =>
-    status === 'ready' ? (
-      <span className="rounded-md bg-[#EAF5EC] px-2 py-0.5 text-[10px] font-bold text-[#16834A]">Ready</span>
-    ) : status === 'blocked' ? (
-      <span className="rounded-md bg-[#FDEBEC] px-2 py-0.5 text-[10px] font-bold text-[#D62F3D]">Blocked</span>
-    ) : (
-      <span className="rounded-md bg-[#F3F4F6] px-2 py-0.5 text-[10px] font-bold text-[#6B7280]">No recipe</span>
-    )
-
-  const PlateColumn = ({ label, color, items }: { label: string; color: string; items: MenuTotal[] }) => (
-    <div className="rounded-xl border border-[#E4D8C9] bg-white p-3.5">
-      <p className="mb-2 text-[11px] font-bold uppercase tracking-wide" style={{ color }}>
-        {label}
-      </p>
-      {items.length === 0 ? (
-        <p className="text-xs text-[#9A7E6F] py-1">Nothing planned yet</p>
-      ) : (
-        items.map((m) => (
-          <div key={`${m.id}-${m.day_of_week}`} className="border-b border-[#F0EAE0] py-1.5 last:border-0">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-[#4B2B1D]">{m.name}</span>
-              {statusBadge(m.status)}
-            </div>
-            <p className="mt-0.5 text-[10.5px] text-[#9A7E6F]">
-              {m.category || 'Uncategorized'} × {m.total_count}
-              {m.regular_count > 0 || m.large_count > 0 ? ` — Reg ${m.regular_count} · Lg ${m.large_count}` : ''}
-            </p>
-          </div>
-        ))
-      )}
-    </div>
-  )
 
   return (
     <div className="space-y-4">
@@ -557,16 +572,16 @@ function ThisWeekTab({
             value={searchCustomer}
             onChange={(e) => setSearchCustomer(e.target.value)}
             placeholder="Search customers..."
-            className="h-12 w-full rounded-xl border border-[#B7A58F] bg-[#FBF7F0] pl-11 pr-4 text-sm font-medium text-[#4B2B1D] outline-none transition placeholder:text-[#8D7A69] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+            className="h-12 w-full rounded-xl border border-[#B7A58F] bg-[rgba(251,247,240,0.9)] pl-11 pr-4 text-sm font-medium text-[#4B2B1D] outline-none transition placeholder:text-[#2E527F] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
           />
         </div>
-        <div className="flex gap-6 text-right">
+        <div className="flex gap-6 text-right rounded-3xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-5 py-4">
           <div>
             <p className="text-xs text-[#16A34A] font-bold">Monday</p>
             <p className="text-lg font-extrabold text-[#16A34A]">
               {summary.monday_meals}
               {monDelta !== 0 && (
-                <span className="ml-1 text-[10px] font-semibold text-[#9A7E6F]">
+                <span className="ml-1 text-[10px] font-semibold text-[#2E527F]">
                   {monDelta > 0 ? `↑${monDelta}` : `↓${Math.abs(monDelta)}`}
                 </span>
               )}
@@ -577,7 +592,7 @@ function ThisWeekTab({
             <p className="text-lg font-extrabold text-[#D97706]">
               {summary.thursday_meals}
               {thuDelta !== 0 && (
-                <span className="ml-1 text-[10px] font-semibold text-[#9A7E6F]">
+                <span className="ml-1 text-[10px] font-semibold text-[#2E527F]">
                   {thuDelta > 0 ? `↑${thuDelta}` : `↓${Math.abs(thuDelta)}`}
                 </span>
               )}
@@ -592,7 +607,7 @@ function ThisWeekTab({
             <p className="text-lg font-extrabold text-[#2E527F]">
               {summary.known_margin_pct != null ? `${summary.known_margin_pct}%` : '—'}
             </p>
-            {summary.known_margin_pct != null && <p className="text-[10px] text-[#9A7E6F]">recipe-linked items only</p>}
+            {summary.known_margin_pct != null && <p className="text-[10px] text-[#2E527F]">recipe-linked items only</p>}
           </div>
           <div className="border-l border-[#D8CDBE] pl-6">
             <p className="text-sm font-bold text-[#4B2B1D]">
@@ -604,7 +619,7 @@ function ThisWeekTab({
       </div>
 
       {/* Form vs Manual breakdown */}
-      <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4 flex items-center gap-6">
+      <div className="rounded-3xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-5 flex items-center gap-6">
         <div className="flex items-center gap-2">
           <span className="h-3 w-3 rounded-full bg-[#16A34A]"></span>
           <p className="text-sm text-[#4B2B1D]">
@@ -621,8 +636,8 @@ function ThisWeekTab({
 
       {/* Non-Responders Worklist */}
       {nonResponders.length > 0 && (
-        <div className="rounded-xl border border-[#E4D8C9] bg-[#FBF7F0]">
-          <p className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-[#9A8774]">
+        <div className="rounded-xl border border-[#E4D8C9] bg-[rgba(251,247,240,0.9)]">
+          <p className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-[#2E527F]">
             <Phone className="h-3 w-3" />
             Needs Follow-Up ({nonResponders.length})
           </p>
@@ -645,30 +660,10 @@ function ThisWeekTab({
         </div>
       )}
 
-      {/* Plates by day */}
-      <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
-        <h3 className="mb-3 font-bold text-[#4B2B1D]">Plates by day</h3>
-        {menuTotals.length === 0 ? (
-          <p className="text-sm text-[#9A7E6F]">No orders yet this week.</p>
-        ) : (
-          <>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <PlateColumn label="Monday" color="#16A34A" items={mondayItems} />
-              <PlateColumn label="Thursday" color="#D97706" items={thursdayItems} />
-            </div>
-            {otherItems.length > 0 && (
-              <div className="mt-3">
-                <PlateColumn label="Other (breakfast / unassigned)" color="#0EA5E9" items={otherItems} />
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
       {/* Individual Orders */}
       <div className="space-y-2">
         <h3 className="font-bold text-[#4B2B1D]">Individual orders</h3>
-        <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
+        <div className="overflow-x-auto rounded-3xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)]">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#E4D8C9] bg-[#F8F2E8]">
@@ -689,19 +684,38 @@ function ThisWeekTab({
                     )}
                   </td>
                   <td className="px-4 py-3 text-[#755B4C]">
-                    {c.lines.map((l) => (
-                      <div key={l.id} className="text-xs flex items-center gap-2 py-0.5">
-                        <span>
-                          {l.menu_name} × {l.quantity} {l.day_of_week ? `(${l.day_of_week})` : ''}
-                        </span>
-                        <button onClick={() => onEditLine(l)} className="text-[#2E527F] hover:underline font-bold">
-                          Edit
-                        </button>
-                        <button onClick={() => onDeleteLine(l)} className="text-[#D62F3D] hover:underline font-bold">
-                          Delete
-                        </button>
-                      </div>
-                    ))}
+                    {groupLinesByDay(c.lines).map((group, gi) => {
+                      const items = group.mains.length > 0 ? group.mains : group.addOns
+                      const rest = group.mains.length > 0 ? group.addOns : []
+                      const allLines = [...group.mains, ...group.addOns]
+                      return (
+                        <div key={group.day || `no-day-${gi}`} className="text-xs flex flex-wrap items-center gap-x-1.5 gap-y-1 py-1 border-b border-[#F0E9DC] last:border-0">
+                          {group.day && <span className="font-bold text-[#2E527F] capitalize">{group.day}:</span>}
+                          {items.map((l, i) => (
+                            <span key={l.id} className="font-semibold text-[#4B2B1D]">
+                              {i > 0 && <span className="font-normal text-[#9A7E6F]">&amp; </span>}
+                              {l.menu_name}
+                              {l.category ? ` (${l.category})` : ''}
+                              {l.quantity > 1 ? ` × ${l.quantity}` : ''}
+                            </span>
+                          ))}
+                          {rest.length > 0 && <span className="text-[#9A7E6F]">with</span>}
+                          {rest.map((l, i) => (
+                            <span key={l.id}>
+                              {i > 0 && <span className="text-[#9A7E6F]">, </span>}
+                              {l.menu_name}
+                              {l.quantity > 1 ? ` × ${l.quantity}` : ''}
+                            </span>
+                          ))}
+                          <button onClick={() => onEditLine(items[0])} className="text-[#2E527F] hover:underline font-bold">
+                            Edit
+                          </button>
+                          <button onClick={() => onDeletePlate(allLines)} className="text-[#D62F3D] hover:underline font-bold">
+                            Delete
+                          </button>
+                        </div>
+                      )
+                    })}
                   </td>
                   <td className="px-4 py-3 text-center text-xs text-[#755B4C] max-w-[160px] truncate" title={c.address || undefined}>
                     {c.address || '—'}
@@ -728,49 +742,50 @@ function ThisWeekTab({
   )
 }
 
+const CATEGORY_ABBR: Record<string, string> = {
+  Regular: 'Reg',
+  Large: 'Lg',
+  'High Protein': 'HP',
+  'Low Carb': 'LC',
+  '1 Pound': '1lb',
+  Breakfast: 'BF',
+  'By The LB': 'By Lb',
+}
+
 function PackingSheetTab({ orders }: { orders: OrderLine[] }) {
   const CATEGORY_ORDER = ['Regular', 'Large', 'High Protein', 'Low Carb', '1 Pound', 'Breakfast', 'By The LB']
 
-  // Unique dishes, grouped by category in a consistent order
-  const dishes = useMemo(() => {
-    const seen = new Map<string, { menu_id: number; name: string; category: string }>()
+  // Grid: one row per client, one column per delivery day, each cell the
+  // full descriptive plate for that client+day (not a per-recipe count).
+  const clientPlates = useMemo(() => {
+    const byCustomer = new Map<number, { name: string; lines: OrderLine[] }>()
     for (const o of orders) {
-      const key = `${o.menu_id}`
-      if (!seen.has(key)) seen.set(key, { menu_id: o.menu_id, name: o.menu_name, category: o.category || 'Other' })
+      if (!byCustomer.has(o.customer_id)) byCustomer.set(o.customer_id, { name: o.customer_name, lines: [] })
+      byCustomer.get(o.customer_id)!.lines.push(o)
     }
-    return Array.from(seen.values()).sort((a, b) => {
-      const catDiff = CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
-      if (catDiff !== 0) return catDiff
-      return a.name.localeCompare(b.name)
-    })
-  }, [orders])
-
-  // Unique clients, alphabetical
-  const clients = useMemo(() => {
-    const seen = new Map<number, string>()
-    for (const o of orders) seen.set(o.customer_id, o.customer_name)
-    return Array.from(seen.entries())
-      .map(([id, name]) => ({ id, name }))
+    return Array.from(byCustomer.values())
+      .map(({ name, lines }) => {
+        const byDay = new Map<string, { mains: OrderLine[]; addOns: OrderLine[] }>()
+        for (const g of groupLinesByDay(lines)) {
+          const key = (g.day || '').toLowerCase()
+          const bucket = key === 'monday' || key === 'thursday' ? key : 'other'
+          const existing = byDay.get(bucket)
+          if (existing) {
+            existing.mains.push(...g.mains)
+            existing.addOns.push(...g.addOns)
+          } else {
+            byDay.set(bucket, { mains: [...g.mains], addOns: [...g.addOns] })
+          }
+        }
+        return { name, byDay }
+      })
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [orders])
 
-  // quantity lookup: customer_id -> menu_id -> qty
-  const grid = useMemo(() => {
-    const map = new Map<number, Map<number, number>>()
-    for (const o of orders) {
-      if (!map.has(o.customer_id)) map.set(o.customer_id, new Map())
-      const row = map.get(o.customer_id)!
-      row.set(o.menu_id, (row.get(o.menu_id) || 0) + o.quantity)
-    }
-    return map
-  }, [orders])
-
-  // Column totals
-  const columnTotals = useMemo(() => {
-    const totals = new Map<number, number>()
-    for (const o of orders) totals.set(o.menu_id, (totals.get(o.menu_id) || 0) + o.quantity)
-    return totals
-  }, [orders])
+  const dayColumns = useMemo(
+    () => (clientPlates.some((c) => c.byDay.has('other')) ? ['monday', 'thursday', 'other'] : ['monday', 'thursday']),
+    [clientPlates]
+  )
 
   // Delivery split by day x category
   const deliverySplit = useMemo(() => {
@@ -788,7 +803,7 @@ function PackingSheetTab({ orders }: { orders: OrderLine[] }) {
 
   if (orders.length === 0) {
     return (
-      <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-8 text-center">
+      <div className="rounded-3xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-9 text-center">
         <p className="text-[#755B4C]">No orders yet this week.</p>
       </div>
     )
@@ -796,64 +811,47 @@ function PackingSheetTab({ orders }: { orders: OrderLine[] }) {
 
   return (
     <div className="space-y-6">
-      <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
-        <table className="text-xs border-collapse">
+      <div className="overflow-x-auto rounded-3xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)]">
+        <table className="text-xs border-collapse w-full">
           <thead>
             <tr>
               <th className="sticky left-0 bg-[#2E527F] text-white px-3 py-2 text-left font-extrabold z-10">Client</th>
-              {dishes.map((d) => (
-                <th key={d.menu_id} className="px-2 py-2 text-center font-bold text-white bg-[#2E527F] border-l border-[#3E6594] min-w-[90px]">
-                  <div className="truncate max-w-[100px]" title={d.name}>{d.name}</div>
-                  <div className="text-[9px] font-normal opacity-80">{d.category}</div>
+              {dayColumns.map((day) => (
+                <th key={day} className="px-3 py-2 text-left font-bold text-white bg-[#2E527F] border-l border-[#3E6594] capitalize">
+                  {day}
                 </th>
               ))}
-              <th className="px-3 py-2 text-center font-extrabold text-white bg-[#16813D] border-l border-[#3E6594]">Total</th>
             </tr>
           </thead>
           <tbody>
-            {clients.map((c, idx) => {
-              const row = grid.get(c.id)
-              const rowTotal = row ? Array.from(row.values()).reduce((a, b) => a + b, 0) : 0
-              return (
-                <tr key={c.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-[#F8F2E8]'}>
-                  <td className="sticky left-0 bg-inherit px-3 py-2 font-semibold text-[#4B2B1D] border-b border-[#E4D8C9]">
-                    {c.name}
-                  </td>
-                  {dishes.map((d) => (
-                    <td key={d.menu_id} className="px-2 py-2 text-center text-[#4B2B1D] border-b border-l border-[#E4D8C9]">
-                      {row?.get(d.menu_id) || 0}
-                    </td>
-                  ))}
-                  <td className="px-3 py-2 text-center font-extrabold text-[#16813D] bg-[#EAF5EC] border-b border-l border-[#E4D8C9]">
-                    {rowTotal}
-                  </td>
-                </tr>
-              )
-            })}
-            <tr className="bg-[#E4D8C9]">
-              <td className="sticky left-0 bg-[#E4D8C9] px-3 py-2 font-extrabold text-[#4B2B1D]">Total</td>
-              {dishes.map((d) => (
-                <td key={d.menu_id} className="px-2 py-2 text-center font-extrabold text-[#4B2B1D] border-l border-[#D8CDBE]">
-                  {columnTotals.get(d.menu_id) || 0}
+            {clientPlates.map((c, idx) => (
+              <tr key={c.name} className={idx % 2 === 0 ? 'bg-white' : 'bg-[#F8F2E8]'}>
+                <td className="sticky left-0 bg-inherit px-3 py-2 font-semibold text-[#4B2B1D] border-b border-[#E4D8C9] whitespace-nowrap">
+                  {c.name}
                 </td>
-              ))}
-              <td className="px-3 py-2 text-center font-extrabold text-white bg-[#16813D] border-l border-[#D8CDBE]">
-                {Array.from(columnTotals.values()).reduce((a, b) => a + b, 0)}
-              </td>
-            </tr>
+                {dayColumns.map((day) => {
+                  const group = c.byDay.get(day)
+                  return (
+                    <td key={day} className="px-3 py-2 text-[#4B2B1D] border-b border-l border-[#E4D8C9]">
+                      {group ? <PlateLabel group={group} /> : <span className="text-[#9A7E6F]">—</span>}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
 
       <div>
         <h3 className="mb-2 font-bold text-[#4B2B1D]">Delivery Split By Category</h3>
-        <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
+        <div className="overflow-x-auto rounded-3xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)]">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#E4D8C9]">
                 <th className="px-4 py-3 text-left font-extrabold text-[#4B2B1D]">Delivery Day</th>
                 {CATEGORY_ORDER.map((cat) => (
-                  <th key={cat} className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">{cat}</th>
+                  <th key={cat} className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">{CATEGORY_ABBR[cat] || cat}</th>
                 ))}
               </tr>
             </thead>
@@ -877,7 +875,7 @@ function PackingSheetTab({ orders }: { orders: OrderLine[] }) {
 function HistoryTab({ history }: { history: HistoryData }) {
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
+      <div className="overflow-x-auto rounded-3xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)]">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[#E4D8C9]">
@@ -913,7 +911,7 @@ function InsightsTab({ insights }: { insights: InsightsData }) {
       <div className="space-y-3">
         <h3 className="font-bold text-[#4B2B1D]">Key Metrics</h3>
 
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+        <div className="rounded-3xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-5">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-[#755B4C]">Avg Meals/Week</p>
@@ -923,7 +921,7 @@ function InsightsTab({ insights }: { insights: InsightsData }) {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+        <div className="rounded-3xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-5">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-[#755B4C]">Customers With Orders</p>
@@ -933,7 +931,7 @@ function InsightsTab({ insights }: { insights: InsightsData }) {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+        <div className="rounded-3xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-5">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-[#755B4C]">Peak Week</p>
@@ -948,10 +946,10 @@ function InsightsTab({ insights }: { insights: InsightsData }) {
       </div>
 
       <div className="space-y-3">
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+        <div className="rounded-3xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-5">
           <h4 className="mb-3 font-bold text-[#4B2B1D]">Top Recipes (All Time)</h4>
           <div className="space-y-2">
-            {topRecipes.length === 0 && <p className="text-sm text-[#9A7E6F]">No order data yet.</p>}
+            {topRecipes.length === 0 && <p className="text-sm text-[#2E527F]">No order data yet.</p>}
             {topRecipes.map((recipe, idx) => (
               <div key={idx} className="flex items-center justify-between text-sm">
                 <span className="text-[#755B4C]">{recipe.recipe_name}</span>
@@ -961,10 +959,10 @@ function InsightsTab({ insights }: { insights: InsightsData }) {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+        <div className="rounded-3xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-5">
           <h4 className="mb-3 font-bold text-[#4B2B1D]">Top Customers (All Time)</h4>
           <div className="space-y-2">
-            {topCustomers.length === 0 && <p className="text-sm text-[#9A7E6F]">No order data yet.</p>}
+            {topCustomers.length === 0 && <p className="text-sm text-[#2E527F]">No order data yet.</p>}
             {topCustomers.map((customer, idx) => (
               <div key={idx} className="flex items-center justify-between text-sm">
                 <span className="text-[#755B4C]">{customer.name}</span>
@@ -1328,7 +1326,7 @@ function AddOrderModal({
               <img src="/order/logo.png" alt="" className="h-8 w-8 object-contain flex-shrink-0" />
               <div className="min-w-0">
                 <p className="text-sm font-bold text-[#3B2A1E] leading-tight">This Week's Menu</p>
-                <p className="text-[10px] text-[#9C8C77] leading-tight">Building this order as staff, same menu the client sees</p>
+                <p className="text-[10px] text-[#2E527F] leading-tight">Building this order as staff, same menu the client sees</p>
               </div>
             </div>
             <button onClick={onClose} className="flex-shrink-0 text-[#6B5842] hover:text-[#3B2A1E]">
@@ -1339,7 +1337,7 @@ function AddOrderModal({
           {/* Scrollable menu content */}
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
             <div className="rounded-xl border border-[#DDC9A8] bg-[#FBF5EA] px-3 py-2.5">
-              <label className="block text-[10px] font-bold uppercase tracking-wide text-[#9C8C77] mb-1">Customer</label>
+              <label className="block text-[10px] font-bold uppercase tracking-wide text-[#2E527F] mb-1">Customer</label>
               <input
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
@@ -1350,9 +1348,9 @@ function AddOrderModal({
             </div>
 
             {loadingMenu ? (
-              <p className="text-xs text-[#9C8C77] px-1">Loading menu...</p>
+              <p className="text-xs text-[#2E527F] px-1">Loading menu...</p>
             ) : !weeklyMenu || (weeklyMenu.monday.length === 0 && weeklyMenu.thursday.length === 0 && weeklyMenu.breakfast.length === 0) ? (
-              <p className="text-xs text-[#9C8C77] px-1">
+              <p className="text-xs text-[#2E527F] px-1">
                 No plates built for this week yet in Menu Planner — use "add an item not on the menu" below.
               </p>
             ) : (
@@ -1483,7 +1481,7 @@ function AddOrderModal({
 
             {reviewOpen && (
               <label className="block">
-                <span className="block text-[10px] font-bold uppercase tracking-wide text-[#9C8C77] mb-1">Notes</span>
+                <span className="block text-[10px] font-bold uppercase tracking-wide text-[#2E527F] mb-1">Notes</span>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
@@ -1500,20 +1498,20 @@ function AddOrderModal({
             {reviewOpen && (
               <div className="max-h-32 overflow-y-auto mb-2 space-y-1 border-b border-[#DDC9A8] pb-2">
                 {namedItems.length === 0 ? (
-                  <p className="text-[11px] text-[#9C8C77] text-center py-1">Nothing added yet</p>
+                  <p className="text-[11px] text-[#2E527F] text-center py-1">Nothing added yet</p>
                 ) : (
                   items.map((item, idx) =>
                     !item.mealName ? null : (
                       <div key={idx} className="flex items-center justify-between gap-2">
                         <p className="text-[11px] text-[#3B2A1E] truncate">
-                          {item.mealName} <span className="text-[#9C8C77]">({item.category}{item.dayOfWeek ? `, ${item.dayOfWeek}` : ''})</span>
+                          {item.mealName} <span className="text-[#2E527F]">({item.category}{item.dayOfWeek ? `, ${item.dayOfWeek}` : ''})</span>
                         </p>
                         <div className="flex items-center gap-1.5 flex-shrink-0">
                           {/* Sides/sauces are boolean add-ons, not quantity-stepped --
                               a stray + here would break the single $0/$2.50 price the
                               backend trusts per line, so just offer remove. */}
                           {ADD_ON_FORMATS.includes(item.category) ? (
-                            <span className="text-[11px] text-[#9C8C77]">{item.price === ADD_ON_FREE_PRICE ? 'Free' : `+$${item.price.toFixed(2)}`}</span>
+                            <span className="text-[11px] text-[#2E527F]">{item.price === ADD_ON_FREE_PRICE ? 'Free' : `+$${item.price.toFixed(2)}`}</span>
                           ) : (
                             <>
                               <button type="button" onClick={() => bumpQty(idx, -1)} className="h-5 w-5 rounded border border-[#DDC9A8] text-[11px] font-bold text-[#3B2A1E]">
@@ -1540,7 +1538,7 @@ function AddOrderModal({
               onClick={() => setReviewOpen((v) => !v)}
               className="flex w-full items-center justify-between mb-2"
             >
-              <span className="text-[11px] font-bold uppercase tracking-wide text-[#9C8C77]">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-[#2E527F]">
                 {orderCount} item{orderCount === 1 ? '' : 's'}
                 <span className={`inline-block ml-1 transition-transform ${reviewOpen ? 'rotate-180' : ''}`}>▾</span>
               </span>
@@ -1656,7 +1654,7 @@ function ProteinCard({
           <p className="text-xs font-semibold uppercase tracking-tight text-[#3B2A1E] truncate" title={recipe.name}>
             {recipe.name}
           </p>
-          <p className={`text-[10px] mt-0.5 ${totalAdded > 0 ? 'font-bold text-[#3D5A78]' : 'text-[#9C8C77]'}`}>
+          <p className={`text-[10px] mt-0.5 ${totalAdded > 0 ? 'font-bold text-[#3D5A78]' : 'text-[#2E527F]'}`}>
             {totalAdded > 0 ? `✓ Added ×${totalAdded}` : 'Tap to build plate'}
           </p>
         </div>
@@ -1666,7 +1664,7 @@ function ProteinCard({
       {isOpen && (
         <div className="px-2.5 pb-2.5 pt-2 border-t border-[#F0EAE0] space-y-2">
           <div>
-            <p className="text-[9px] font-bold uppercase tracking-wide text-[#9C8C77] mb-1">Plate Format</p>
+            <p className="text-[9px] font-bold uppercase tracking-wide text-[#2E527F] mb-1">Plate Format</p>
             <div className="flex flex-wrap gap-1.5">
               {recipe.formats.map((f) => (
                 <button
@@ -1684,8 +1682,8 @@ function ProteinCard({
           </div>
 
           {plateMacros && (
-            <div className="rounded-lg border border-[#DDC9A8] bg-[#FBF7F0] px-2.5 py-2">
-              <p className="text-[9px] font-bold uppercase tracking-wide text-[#9C8C77] mb-0.5">This plate</p>
+            <div className="rounded-lg border border-[#DDC9A8] bg-[rgba(251,247,240,0.9)] px-2.5 py-2">
+              <p className="text-[9px] font-bold uppercase tracking-wide text-[#2E527F] mb-0.5">This plate</p>
               <p className="text-[11px] font-semibold text-[#3D5A78]">
                 {Math.round(plateMacros.calories)} cal &middot; {plateMacros.protein_g.toFixed(1)}g protein &middot; {plateMacros.carbs_g.toFixed(1)}g carbs &middot; {plateMacros.fat_g.toFixed(1)}g fat
               </p>
@@ -1694,7 +1692,7 @@ function ProteinCard({
 
           {selectedFormat && sidesForFormat.length > 0 && (
             <div>
-              <p className="text-[9px] font-bold uppercase tracking-wide text-[#9C8C77] mb-1">Sides &middot; first 2 free, +$2.50 each after</p>
+              <p className="text-[9px] font-bold uppercase tracking-wide text-[#2E527F] mb-1">Sides &middot; first 2 free, +$2.50 each after</p>
               <div className="flex flex-wrap gap-1.5">
                 {sidesForFormat.map((side) => {
                   const inCart = !!qtyInCart(side.name, SIDE_FORMAT, day)
@@ -1717,7 +1715,7 @@ function ProteinCard({
 
           {daySauces.length > 0 && (
             <div>
-              <p className="text-[9px] font-bold uppercase tracking-wide text-[#9C8C77] mb-1">Sauces &middot; 1 free, +$2.50 each after</p>
+              <p className="text-[9px] font-bold uppercase tracking-wide text-[#2E527F] mb-1">Sauces &middot; 1 free, +$2.50 each after</p>
               <div className="flex flex-wrap gap-1.5">
                 {daySauces.map((sauce) => {
                   const inCart = !!qtyInCart(sauce.name, SAUCE_ADDON_FORMAT, day)

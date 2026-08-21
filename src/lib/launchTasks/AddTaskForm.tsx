@@ -25,7 +25,7 @@ export function AddTaskForm({ defaultDueDate, fixedDueDate, defaultTag, roster, 
   }
 
   return (
-    <div className="rounded-2xl p-3 mb-2 border" style={{ background: COLORS.cardBg, borderColor: COLORS.cardBorder }}>
+    <div className="rounded-3xl p-4 mb-2 border" style={{ background: COLORS.cardBg, borderColor: COLORS.cardBorder }}>
       <div className="flex gap-2 mb-2 flex-wrap">
         <input
           autoFocus

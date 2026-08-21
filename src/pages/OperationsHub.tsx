@@ -648,7 +648,7 @@ export default function OperationsHubPage() {
     return (
       <div
         key={task.id}
-        className={`rounded-lg border p-4 bg-white transition ${isDone ? 'border-[#CDBDA8] opacity-70' : 'border-[#E4D8C9]'}`}
+        className={`rounded-lg border p-4 bg-white transition ${isDone ? 'border-[#2E527F] opacity-70' : 'border-[#E4D8C9]'}`}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-start gap-2 flex-1 min-w-0">
@@ -709,7 +709,7 @@ export default function OperationsHubPage() {
   if (loadingWeek && loadingDay) {
     return (
       <main className="flex-1 space-y-6 p-8">
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-8 text-center">
+        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-8 text-center">
           <p className="text-[#755B4C]">Loading...</p>
         </div>
       </main>
@@ -725,7 +725,7 @@ export default function OperationsHubPage() {
           <p className="mt-1 text-sm text-[#755B4C]">What needs to happen today, who owns it, what's blocking it</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 rounded-lg border border-[#CDBDA8] bg-[#FBF7F0] px-2 py-1">
+          <div className="flex items-center gap-1 rounded-lg border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-2 py-1">
             <button onClick={() => setWeekStart((w) => addDays(w, -7))} className="p-1 text-[#4B2B1D] hover:text-[#2E527F] transition">
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -757,7 +757,7 @@ export default function OperationsHubPage() {
                   key={day}
                   onClick={() => setSelectedDay(day)}
                   className={`text-left rounded-2xl border p-3 transition ${
-                    isSelected ? 'border-2 border-[#2E527F] bg-[#EAF1F9]' : 'border-[#CDBDA8] bg-[#FBF7F0] hover:border-[#2E527F]'
+                    isSelected ? 'border-2 border-[#2E527F] bg-[#EAF1F9]' : 'border-[#2E527F] bg-[rgba(251,247,240,0.9)] hover:border-[#2E527F]'
                   }`}
                 >
                   <p className="text-xs font-bold text-[#4B2B1D]">{DAY_LABELS[day]}</p>
@@ -775,7 +775,7 @@ export default function OperationsHubPage() {
           </div>
 
           {/* Daily workspace */}
-          <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-6">
+          <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-lg font-extrabold text-[#4B2B1D]">
                 {DAY_LABELS[selectedDay]}, {formatDate(addDays(weekStart, OPERATIONAL_DAY_OFFSET[selectedDay]))}
@@ -785,8 +785,8 @@ export default function OperationsHubPage() {
 
             {/* Filters */}
             <div className="flex flex-wrap items-center gap-2 mb-4">
-              <div className="flex items-center gap-1.5 rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-[10px] py-[7px] flex-1 min-w-[160px]">
-                <Search className="h-3.5 w-3.5 text-[#9A8774]" />
+              <div className="flex items-center gap-1.5 rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-[10px] py-[7px] flex-1 min-w-[160px]">
+                <Search className="h-3.5 w-3.5 text-[#2E527F]" />
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -794,25 +794,25 @@ export default function OperationsHubPage() {
                   className="text-[13px] outline-none flex-1 bg-transparent text-[#4B2B1D]"
                 />
               </div>
-              <select value={filterOwner} onChange={(e) => setFilterOwner(e.target.value)} className="text-[13px] rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-[10px] py-[7px] text-[#755B4C]">
+              <select value={filterOwner} onChange={(e) => setFilterOwner(e.target.value)} className="text-[13px] rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-[10px] py-[7px] text-[#755B4C]">
                 <option value="">All Owners</option>
                 {staff.map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
-              <select value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)} className="text-[13px] rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-[10px] py-[7px] text-[#755B4C]">
+              <select value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)} className="text-[13px] rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-[10px] py-[7px] text-[#755B4C]">
                 <option value="">All Priorities</option>
                 {PRIORITIES.map((p) => (
                   <option key={p} value={p}>{p}</option>
                 ))}
               </select>
-              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-[13px] rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-[10px] py-[7px] text-[#755B4C]">
+              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-[13px] rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-[10px] py-[7px] text-[#755B4C]">
                 <option value="">All Statuses</option>
                 {STATUSES.map((s) => (
                   <option key={s} value={s}>{STATUS_LABELS[s]}</option>
                 ))}
               </select>
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="text-[13px] rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-[10px] py-[7px] text-[#755B4C]">
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="text-[13px] rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-[10px] py-[7px] text-[#755B4C]">
                 <option value="due_date">Sort: Due Date</option>
                 <option value="priority">Sort: Priority</option>
                 <option value="status">Sort: Status</option>
@@ -823,7 +823,7 @@ export default function OperationsHubPage() {
             {loadingDay ? (
               <p className="text-sm text-[#755B4C]">Loading...</p>
             ) : Object.keys(filteredDayDepartments).length === 0 ? (
-              <div className="rounded-lg border-2 border-dashed border-[#CDBDA8] bg-white p-8 text-center">
+              <div className="rounded-lg border-2 border-dashed border-[#2E527F] bg-white p-8 text-center">
                 <p className="text-sm text-[#755B4C]">No tasks for {DAY_LABELS[selectedDay]} yet. Click "New Task" to add one.</p>
               </div>
             ) : (
@@ -854,7 +854,7 @@ export default function OperationsHubPage() {
 
         {/* Right sidebar */}
         <div className="space-y-4">
-          <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-5">
+          <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-5">
             <h3 className="text-sm font-extrabold text-[#4B2B1D] mb-3">Today's Overview</h3>
             {todayOverview ? (
               <div className="grid grid-cols-2 gap-3">
@@ -880,7 +880,7 @@ export default function OperationsHubPage() {
             )}
           </div>
 
-          <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-5">
+          <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-extrabold text-[#4B2B1D]">My Focus</h3>
               <select
@@ -889,7 +889,7 @@ export default function OperationsHubPage() {
                   setViewingStaffId(e.target.value)
                   localStorage.setItem(VIEWING_STAFF_KEY, e.target.value)
                 }}
-                className="text-[10px] rounded-lg border border-[#CDBDA8] bg-[#FBF7F0] px-1.5 py-1 text-[#755B4C]"
+                className="text-[10px] rounded-lg border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-1.5 py-1 text-[#755B4C]"
               >
                 <option value="">Viewing as...</option>
                 {staff.map((s) => (
@@ -920,7 +920,7 @@ export default function OperationsHubPage() {
             )}
           </div>
 
-          <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-5">
+          <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-5">
             <h3 className="text-sm font-extrabold text-[#4B2B1D] mb-3">Team Availability</h3>
             {staff.filter((s) => s.is_active).length === 0 ? (
               <p className="text-xs text-[#755B4C] italic">No staff added yet</p>
@@ -948,7 +948,7 @@ export default function OperationsHubPage() {
       {/* Create/Edit task modal */}
       {taskModalOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4" style={{ zIndex: 50 }}>
-          <div className="bg-[#FBF7F0] rounded-2xl border border-[#CDBDA8] max-w-lg w-full max-h-[90vh] overflow-y-auto p-6">
+          <div className="bg-[rgba(251,247,240,0.9)] rounded-2xl border border-[#2E527F] max-w-lg w-full max-h-[90vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-extrabold text-[#4B2B1D]">{editingTask ? 'Edit Task' : 'New Task'}</h2>
               <button onClick={closeTaskModal} className="text-[#755B4C] hover:text-[#4B2B1D]">
@@ -962,7 +962,7 @@ export default function OperationsHubPage() {
                 <input
                   value={formState.title}
                   onChange={(e) => setFormState((f) => ({ ...f, title: e.target.value }))}
-                  className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
+                  className="mt-1 w-full rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-2 text-sm text-[#4B2B1D]"
                 />
               </div>
               <div>
@@ -971,7 +971,7 @@ export default function OperationsHubPage() {
                   value={formState.description}
                   onChange={(e) => setFormState((f) => ({ ...f, description: e.target.value }))}
                   rows={2}
-                  className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
+                  className="mt-1 w-full rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-2 text-sm text-[#4B2B1D]"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -980,7 +980,7 @@ export default function OperationsHubPage() {
                   <select
                     value={formState.department}
                     onChange={(e) => setFormState((f) => ({ ...f, department: e.target.value }))}
-                    className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
+                    className="mt-1 w-full rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-2 text-sm text-[#4B2B1D]"
                   >
                     {DEPARTMENTS.map((d) => (
                       <option key={d} value={d}>{d}</option>
@@ -992,7 +992,7 @@ export default function OperationsHubPage() {
                   <select
                     value={formState.owner_id}
                     onChange={(e) => setFormState((f) => ({ ...f, owner_id: e.target.value }))}
-                    className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
+                    className="mt-1 w-full rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-2 text-sm text-[#4B2B1D]"
                   >
                     <option value="">Unassigned</option>
                     {staff.map((s) => (
@@ -1005,7 +1005,7 @@ export default function OperationsHubPage() {
                   <select
                     value={formState.priority}
                     onChange={(e) => setFormState((f) => ({ ...f, priority: e.target.value as Priority }))}
-                    className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
+                    className="mt-1 w-full rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-2 text-sm text-[#4B2B1D]"
                   >
                     {PRIORITIES.map((p) => (
                       <option key={p} value={p}>{p}</option>
@@ -1017,7 +1017,7 @@ export default function OperationsHubPage() {
                   <select
                     value={formState.status}
                     onChange={(e) => setFormState((f) => ({ ...f, status: e.target.value as Status }))}
-                    className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
+                    className="mt-1 w-full rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-2 text-sm text-[#4B2B1D]"
                   >
                     {STATUSES.map((s) => (
                       <option key={s} value={s}>{STATUS_LABELS[s]}</option>
@@ -1029,7 +1029,7 @@ export default function OperationsHubPage() {
                   <select
                     value={formState.operational_day}
                     onChange={(e) => setFormState((f) => ({ ...f, operational_day: e.target.value as OperationalDay }))}
-                    className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
+                    className="mt-1 w-full rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-2 text-sm text-[#4B2B1D]"
                   >
                     {OPERATIONAL_DAYS.map((d) => (
                       <option key={d} value={d}>{DAY_LABELS[d]}</option>
@@ -1042,7 +1042,7 @@ export default function OperationsHubPage() {
                     type="date"
                     value={formState.due_date}
                     onChange={(e) => setFormState((f) => ({ ...f, due_date: e.target.value }))}
-                    className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
+                    className="mt-1 w-full rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-2 text-sm text-[#4B2B1D]"
                   />
                 </div>
                 <div>
@@ -1051,7 +1051,7 @@ export default function OperationsHubPage() {
                     type="number"
                     value={formState.estimated_minutes}
                     onChange={(e) => setFormState((f) => ({ ...f, estimated_minutes: e.target.value }))}
-                    className="mt-1 w-full rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-2 text-sm text-[#4B2B1D]"
+                    className="mt-1 w-full rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-2 text-sm text-[#4B2B1D]"
                   />
                 </div>
               </div>
@@ -1062,7 +1062,7 @@ export default function OperationsHubPage() {
                     type="checkbox"
                     checked={formState.is_recurring}
                     onChange={(e) => setFormState((f) => ({ ...f, is_recurring: e.target.checked }))}
-                    className="h-4 w-4 rounded border-[#CDBDA8]"
+                    className="h-4 w-4 rounded border-[#2E527F]"
                   />
                   <span className="text-xs font-bold text-[#4B2B1D]">
                     Repeat weekly on {DAY_LABELS[formState.operational_day]}
@@ -1072,7 +1072,7 @@ export default function OperationsHubPage() {
             </div>
 
             <div className="mt-6 flex justify-end gap-2">
-              <button onClick={closeTaskModal} className="rounded-lg border border-[#CDBDA8] px-4 py-2 text-sm font-bold text-[#4B2B1D] hover:bg-[#F3EBDF] transition">
+              <button onClick={closeTaskModal} className="rounded-lg border border-[#2E527F] px-4 py-2 text-sm font-bold text-[#4B2B1D] hover:bg-[#F3EBDF] transition">
                 Cancel
               </button>
               <button
@@ -1090,7 +1090,7 @@ export default function OperationsHubPage() {
       {/* Task detail drawer: checklist + comments */}
       {detailTaskId != null && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4" style={{ zIndex: 50 }}>
-          <div className="bg-[#FBF7F0] rounded-2xl border border-[#CDBDA8] max-w-lg w-full max-h-[90vh] overflow-y-auto p-6">
+          <div className="bg-[rgba(251,247,240,0.9)] rounded-2xl border border-[#2E527F] max-w-lg w-full max-h-[90vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-extrabold text-[#4B2B1D]">Task Details</h2>
               <button onClick={() => setDetailTaskId(null)} className="text-[#755B4C] hover:text-[#4B2B1D]">
@@ -1125,7 +1125,7 @@ export default function OperationsHubPage() {
                         <button onClick={() => toggleChecklistItem(item)} className="text-[#755B4C] hover:text-[#16A34A] transition">
                           {item.is_completed ? <CheckSquare className="h-4 w-4 text-[#16A34A]" /> : <Square className="h-4 w-4" />}
                         </button>
-                        <span className={`text-sm flex-1 text-[#4B2B1D] ${item.is_completed ? 'line-through text-[#9A8774]' : ''}`}>{item.label}</span>
+                        <span className={`text-sm flex-1 text-[#4B2B1D] ${item.is_completed ? 'line-through text-[#2E527F]' : ''}`}>{item.label}</span>
                         <button onClick={() => deleteChecklistItem(item)} className="text-[#D62F3D] opacity-0 group-hover:opacity-100 transition">
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -1138,7 +1138,7 @@ export default function OperationsHubPage() {
                       onChange={(e) => setNewChecklistLabel(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && addChecklistItem()}
                       placeholder="Add checklist item..."
-                      className="flex-1 rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-1.5 text-xs text-[#4B2B1D]"
+                      className="flex-1 rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-1.5 text-xs text-[#4B2B1D]"
                     />
                     <button onClick={addChecklistItem} className="rounded-lg bg-[#2E527F] text-white p-1.5 hover:bg-[#254368] transition">
                       <Plus className="h-3.5 w-3.5" />
@@ -1157,7 +1157,7 @@ export default function OperationsHubPage() {
                       <div key={c.id} className="rounded-lg border border-[#E4D8C9] bg-white p-2.5">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-bold text-[#4B2B1D]">{c.staff_name || 'Unknown'}</span>
-                          <span className="text-[10px] text-[#9A8774]">{new Date(c.created_at).toLocaleString()}</span>
+                          <span className="text-[10px] text-[#2E527F]">{new Date(c.created_at).toLocaleString()}</span>
                         </div>
                         <p className="mt-1 text-xs text-[#4B2B1D]">{c.comment}</p>
                       </div>
@@ -1169,7 +1169,7 @@ export default function OperationsHubPage() {
                       onChange={(e) => setNewComment(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && addComment()}
                       placeholder="Add a comment..."
-                      className="flex-1 rounded-xl border border-[#CDBDA8] bg-[#FBF7F0] px-3 py-1.5 text-xs text-[#4B2B1D]"
+                      className="flex-1 rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-1.5 text-xs text-[#4B2B1D]"
                     />
                     <button onClick={addComment} className="rounded-lg bg-[#2E527F] text-white p-1.5 hover:bg-[#254368] transition">
                       <Check className="h-3.5 w-3.5" />

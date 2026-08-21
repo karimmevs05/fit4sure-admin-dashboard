@@ -67,7 +67,7 @@ export default function ReportsPage() {
         </div>
 
         {loading ? (
-          <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-8 text-center">
+          <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-8 text-center">
             <p className="text-[#755B4C]">Loading reports...</p>
           </div>
         ) : (
@@ -84,7 +84,7 @@ export default function ReportsPage() {
 function Header() {
   return (
     <header className="flex items-start gap-4">
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#D7C9B7] bg-[#FBF7F0] text-[#2E527F]">
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#D7C9B7] bg-[rgba(251,247,240,0.9)] text-[#2E527F]">
         <BarChart3 className="h-6 w-6" />
       </div>
       <div>
@@ -103,7 +103,7 @@ function InsightsTab({ insights }: { insights: InsightsData }) {
       <div className="space-y-3">
         <h3 className="font-bold text-[#4B2B1D]">Key Metrics</h3>
 
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-[#755B4C]">Avg Meals/Week</p>
@@ -113,7 +113,7 @@ function InsightsTab({ insights }: { insights: InsightsData }) {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-[#755B4C]">Customers With Orders</p>
@@ -123,7 +123,7 @@ function InsightsTab({ insights }: { insights: InsightsData }) {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-[#755B4C]">Peak Week</p>
@@ -138,10 +138,10 @@ function InsightsTab({ insights }: { insights: InsightsData }) {
       </div>
 
       <div className="space-y-3">
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
           <h4 className="mb-3 font-bold text-[#4B2B1D]">Top Recipes (All Time)</h4>
           <div className="space-y-2">
-            {topRecipes.length === 0 && <p className="text-sm text-[#9A7E6F]">No order data yet.</p>}
+            {topRecipes.length === 0 && <p className="text-sm text-[#2E527F]">No order data yet.</p>}
             {topRecipes.map((recipe, idx) => (
               <div key={idx} className="flex items-center justify-between text-sm">
                 <span className="text-[#755B4C]">{recipe.recipe_name}</span>
@@ -151,10 +151,10 @@ function InsightsTab({ insights }: { insights: InsightsData }) {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-4">
+        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
           <h4 className="mb-3 font-bold text-[#4B2B1D]">Top Customers (All Time)</h4>
           <div className="space-y-2">
-            {topCustomers.length === 0 && <p className="text-sm text-[#9A7E6F]">No order data yet.</p>}
+            {topCustomers.length === 0 && <p className="text-sm text-[#2E527F]">No order data yet.</p>}
             {topCustomers.map((customer, idx) => (
               <div key={idx} className="flex items-center justify-between text-sm">
                 <span className="text-[#755B4C]">{customer.name}</span>
@@ -171,7 +171,7 @@ function InsightsTab({ insights }: { insights: InsightsData }) {
 function HistoryTab({ history }: { history: HistoryData }) {
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
+      <div className="overflow-x-auto rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)]">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[#E4D8C9]">
@@ -184,7 +184,7 @@ function HistoryTab({ history }: { history: HistoryData }) {
           <tbody>
             {history.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-sm text-[#9A7E6F]">
+                <td colSpan={4} className="px-4 py-6 text-center text-sm text-[#2E527F]">
                   No weeks on record yet.
                 </td>
               </tr>

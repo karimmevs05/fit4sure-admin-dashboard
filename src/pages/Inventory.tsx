@@ -189,13 +189,13 @@ export default function InventoryPage() {
           </div>
         )}
 
-        <div className="mt-6 flex gap-2 border-b border-[#CDBDA8]">
+        <div className="mt-6 flex gap-2 border-b border-[#2E527F]">
           <button
             onClick={() => setActiveTab('stock')}
             className={`px-4 py-2 text-sm font-extrabold border-b-2 -mb-px transition ${
               activeTab === 'stock'
                 ? 'border-[#2E527F] text-[#2E527F]'
-                : 'border-transparent text-[#9A8774] hover:text-[#4B2B1D]'
+                : 'border-transparent text-[#2E527F] hover:text-[#4B2B1D]'
             }`}
           >
             In Stock
@@ -205,7 +205,7 @@ export default function InventoryPage() {
             className={`px-4 py-2 text-sm font-extrabold border-b-2 -mb-px transition ${
               activeTab === 'ingredients'
                 ? 'border-[#2E527F] text-[#2E527F]'
-                : 'border-transparent text-[#9A8774] hover:text-[#4B2B1D]'
+                : 'border-transparent text-[#2E527F] hover:text-[#4B2B1D]'
             }`}
           >
             All Ingredients
@@ -214,12 +214,12 @@ export default function InventoryPage() {
 
         <div className={drawerOpen ? 'mt-4 xl:pr-[380px]' : 'mt-4'}>
           {loading ? (
-            <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-10 text-center">
+            <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-10 text-center">
               <p className="text-lg font-extrabold">Loading inventory...</p>
             </div>
           ) : activeTab === 'stock' ? (
             inStockItems.length === 0 ? (
-              <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-10 text-center">
+              <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-10 text-center">
                 <p className="text-lg font-extrabold">No in-stock ingredients found.</p>
                 <p className="mt-1 text-sm text-[#755B4C]">
                   Try a different search, or log a receipt to add stock.
@@ -233,7 +233,7 @@ export default function InventoryPage() {
               />
             )
           ) : filtered.length === 0 ? (
-            <div className="rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0] p-10 text-center">
+            <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-10 text-center">
               <p className="text-lg font-extrabold">No ingredients found.</p>
               <p className="mt-1 text-sm text-[#755B4C]">
                 Try a different search or add a new ingredient.
@@ -293,7 +293,7 @@ function Header({
   return (
     <header className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
       <div className="flex items-start gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#D7C9B7] bg-[#FBF7F0] text-[#2E527F]">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#D7C9B7] bg-[rgba(251,247,240,0.9)] text-[#2E527F]">
           <Package className="h-6 w-6" />
         </div>
         <div>
@@ -314,7 +314,7 @@ function Header({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search ingredients..."
-            className="h-12 w-full rounded-xl border border-[#B7A58F] bg-[#FBF7F0] pl-11 pr-4 text-sm font-medium text-[#4B2B1D] outline-none transition placeholder:text-[#8D7A69] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+            className="h-12 w-full rounded-xl border border-[#B7A58F] bg-[rgba(251,247,240,0.9)] pl-11 pr-4 text-sm font-medium text-[#4B2B1D] outline-none transition placeholder:text-[#2E527F] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
           />
         </div>
 
@@ -323,7 +323,7 @@ function Header({
           <select
             value={activeCategory}
             onChange={(event) => setActiveCategory(event.target.value)}
-            className="h-12 appearance-none rounded-xl border border-[#B7A58F] bg-[#FBF7F0] pl-11 pr-10 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+            className="h-12 appearance-none rounded-xl border border-[#B7A58F] bg-[rgba(251,247,240,0.9)] pl-11 pr-10 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
           >
             <option value="ALL">All categories</option>
             <option value="Protein">Protein</option>
@@ -340,7 +340,7 @@ function Header({
           <select
             value={storeFilter}
             onChange={(event) => setStoreFilter(event.target.value)}
-            className="h-12 appearance-none rounded-xl border border-[#B7A58F] bg-[#FBF7F0] pl-11 pr-10 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+            className="h-12 appearance-none rounded-xl border border-[#B7A58F] bg-[rgba(251,247,240,0.9)] pl-11 pr-10 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
           >
             <option value="ALL">All stores</option>
             {stores.map((store) => (
@@ -356,7 +356,7 @@ function Header({
             <select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as 'ALL' | 'IN_STOCK' | 'OUT')}
-              className="h-12 appearance-none rounded-xl border border-[#B7A58F] bg-[#FBF7F0] pl-11 pr-10 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+              className="h-12 appearance-none rounded-xl border border-[#B7A58F] bg-[rgba(251,247,240,0.9)] pl-11 pr-10 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
             >
               <option value="ALL">All stock</option>
               <option value="IN_STOCK">In Stock</option>
@@ -421,7 +421,7 @@ function StockTable({
   onDelete: (id: number) => void
 }) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
+    <div className="overflow-x-auto rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)]">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-[#E4D8C9]">
@@ -527,7 +527,7 @@ function IngredientsTable({
 }) {
   const headerProps = { sortColumn, sortDirection, onSort }
   return (
-    <div className="overflow-x-auto rounded-2xl border border-[#CDBDA8] bg-[#FBF7F0]">
+    <div className="overflow-x-auto rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)]">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-[#E4D8C9]">
@@ -574,7 +574,7 @@ function IngredientsTable({
                     In Stock
                   </span>
                 ) : (
-                  <span className="inline-flex items-center rounded-full bg-[#F1EAE0] px-2 py-1 text-xs font-bold text-[#9A7E6F]">
+                  <span className="inline-flex items-center rounded-full bg-[#F1EAE0] px-2 py-1 text-xs font-bold text-[#2E527F]">
                     Not in Stock
                   </span>
                 )}
@@ -738,7 +738,7 @@ function AddIngredientDrawer({
                 setFormData({ ...formData, name: e.target.value })
               }
               placeholder="e.g., Chicken Breast"
-              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#9A8774] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#2E527F] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
               required
             />
           </div>
@@ -773,7 +773,7 @@ function AddIngredientDrawer({
                 setFormData({ ...formData, store: e.target.value })
               }
               placeholder="e.g., Sams Club"
-              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#9A8774] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#2E527F] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
             />
           </div>
 
@@ -788,7 +788,7 @@ function AddIngredientDrawer({
                 setFormData({ ...formData, grade: e.target.value })
               }
               placeholder="e.g., Organic"
-              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#9A8774] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#2E527F] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
             />
           </div>
 
@@ -804,7 +804,7 @@ function AddIngredientDrawer({
                 setFormData({ ...formData, price_per_pound: e.target.value })
               }
               placeholder="5.98"
-              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#9A8774] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#2E527F] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
             />
           </div>
 
@@ -820,7 +820,7 @@ function AddIngredientDrawer({
                 setFormData({ ...formData, serving_size_g: e.target.value })
               }
               placeholder="141.7"
-              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#9A8774] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#2E527F] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
               required
             />
           </div>
@@ -837,7 +837,7 @@ function AddIngredientDrawer({
                 setFormData({ ...formData, current_stock_g: e.target.value })
               }
               placeholder="0"
-              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#9A8774] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#2E527F] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
             />
           </div>
 
