@@ -16,6 +16,7 @@ export type PlanRecipeRow = {
   fat_g: number
   costPerPoundCents: number
   suggestedServingG?: number | null
+  supplierName?: string | null
 }
 
 export type Block = 'monday' | 'thursday'
@@ -40,8 +41,18 @@ export const rowKey = (r: PlanRecipeRow) => (r.recipe_id != null ? `r${r.recipe_
 
 const GRAMS_PER_POUND = 455
 
-// Quick-glance line for the add-recipe picker: $/lb, how many regular
-// servings that works out to per lb, and $/serving -- no calories, since
+// Protein recipes are butcher-portioned (ounces), not weighed in grams like
+// everything else -- matches formatLbOz/formatIngredientWeight's convention
+// elsewhere in the app.
+const PROTEIN_RECIPE_CATEGORIES = new Set(['beef', 'chicken', 'turkey'])
+
+function formatServingSize(grams: number, category: string) {
+  if (PROTEIN_RECIPE_CATEGORIES.has(category)) return `${(grams / 28.3495).toFixed(1)}oz`
+  return `${Math.round(grams)}g`
+}
+
+// Quick-glance line for the add-recipe picker: $/lb, the regular serving
+// size, how many of those fit in a lb, and $/serving -- no calories, since
 // this is about what to buy/charge, not nutrition, at the moment you're
 // deciding whether to add it.
 function pickerInfoLine(r: PlanRecipeRow) {
@@ -49,7 +60,8 @@ function pickerInfoLine(r: PlanRecipeRow) {
   if (!r.suggestedServingG || r.suggestedServingG <= 0) return pricePerLb
   const servingsPerLb = GRAMS_PER_POUND / r.suggestedServingG
   const pricePerServing = (r.costPerPoundCents / 100) / servingsPerLb
-  return `${pricePerLb} · ${servingsPerLb.toFixed(1)} srv/lb · $${pricePerServing.toFixed(2)}/srv`
+  const servingSize = formatServingSize(r.suggestedServingG, r.category)
+  return `${pricePerLb} · Regular serving size: ${servingSize} (${servingsPerLb.toFixed(1)}/lb) · $${pricePerServing.toFixed(2)}/srv`
 }
 
 // Same recipe pool feeds delivery orders and walk-up counter sales -- this
@@ -265,11 +277,18 @@ function AddRecipePanel({
             <button
               key={r.recipe_id}
               onClick={() => onAdd(r.recipe_id!)}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-[#F1EAE0] transition"
+              className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-[#F1EAE0] transition"
             >
-              <Plus className="h-3 w-3 text-[#2E527F] flex-shrink-0" />
-              <p className="font-medium text-[#4B2B1D] truncate w-32 flex-shrink-0 text-xs">{r.name}</p>
-              <p className="text-[10.5px] text-[#2E527F] flex-1 truncate">{pickerInfoLine(r)}</p>
+              <Plus className="h-3 w-3 text-[#2E527F] flex-shrink-0 mt-[3px]" />
+              <span className="flex-1 min-w-0">
+                <span className="flex items-center gap-1.5">
+                  <p className="font-medium text-[#4B2B1D] truncate text-xs">{r.name}</p>
+                  {r.supplierName && (
+                    <span className="shrink-0 rounded-full bg-[#F1EAE0] px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">{r.supplierName}</span>
+                  )}
+                </span>
+                <p className="text-[10.5px] text-[#2E527F] truncate">{pickerInfoLine(r)}</p>
+              </span>
             </button>
           ))
         )}
