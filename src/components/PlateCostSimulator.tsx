@@ -72,6 +72,12 @@ export function PlateCostSimulator({
   const [assigning, setAssigning] = useState(false)
   const [assignMessage, setAssignMessage] = useState<string | null>(null)
 
+  const [allDiets, setAllDiets] = useState<{ id: number; name: string; plate_count: number }[]>([])
+  const [dietQuery, setDietQuery] = useState('')
+  const [showDietMatches, setShowDietMatches] = useState(false)
+  const [addingToDiet, setAddingToDiet] = useState(false)
+  const [dietMessage, setDietMessage] = useState<string | null>(null)
+
   const [blockTarget, setBlockTarget] = useState<'monday' | 'thursday'>('monday')
   const [blockLb, setBlockLb] = useState('')
   const [addedToBlock, setAddedToBlock] = useState(false)
@@ -94,6 +100,10 @@ export function PlateCostSimulator({
         setAllCustomers(rows.map((c: any) => ({ id: c.id, name: c.name })))
       })
       .catch(() => {})
+    axios
+      .get(`${apiUrl}/api/admin/custom-diets`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => setAllDiets(res.data.data || []))
+      .catch(() => {})
   }, [])
 
   const customerMatches = useMemo(() => {
@@ -101,6 +111,14 @@ export function PlateCostSimulator({
     const q = customerQuery.toLowerCase()
     return allCustomers.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 8)
   }, [customerQuery, allCustomers])
+
+  const dietMatches = useMemo(() => {
+    if (!dietQuery.trim()) return allDiets.slice(0, 8)
+    const q = dietQuery.toLowerCase()
+    return allDiets.filter((d) => d.name.toLowerCase().includes(q)).slice(0, 8)
+  }, [dietQuery, allDiets])
+
+  const exactDietMatch = allDiets.find((d) => d.name.toLowerCase() === dietQuery.trim().toLowerCase())
 
   const pickerRecipes: PickerRecipe[] = allRecipes.map((r) => ({
     recipe_id: r.recipe_id,
@@ -218,6 +236,55 @@ export function PlateCostSimulator({
       setAssignMessage(err.response?.data?.error || 'Failed to assign')
     } finally {
       setAssigning(false)
+    }
+  }
+
+  // Named, reusable diets a customer can later be tagged with -- one search
+  // box doubles as "pick an existing diet" or "create a new one", same
+  // create-inline pattern used elsewhere, since a diet doesn't have to exist
+  // yet for a plate to be filed into it. Snapshots this plate's actual
+  // totals at its current serving sizes (not the per-lb rate used for
+  // blocks) since a diet plate is a real, single meal instance.
+  const addPlateToDiet = async (diet: { id: number; name: string } | null, createName?: string) => {
+    if (plate.length === 0) return
+    setAddingToDiet(true)
+    setDietMessage(null)
+    try {
+      let dietId = diet?.id
+      let dietName = diet?.name
+      if (!dietId && createName) {
+        const res = await axios.post(
+          `${apiUrl}/api/admin/custom-diets`,
+          { name: createName },
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        dietId = res.data.data.id
+        dietName = res.data.data.name
+        setAllDiets((prev) => [...prev, res.data.data])
+      }
+      if (!dietId) return
+      const name = (plateName.trim() || autoName).slice(0, 120)
+      await axios.post(
+        `${apiUrl}/api/admin/custom-diets/${dietId}/plates`,
+        {
+          name,
+          calories: totals.calories,
+          protein_g: totals.protein_g,
+          carbs_g: totals.carbs_g,
+          fat_g: totals.fat_g,
+          cost_cents: totals.cost_cents,
+          items: plate.map((p) => ({ recipe_id: p.recipe.recipe_id, name: p.recipe.name, grams: parseFloat(p.servingSizeG) || 0 })),
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      setAllDiets((prev) => prev.map((d) => (d.id === dietId ? { ...d, plate_count: d.plate_count + 1 } : d)))
+      setDietMessage(`Added to ${dietName}`)
+      setDietQuery('')
+      setShowDietMatches(false)
+    } catch (err: any) {
+      setDietMessage(err.response?.data?.error || 'Failed to add to diet')
+    } finally {
+      setAddingToDiet(false)
     }
   }
 
@@ -362,6 +429,57 @@ export function PlateCostSimulator({
                           {c.name}
                         </button>
                       ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Diets are named, reusable plate collections (e.g. "Keto
+                    Reset") a customer can later be tagged with -- typing a
+                    name shows matching existing diets to file into, or a
+                    "create new" option if nothing matches, so there's no
+                    separate setup step before this plate can be filed. */}
+                <div className="relative flex items-center gap-1.5">
+                  <input
+                    value={dietQuery}
+                    onChange={(e) => {
+                      setDietQuery(e.target.value)
+                      setShowDietMatches(true)
+                    }}
+                    onFocus={() => setShowDietMatches(true)}
+                    onBlur={() => setTimeout(() => setShowDietMatches(false), 150)}
+                    placeholder="Add plate to custom diet..."
+                    className="h-8 flex-1 min-w-0 rounded-md border border-[#E4D8C9] bg-white px-2 text-xs text-[#4B2B1D] outline-none focus:border-[#2E527F]"
+                  />
+                  {dietMessage && (
+                    <span className="flex items-center gap-1 text-[11px] font-medium text-[#755B4C] flex-shrink-0">
+                      <Check className="h-3 w-3 text-[#16A34A]" />
+                      {dietMessage}
+                    </span>
+                  )}
+                  {showDietMatches && (dietMatches.length > 0 || dietQuery.trim()) && (
+                    <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-md border border-[#E4D8C9] bg-white shadow-md max-h-40 overflow-y-auto">
+                      {dietMatches.map((d) => (
+                        <button
+                          key={d.id}
+                          onMouseDown={() => addPlateToDiet(d)}
+                          disabled={addingToDiet}
+                          className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs text-[#4B2B1D] hover:bg-[#F1EAE0]"
+                        >
+                          <span>{d.name}</span>
+                          <span className="text-[10px] text-[#9A7E6F]">
+                            {d.plate_count} plate{d.plate_count === 1 ? '' : 's'}
+                          </span>
+                        </button>
+                      ))}
+                      {dietQuery.trim() && !exactDietMatch && (
+                        <button
+                          onMouseDown={() => addPlateToDiet(null, dietQuery.trim())}
+                          disabled={addingToDiet}
+                          className="block w-full px-2.5 py-1.5 text-left text-xs font-bold text-[#2E527F] hover:bg-[#F1EAE0]"
+                        >
+                          + Create "{dietQuery.trim()}" as new diet
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
