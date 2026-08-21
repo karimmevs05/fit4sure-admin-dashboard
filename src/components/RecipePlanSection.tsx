@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react'
-import axios from 'axios'
-import { AlertCircle } from 'lucide-react'
+import React, { useState } from 'react'
+import { AlertCircle, Plus, X, Search } from 'lucide-react'
 
-type PlanRecipeRow = {
-  recipe_id: number
+export type PlanRecipeRow = {
+  recipe_id: number | null
+  id?: number // server-assigned weekly_recipe_plan row id -- only set for custom rows loaded from GET
+  tempId?: number // client-only id for a custom row added this session, before it has a server id
+  isCustom?: boolean
   name: string
   category: string
   selected: boolean
@@ -15,9 +17,9 @@ type PlanRecipeRow = {
   costPerPoundCents: number
 }
 
-type Block = 'monday' | 'thursday'
+export type Block = 'monday' | 'thursday'
 
-const BLOCK_CONFIG: Record<Block, { label: string; sub: string; color: string }> = {
+export const BLOCK_CONFIG: Record<Block, { label: string; sub: string; color: string }> = {
   monday: { label: 'Block 1', sub: 'Mon – Wed', color: '#16A34A' },
   thursday: { label: 'Block 2', sub: 'Thu – Sun', color: '#D97706' },
 }
@@ -33,122 +35,37 @@ const CATEGORY_LABELS: Record<string, string> = {
   breakfast: 'Breakfast',
 }
 
+export const rowKey = (r: PlanRecipeRow) => (r.recipe_id != null ? `r${r.recipe_id}` : `c${r.id ?? r.tempId}`)
+
 // Same recipe pool feeds delivery orders and walk-up counter sales -- this
 // section is the single place the chef decides what's live for a block and
 // roughly how much of it to expect, which drives what operations buys and
-// preps in bulk. It's intentionally separate from the plate builder below:
-// no combining recipes into named dishes here, just recipe + volume.
-export default function RecipePlanSection({ onSaved }: { onSaved?: () => void }) {
-  const [rows, setRows] = useState<Record<Block, PlanRecipeRow[]>>({ monday: [], thursday: [] })
-  const [weekStart, setWeekStart] = useState<string | undefined>()
-  const [loading, setLoading] = useState(true)
-  const [savingBlock, setSavingBlock] = useState<Block | null>(null)
-  const [dirty, setDirty] = useState<Record<Block, boolean>>({ monday: false, thursday: false })
-
-  const token = localStorage.getItem('token')
-  const apiUrl = import.meta.env.VITE_API_BASE_URL
-
-  useEffect(() => {
-    fetchPlan()
-  }, [])
-
-  const fetchPlan = async () => {
-    setLoading(true)
-    try {
-      const headers = { Authorization: `Bearer ${token}` }
-      // Two calls: the plan endpoint knows what's selected/forecasted, the
-      // recipes endpoint knows the per-lb (455g) macros/cost every other
-      // recipe view in this app already uses -- merge them by recipe_id
-      // rather than duplicating that calculation on the backend here too.
-      const [planRes, recipesRes] = await Promise.all([
-        axios.get(`${apiUrl}/api/admin/menu-planner/recipe-plan`, { headers }),
-        axios.get(`${apiUrl}/api/admin/recipes`, { headers }),
-      ])
-
-      const macrosById: Record<number, { calories: number; protein_g: number; carbs_g: number; fat_g: number; costPerPoundCents: number }> = {}
-      for (const r of recipesRes.data.data || []) {
-        macrosById[r.recipe_id] = {
-          calories: r.per_pound?.calories ?? 0,
-          protein_g: parseFloat(r.per_pound?.protein_g ?? '0'),
-          carbs_g: parseFloat(r.per_pound?.carbs_g ?? '0'),
-          fat_g: parseFloat(r.per_pound?.fat_g ?? '0'),
-          costPerPoundCents: r.cost_per_pound_cents ?? 0,
-        }
-      }
-
-      const withMacros = (list: any[]): PlanRecipeRow[] =>
-        list.map((r) => ({ ...r, ...(macrosById[r.recipe_id] || { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, costPerPoundCents: 0 }) }))
-
-      setRows({
-        monday: withMacros(planRes.data.data?.monday || []),
-        thursday: withMacros(planRes.data.data?.thursday || []),
-      })
-      setWeekStart(planRes.data.data?.weekStart)
-      setDirty({ monday: false, thursday: false })
-    } catch (error) {
-      console.error('Error fetching recipe plan:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const toggleRecipe = (block: Block, recipeId: number) => {
-    setRows((current) => ({
-      ...current,
-      [block]: current[block].map((r) =>
-        r.recipe_id === recipeId ? { ...r, selected: !r.selected } : r
-      ),
-    }))
-    setDirty((d) => ({ ...d, [block]: true }))
-  }
-
-  const updateVolume = (block: Block, recipeId: number, volume: number) => {
-    setRows((current) => ({
-      ...current,
-      [block]: current[block].map((r) =>
-        r.recipe_id === recipeId ? { ...r, expected_volume: volume } : r
-      ),
-    }))
-    setDirty((d) => ({ ...d, [block]: true }))
-  }
-
-  const saveBlock = async (block: Block) => {
-    setSavingBlock(block)
-    try {
-      const selections = rows[block]
-        .filter((r) => r.selected)
-        .map((r) => ({ recipe_id: r.recipe_id, expected_volume: r.expected_volume || 0 }))
-
-      await axios.post(
-        `${apiUrl}/api/admin/menu-planner/recipe-plan`,
-        { block, selections },
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-      setDirty((d) => ({ ...d, [block]: false }))
-      onSaved?.()
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to save recipe plan')
-    } finally {
-      setSavingBlock(null)
-    }
-  }
-
-  const groupByCategory = (list: PlanRecipeRow[]) => {
-    const groups: Record<string, PlanRecipeRow[]> = {}
-    for (const r of list) {
-      if (!groups[r.category]) groups[r.category] = []
-      groups[r.category].push(r)
-    }
-    return groups
-  }
-
-  if (loading) {
-    return (
-      <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-8 text-center">
-        <p className="text-[#755B4C]">Loading recipe plan...</p>
-      </div>
-    )
-  }
+// preps in bulk. Purely presentational -- block state lives in
+// MenuPlannerPage so the Custom Plate Builder above can add a combo
+// straight into a block without two components racing to save the same
+// replace-all endpoint independently.
+export default function RecipePlanSection({
+  rows,
+  weekStart,
+  dirty,
+  savingBlock,
+  onAddRecipe,
+  onRemoveRow,
+  onUpdateVolume,
+  onSaveBlock,
+}: {
+  rows: Record<Block, PlanRecipeRow[]>
+  weekStart?: string
+  dirty: Record<Block, boolean>
+  savingBlock: Block | null
+  onAddRecipe: (block: Block, recipeId: number) => void
+  onRemoveRow: (block: Block, row: PlanRecipeRow) => void
+  onUpdateVolume: (block: Block, row: PlanRecipeRow, volume: number) => void
+  onSaveBlock: (block: Block) => void
+}) {
+  const [addOpen, setAddOpen] = useState<Record<Block, boolean>>({ monday: false, thursday: false })
+  const [pickerCategory, setPickerCategory] = useState<Record<Block, string>>({ monday: 'all', thursday: 'all' })
+  const [pickerSearch, setPickerSearch] = useState<Record<Block, string>>({ monday: '', thursday: '' })
 
   return (
     <div>
@@ -163,20 +80,20 @@ export default function RecipePlanSection({ onSaved }: { onSaved?: () => void })
       <div className="grid gap-6 lg:grid-cols-2 mb-6">
         {(['monday', 'thursday'] as Block[]).map((block) => {
           const cfg = BLOCK_CONFIG[block]
-          const grouped = groupByCategory(rows[block])
-          const selectedCount = rows[block].filter((r) => r.selected).length
-          const totalLb = rows[block].filter((r) => r.selected).reduce((sum, r) => sum + (r.expected_volume || 0), 0)
+          const selected = rows[block].filter((r) => r.selected)
+          const totalLb = selected.reduce((sum, r) => sum + (r.expected_volume || 0), 0)
+          const totalCostCents = selected.reduce((sum, r) => sum + (r.costPerPoundCents || 0) * (r.expected_volume || 0), 0)
 
           return (
             <div key={block} className="rounded-xl border border-[#E4D8C9] bg-[rgba(251,247,240,0.9)] p-4">
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cfg.color }}></div>
                   <h3 className="text-sm font-extrabold" style={{ color: cfg.color }}>{cfg.label}</h3>
                   <span className="text-xs text-[#2E527F]">{cfg.sub}</span>
                 </div>
                 <button
-                  onClick={() => saveBlock(block)}
+                  onClick={() => onSaveBlock(block)}
                   disabled={!dirty[block] || savingBlock === block}
                   className="rounded-lg text-white px-3 py-1.5 text-xs font-bold transition disabled:opacity-40"
                   style={{ backgroundColor: cfg.color }}
@@ -185,46 +102,67 @@ export default function RecipePlanSection({ onSaved }: { onSaved?: () => void })
                 </button>
               </div>
 
-              <p className="text-xs text-[#2E527F] mb-3">
-                {selectedCount} recipe{selectedCount === 1 ? '' : 's'} live · {totalLb} lb forecasted
-              </p>
-
-              <div className="max-h-[420px] overflow-y-auto rounded-lg bg-white p-2 space-y-3">
-                {Object.keys(grouped).length === 0 ? (
-                  <p className="text-xs text-[#755B4C]">No recipes found</p>
+              {/* Selected list -- just what's live for this block, nothing to scroll past */}
+              <div className="space-y-1.5 mb-2">
+                {selected.length === 0 ? (
+                  <p className="text-xs text-[#755B4C] italic px-1 py-2">Nothing added yet</p>
                 ) : (
-                  Object.entries(grouped).map(([category, list]) => (
-                    <div key={category}>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-[#2E527F] mb-1 px-1">
-                        {CATEGORY_LABELS[category] || category}
+                  selected.map((r) => (
+                    <div key={rowKey(r)} className="flex items-center gap-2 rounded-lg bg-white border border-[#E4D8C9] px-2.5 py-1.5">
+                      <button
+                        onClick={() => onRemoveRow(block, r)}
+                        className="flex-shrink-0 text-[#9A7E6F] hover:text-[#D62F3D] transition"
+                        aria-label={`Remove ${r.name}`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                      <p className="font-medium text-[#4B2B1D] truncate w-32 flex-shrink-0 text-sm">
+                        {r.name}
+                        {r.isCustom && (
+                          <span className="ml-1.5 rounded-full bg-[#EAF0F7] px-1.5 py-[1px] text-[9px] font-bold text-[#2E527F] align-middle">combo</span>
+                        )}
                       </p>
-                      {list.map((r) => (
-                        <div key={r.recipe_id} className="flex items-center gap-2 px-1 py-1.5 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={r.selected}
-                            onChange={() => toggleRecipe(block, r.recipe_id)}
-                            className="h-3.5 w-3.5 rounded border-[#B9A88F] flex-shrink-0"
-                          />
-                          <p className="font-medium text-[#4B2B1D] truncate w-40 flex-shrink-0">{r.name}</p>
-                          <p className="text-xs text-[#2E527F] flex-1 truncate">
-                            {r.calories} cal · {r.protein_g.toFixed(0)}g P · {r.carbs_g.toFixed(0)}g C · {r.fat_g.toFixed(0)}g F · ${(r.costPerPoundCents / 100).toFixed(2)}/lb
-                          </p>
-                          <input
-                            type="number"
-                            min="0"
-                            step="1"
-                            value={r.selected ? r.expected_volume : ''}
-                            disabled={!r.selected}
-                            onChange={(e) => updateVolume(block, r.recipe_id, parseInt(e.target.value) || 0)}
-                            placeholder="lb"
-                            className="w-14 h-7 rounded border border-[#B9A88F] bg-white px-1 text-xs text-center outline-none disabled:bg-[#F5F0E8] disabled:text-[#2E527F] flex-shrink-0"
-                          />
-                        </div>
-                      ))}
+                      <p className="text-[11px] text-[#2E527F] flex-1 truncate">
+                        {r.calories} cal · {r.protein_g.toFixed(0)}g P · {r.carbs_g.toFixed(0)}g C · {r.fat_g.toFixed(0)}g F · ${(r.costPerPoundCents / 100).toFixed(2)}/lb
+                      </p>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={r.expected_volume}
+                        onChange={(e) => onUpdateVolume(block, r, parseFloat(e.target.value) || 0)}
+                        placeholder="lb"
+                        className="w-14 h-7 rounded border border-[#B9A88F] bg-white px-1 text-xs text-center outline-none flex-shrink-0"
+                      />
                     </div>
                   ))
                 )}
+              </div>
+
+              <button
+                onClick={() => setAddOpen((m) => ({ ...m, [block]: !m[block] }))}
+                className="w-full flex items-center justify-center gap-1 rounded-lg border border-dashed border-[#2E527F] py-1.5 text-xs font-bold text-[#2E527F] hover:bg-[#EAF0F7] transition mb-1"
+              >
+                <Plus className="h-3.5 w-3.5" /> Add recipe
+              </button>
+
+              {addOpen[block] && (
+                <AddRecipePanel
+                  rows={rows[block]}
+                  category={pickerCategory[block]}
+                  setCategory={(c) => setPickerCategory((p) => ({ ...p, [block]: c }))}
+                  search={pickerSearch[block]}
+                  setSearch={(s) => setPickerSearch((p) => ({ ...p, [block]: s }))}
+                  onAdd={(recipeId) => onAddRecipe(block, recipeId)}
+                />
+              )}
+
+              {/* Stats footer -- summarizes what's actually been chosen above */}
+              <div className="mt-3 pt-3 border-t border-[#E4D8C9] flex items-center justify-between">
+                <p className="text-xs text-[#2E527F]">
+                  {selected.length} item{selected.length === 1 ? '' : 's'} live · {totalLb} lb forecasted
+                </p>
+                <p className="text-xs font-bold" style={{ color: cfg.color }}>${(totalCostCents / 100).toFixed(2)}</p>
               </div>
 
               {dirty[block] && (
@@ -235,6 +173,93 @@ export default function RecipePlanSection({ onSaved }: { onSaved?: () => void })
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+// Inline browse/search/filter panel for adding a recipe that isn't live for
+// this block yet -- stays open after each add so several can be picked in
+// one go instead of re-opening a picker per recipe.
+function AddRecipePanel({
+  rows,
+  category,
+  setCategory,
+  search,
+  setSearch,
+  onAdd,
+}: {
+  rows: PlanRecipeRow[]
+  category: string
+  setCategory: (c: string) => void
+  search: string
+  setSearch: (s: string) => void
+  onAdd: (recipeId: number) => void
+}) {
+  const catalog = rows.filter((r) => !r.isCustom)
+  const categories = Array.from(new Set(catalog.map((r) => r.category)))
+  const available = catalog.filter(
+    (r) =>
+      !r.selected &&
+      (category === 'all' || r.category === category) &&
+      (search.trim() === '' || r.name.toLowerCase().includes(search.trim().toLowerCase()))
+  )
+
+  return (
+    <div className="rounded-lg border border-[#2E527F] bg-white p-2.5 mb-2">
+      <div className="relative mb-2">
+        <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9A7E6F]" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search recipes..."
+          className="h-8 w-full rounded-md border border-[#E4D8C9] bg-[#FBF7F0] pl-7 pr-2 text-xs outline-none focus:border-[#2E527F]"
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-1 mb-2">
+        <button
+          onClick={() => setCategory('all')}
+          className={`rounded-full px-2.5 py-1 text-[10px] font-bold transition ${
+            category === 'all' ? 'bg-[#2E527F] text-white' : 'bg-[#F1EAE0] text-[#755B4C] hover:bg-[#E4D8C9]'
+          }`}
+        >
+          All
+        </button>
+        {categories.map((c) => (
+          <button
+            key={c}
+            onClick={() => setCategory(c)}
+            className={`rounded-full px-2.5 py-1 text-[10px] font-bold transition ${
+              category === c ? 'bg-[#2E527F] text-white' : 'bg-[#F1EAE0] text-[#755B4C] hover:bg-[#E4D8C9]'
+            }`}
+          >
+            {CATEGORY_LABELS[c] || c}
+          </button>
+        ))}
+      </div>
+
+      <div className="max-h-[220px] overflow-y-auto space-y-1">
+        {available.length === 0 ? (
+          <p className="text-xs text-[#755B4C] italic px-1 py-1">
+            {catalog.every((r) => r.selected) ? 'Everything in this category is already added' : 'No matches'}
+          </p>
+        ) : (
+          available.map((r) => (
+            <button
+              key={r.recipe_id}
+              onClick={() => onAdd(r.recipe_id!)}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-[#F1EAE0] transition"
+            >
+              <Plus className="h-3 w-3 text-[#2E527F] flex-shrink-0" />
+              <p className="font-medium text-[#4B2B1D] truncate w-32 flex-shrink-0 text-xs">{r.name}</p>
+              <p className="text-[10.5px] text-[#2E527F] flex-1 truncate">
+                {r.calories} cal · ${(r.costPerPoundCents / 100).toFixed(2)}/lb
+              </p>
+            </button>
+          ))
+        )}
       </div>
     </div>
   )

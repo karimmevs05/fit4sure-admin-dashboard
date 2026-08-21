@@ -53,7 +53,14 @@ const CATEGORIES = ['ALL', 'beef', 'chicken', 'turkey', 'carbohydrates', 'vegeta
 // Styled deliberately light: one line per recipe instead of a card+tile
 // grid, plain text category labels instead of colored pills, no boxed
 // macro tiles -- same options, much less visual weight.
-export function PlateCostSimulator() {
+export function PlateCostSimulator({
+  onAddToBlock,
+}: {
+  onAddToBlock?: (
+    block: 'monday' | 'thursday',
+    combo: { name: string; lb: number; calories: number; protein_g: number; carbs_g: number; fat_g: number; costPerPoundCents: number }
+  ) => void
+}) {
   const [expanded, setExpanded] = useState(false)
   const [allRecipes, setAllRecipes] = useState<Recipe[]>([])
   const [plate, setPlate] = useState<PlateItem[]>([])
@@ -68,6 +75,10 @@ export function PlateCostSimulator() {
   const [priceOverride, setPriceOverride] = useState('')
   const [assigning, setAssigning] = useState(false)
   const [assignMessage, setAssignMessage] = useState<string | null>(null)
+
+  const [blockTarget, setBlockTarget] = useState<'monday' | 'thursday'>('monday')
+  const [blockLb, setBlockLb] = useState('')
+  const [addedToBlock, setAddedToBlock] = useState(false)
 
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
@@ -130,6 +141,45 @@ export function PlateCostSimulator() {
   }, [plate])
 
   const autoName = plate.map((p) => p.recipe.name).join(' + ').slice(0, 120)
+
+  // The combo's totals are at whatever gram amounts are currently set --
+  // convert to a per-lb rate (same shape the Weekly Recipe Plan already
+  // uses for every real recipe) so it scales correctly whenever the block's
+  // forecasted lb is edited later, instead of freezing today's totals in.
+  const totalGrams = plate.reduce((sum, p) => sum + (parseFloat(p.servingSizeG) || 0), 0)
+  const lbEquivalent = totalGrams / GRAMS_PER_POUND
+  const perLb =
+    lbEquivalent > 0
+      ? {
+          calories: totals.calories / lbEquivalent,
+          protein_g: totals.protein_g / lbEquivalent,
+          carbs_g: totals.carbs_g / lbEquivalent,
+          fat_g: totals.fat_g / lbEquivalent,
+          costPerPoundCents: Math.round(totals.cost_cents / lbEquivalent),
+        }
+      : { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, costPerPoundCents: 0 }
+
+  // Sends this combo into a Weekly Recipe Plan block as one line item --
+  // the hybrid path between "just testing a combo" and "assign to a client
+  // order" above. Block state lives in the parent page, not here, so this
+  // is a callback rather than its own save call.
+  const addToBlock = () => {
+    if (!onAddToBlock || plate.length === 0) return
+    const lb = parseFloat(blockLb) || 0
+    if (lb <= 0) return
+    onAddToBlock(blockTarget, {
+      name: (plateName.trim() || autoName).slice(0, 120),
+      lb,
+      calories: perLb.calories,
+      protein_g: perLb.protein_g,
+      carbs_g: perLb.carbs_g,
+      fat_g: perLb.fat_g,
+      costPerPoundCents: perLb.costPerPoundCents,
+    })
+    setAddedToBlock(true)
+    setTimeout(() => setAddedToBlock(false), 2500)
+    setBlockLb('')
+  }
 
   // One-command "make this real for a real client": creates a real menu
   // item priced at exactly what's shown here (or an edited name/price, for
@@ -314,6 +364,45 @@ export function PlateCostSimulator() {
                     </div>
                   )}
                 </div>
+
+                {/* Hybrid path: this same named/priced combo can also become
+                    one line item in a Weekly Recipe Plan block, instead of
+                    (or as well as) a real client order -- picks up the
+                    combo's per-lb macros/cost so it scales correctly if the
+                    block's forecasted lb is edited later. */}
+                {onAddToBlock && (
+                  <div className="flex items-center gap-1.5 px-3 pb-1.5">
+                    <select
+                      value={blockTarget}
+                      onChange={(e) => setBlockTarget(e.target.value as 'monday' | 'thursday')}
+                      className="h-7 flex-shrink-0 rounded-md border border-[#D8CDBE] bg-white px-1.5 text-xs text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                    >
+                      <option value="monday">Block 1 (Mon–Wed)</option>
+                      <option value="thursday">Block 2 (Thu–Sun)</option>
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={blockLb}
+                      onChange={(e) => setBlockLb(e.target.value)}
+                      placeholder="lb"
+                      className="h-7 w-16 flex-shrink-0 rounded-md border border-[#D8CDBE] bg-white px-1.5 text-xs text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                    />
+                    <button
+                      onClick={addToBlock}
+                      disabled={!blockLb.trim() || parseFloat(blockLb) <= 0}
+                      className="h-7 flex-1 flex-shrink-0 rounded-md bg-[#2E527F] px-2.5 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#24466E] transition"
+                    >
+                      Add to Block
+                    </button>
+                    {addedToBlock && (
+                      <span className="flex items-center gap-1 text-[11px] font-medium text-[#755B4C] flex-shrink-0">
+                        <Check className="h-3 w-3 text-[#16A34A]" /> Added
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}

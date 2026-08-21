@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
-import RecipePlanSection from '../components/RecipePlanSection'
+import RecipePlanSection, { rowKey } from '../components/RecipePlanSection'
+import type { Block, PlanRecipeRow } from '../components/RecipePlanSection'
 import { PlateCostSimulator } from '../components/PlateCostSimulator'
 import { formatIngredientWeight } from '../utils/unitConversion'
 
@@ -34,11 +35,21 @@ export default function MenuPlannerPage() {
   })
   const [loading, setLoading] = useState(true)
 
+  // Weekly Recipe Plan block state -- owned here (not inside
+  // RecipePlanSection) so the Custom Plate Builder can add a combo straight
+  // into a block's in-memory state without a second component racing to
+  // read-modify-write the same replace-all save endpoint independently.
+  const [planWeekStart, setPlanWeekStart] = useState<string | undefined>()
+  const [rows, setRows] = useState<Record<Block, PlanRecipeRow[]>>({ monday: [], thursday: [] })
+  const [dirty, setDirty] = useState<Record<Block, boolean>>({ monday: false, thursday: false })
+  const [savingBlock, setSavingBlock] = useState<Block | null>(null)
+
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
 
   useEffect(() => {
     fetchAll()
+    fetchPlan()
   }, [])
 
   const fetchAll = async () => {
@@ -63,6 +74,134 @@ export default function MenuPlannerPage() {
       console.error('Error fetching menu planner data:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchPlan = async () => {
+    try {
+      const headers = { Authorization: `Bearer ${token}` }
+      // Two calls: the plan endpoint knows what's selected/forecasted, the
+      // recipes endpoint knows the per-lb (455g) macros/cost every other
+      // recipe view in this app already uses -- merge them by recipe_id
+      // rather than duplicating that calculation on the backend here too.
+      const [planRes, recipesRes] = await Promise.all([
+        axios.get(`${apiUrl}/api/admin/menu-planner/recipe-plan`, { headers }),
+        axios.get(`${apiUrl}/api/admin/recipes`, { headers }),
+      ])
+
+      const macrosById: Record<number, { calories: number; protein_g: number; carbs_g: number; fat_g: number; costPerPoundCents: number }> = {}
+      for (const r of recipesRes.data.data || []) {
+        macrosById[r.recipe_id] = {
+          calories: r.per_pound?.calories ?? 0,
+          protein_g: parseFloat(r.per_pound?.protein_g ?? '0'),
+          carbs_g: parseFloat(r.per_pound?.carbs_g ?? '0'),
+          fat_g: parseFloat(r.per_pound?.fat_g ?? '0'),
+          costPerPoundCents: r.cost_per_pound_cents ?? 0,
+        }
+      }
+
+      // Custom rows already carry their own macros/cost straight from the
+      // server -- don't stomp them with the (nonexistent) recipe lookup.
+      const withMacros = (list: any[]): PlanRecipeRow[] =>
+        list.map((r) => (r.isCustom ? r : { ...r, ...(macrosById[r.recipe_id] || { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, costPerPoundCents: 0 }) }))
+
+      setRows({
+        monday: withMacros(planRes.data.data?.monday || []),
+        thursday: withMacros(planRes.data.data?.thursday || []),
+      })
+      setPlanWeekStart(planRes.data.data?.weekStart)
+      setDirty({ monday: false, thursday: false })
+    } catch (error) {
+      console.error('Error fetching recipe plan:', error)
+    }
+  }
+
+  const addRecipe = (block: Block, recipeId: number) => {
+    setRows((current) => ({
+      ...current,
+      [block]: current[block].map((r) =>
+        r.recipe_id === recipeId ? { ...r, selected: true, expected_volume: r.expected_volume || 1 } : r
+      ),
+    }))
+    setDirty((d) => ({ ...d, [block]: true }))
+  }
+
+  const removeRow = (block: Block, row: PlanRecipeRow) => {
+    const key = rowKey(row)
+    setRows((current) => ({
+      ...current,
+      [block]: row.isCustom
+        ? current[block].filter((r) => rowKey(r) !== key)
+        : current[block].map((r) => (rowKey(r) === key ? { ...r, selected: false } : r)),
+    }))
+    setDirty((d) => ({ ...d, [block]: true }))
+  }
+
+  const updateVolume = (block: Block, row: PlanRecipeRow, volume: number) => {
+    const key = rowKey(row)
+    setRows((current) => ({
+      ...current,
+      [block]: current[block].map((r) => (rowKey(r) === key ? { ...r, expected_volume: volume } : r)),
+    }))
+    setDirty((d) => ({ ...d, [block]: true }))
+  }
+
+  // Hybrid entry point for the Custom Plate Builder above -- a combo of real
+  // recipes (already priced/macro'd per lb by the simulator) becomes one
+  // line item in a block, same as a manually-typed custom row would.
+  const addComboToBlock = (
+    block: Block,
+    combo: { name: string; lb: number; calories: number; protein_g: number; carbs_g: number; fat_g: number; costPerPoundCents: number }
+  ) => {
+    const newRow: PlanRecipeRow = {
+      recipe_id: null,
+      tempId: Date.now(),
+      isCustom: true,
+      name: combo.name,
+      category: 'custom',
+      selected: true,
+      expected_volume: combo.lb,
+      calories: combo.calories,
+      protein_g: combo.protein_g,
+      carbs_g: combo.carbs_g,
+      fat_g: combo.fat_g,
+      costPerPoundCents: combo.costPerPoundCents,
+    }
+    setRows((current) => ({ ...current, [block]: [...current[block], newRow] }))
+    setDirty((d) => ({ ...d, [block]: true }))
+  }
+
+  const saveBlock = async (block: Block) => {
+    setSavingBlock(block)
+    try {
+      const selections = rows[block]
+        .filter((r) => r.selected)
+        .map((r) =>
+          r.isCustom
+            ? {
+                custom_name: r.name,
+                expected_volume: r.expected_volume || 0,
+                custom_calories: r.calories || undefined,
+                custom_protein_g: r.protein_g || undefined,
+                custom_carbs_g: r.carbs_g || undefined,
+                custom_fat_g: r.fat_g || undefined,
+                custom_cost_per_pound_cents: r.costPerPoundCents || undefined,
+              }
+            : { recipe_id: r.recipe_id, expected_volume: r.expected_volume || 0 }
+        )
+
+      await axios.post(
+        `${apiUrl}/api/admin/menu-planner/recipe-plan`,
+        { block, selections },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      setDirty((d) => ({ ...d, [block]: false }))
+      fetchPrepFinancials()
+      fetchPlan() // custom rows need their server-assigned `id` in place of `tempId`
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to save recipe plan')
+    } finally {
+      setSavingBlock(null)
     }
   }
 
@@ -106,9 +245,18 @@ export default function MenuPlannerPage() {
         </div>
       </div>
 
-      <PlateCostSimulator />
+      <PlateCostSimulator onAddToBlock={addComboToBlock} />
 
-      <RecipePlanSection onSaved={fetchPrepFinancials} />
+      <RecipePlanSection
+        rows={rows}
+        weekStart={planWeekStart}
+        dirty={dirty}
+        savingBlock={savingBlock}
+        onAddRecipe={addRecipe}
+        onRemoveRow={removeRow}
+        onUpdateVolume={updateVolume}
+        onSaveBlock={saveBlock}
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Last Week's Menu (real data) */}
