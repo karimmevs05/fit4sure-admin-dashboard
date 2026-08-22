@@ -80,14 +80,16 @@ export function RecipePicker({
   const [search, setSearch] = useState('')
 
   const categories = Array.from(new Set(recipes.map((r) => r.category)))
-  // Already-selected recipes bypass the category filter (never disappear
-  // just because you're browsing a different category) but stay in their
-  // natural position in this one list -- no separate "added" block pinned
-  // above the picker.
+  // Selected chips sit in a fixed row right under the category pills --
+  // never affected by category/search, and never scrolled out of view by
+  // the browsable list underneath, which is the part that actually needs
+  // to scroll through dozens of recipes.
+  const selectedList = selectedAmounts ? recipes.filter((r) => selectedAmounts.has(r.recipe_id)) : []
   const available = recipes.filter(
     (r) =>
-      (selectedAmounts?.has(r.recipe_id) || !excludeIds.has(r.recipe_id)) &&
-      (selectedAmounts?.has(r.recipe_id) || category === 'all' || r.category === category) &&
+      !selectedAmounts?.has(r.recipe_id) &&
+      !excludeIds.has(r.recipe_id) &&
+      (category === 'all' || r.category === category) &&
       (search.trim() === '' || r.name.toLowerCase().includes(search.trim().toLowerCase()))
   )
 
@@ -126,7 +128,46 @@ export function RecipePicker({
         ))}
       </div>
 
-      <div className="max-h-[260px] overflow-y-auto flex flex-wrap gap-1.5">
+      {selectedList.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2 pb-2 border-b border-[#E4D8C9]">
+          {selectedList.map((r) => {
+            const amount = selectedAmounts!.get(r.recipe_id)!
+            return (
+              <div key={r.recipe_id} className="flex items-center gap-1.5 rounded-md bg-[#EAF0F7] px-2 py-1.5">
+                <button
+                  onClick={() => onRemoveSelected?.(r.recipe_id)}
+                  className="flex-shrink-0 text-[#2E527F] hover:text-[#D62F3D] transition"
+                  aria-label={`Remove ${r.name}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+                <span className="min-w-0">
+                  <span className="flex items-center gap-1">
+                    <p className="font-medium text-[#4B2B1D] whitespace-nowrap text-xs">{r.name}</p>
+                    {r.supplierName && (
+                      <span className="shrink-0 whitespace-nowrap rounded-full bg-white px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">{r.supplierName}</span>
+                    )}
+                  </span>
+                  {selectedMacros?.get(r.recipe_id) && (
+                    <p className="whitespace-nowrap text-[10.5px] text-[#2E527F]">{selectedMacros.get(r.recipe_id)}</p>
+                  )}
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={amount}
+                  onChange={(e) => onUpdateAmount?.(r.recipe_id, e.target.value)}
+                  className="w-14 h-7 flex-shrink-0 rounded border border-[#2E527F] bg-white px-1 text-xs text-center outline-none"
+                />
+                <span className="text-[10px] text-[#2E527F] flex-shrink-0 w-3">g</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <div className="max-h-[220px] overflow-y-auto space-y-1">
         {available.length === 0 ? (
           <p className="text-xs text-[#755B4C] italic px-1 py-1">
             {recipes.every((r) => excludeIds.has(r.recipe_id) || selectedAmounts?.has(r.recipe_id))
@@ -134,64 +175,24 @@ export function RecipePicker({
               : 'No matches'}
           </p>
         ) : (
-          available.map((r) => {
-            const amount = selectedAmounts?.get(r.recipe_id)
-            if (amount != null) {
-              // Confirmed recipes render as compact chips that wrap side by
-              // side (not one per row) -- once a recipe is added there's
-              // nothing left to scan, just an amount to adjust, so several
-              // fit comfortably on one line.
-              return (
-                <div key={r.recipe_id} className="flex items-center gap-1.5 rounded-md bg-[#EAF0F7] px-2 py-1.5">
-                  <button
-                    onClick={() => onRemoveSelected?.(r.recipe_id)}
-                    className="flex-shrink-0 text-[#2E527F] hover:text-[#D62F3D] transition"
-                    aria-label={`Remove ${r.name}`}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                  <span className="min-w-0">
-                    <span className="flex items-center gap-1">
-                      <p className="font-medium text-[#4B2B1D] whitespace-nowrap text-xs">{r.name}</p>
-                      {r.supplierName && (
-                        <span className="shrink-0 whitespace-nowrap rounded-full bg-white px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">{r.supplierName}</span>
-                      )}
-                    </span>
-                    {selectedMacros?.get(r.recipe_id) && (
-                      <p className="whitespace-nowrap text-[10.5px] text-[#2E527F]">{selectedMacros.get(r.recipe_id)}</p>
-                    )}
-                  </span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={amount}
-                    onChange={(e) => onUpdateAmount?.(r.recipe_id, e.target.value)}
-                    className="w-14 h-7 flex-shrink-0 rounded border border-[#2E527F] bg-white px-1 text-xs text-center outline-none"
-                  />
-                  <span className="text-[10px] text-[#2E527F] flex-shrink-0 w-3">g</span>
-                </div>
-              )
-            }
-            return (
-              <button
-                key={r.recipe_id}
-                onClick={() => onAdd(r)}
-                className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-[#F1EAE0] transition"
-              >
-                <Plus className="h-3 w-3 text-[#2E527F] flex-shrink-0 mt-[3px]" />
-                <span className="flex-1 min-w-0">
-                  <span className="flex items-center gap-1.5">
-                    <p className="font-medium text-[#4B2B1D] truncate text-xs">{r.name}</p>
-                    {r.supplierName && (
-                      <span className="shrink-0 rounded-full bg-[#F1EAE0] px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">{r.supplierName}</span>
-                    )}
-                  </span>
-                  <p className="text-[10.5px] text-[#2E527F] truncate">{pickerInfoLine(r)}</p>
+          available.map((r) => (
+            <button
+              key={r.recipe_id}
+              onClick={() => onAdd(r)}
+              className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-[#F1EAE0] transition"
+            >
+              <Plus className="h-3 w-3 text-[#2E527F] flex-shrink-0 mt-[3px]" />
+              <span className="flex-1 min-w-0">
+                <span className="flex items-center gap-1.5">
+                  <p className="font-medium text-[#4B2B1D] truncate text-xs">{r.name}</p>
+                  {r.supplierName && (
+                    <span className="shrink-0 rounded-full bg-[#F1EAE0] px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">{r.supplierName}</span>
+                  )}
                 </span>
-              </button>
-            )
-          })
+                <p className="text-[10.5px] text-[#2E527F] truncate">{pickerInfoLine(r)}</p>
+              </span>
+            </button>
+          ))
         )}
       </div>
     </div>
