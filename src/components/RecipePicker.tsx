@@ -11,6 +11,7 @@ export type PickerRecipe = {
 }
 
 const GRAMS_PER_POUND = 455
+const GRAMS_PER_OUNCE = 28.3495
 
 // Proteins and sauces are portioned in ounces (butcher/pour-style), never
 // plain grams -- matches formatLbOz/formatIngredientWeight's convention
@@ -18,7 +19,7 @@ const GRAMS_PER_POUND = 455
 export const OUNCE_RECIPE_CATEGORIES = new Set(['beef', 'chicken', 'turkey', 'sauces'])
 
 export function formatServingSize(grams: number, category: string) {
-  if (OUNCE_RECIPE_CATEGORIES.has(category)) return `${(grams / 28.3495).toFixed(1)}oz`
+  if (OUNCE_RECIPE_CATEGORIES.has(category)) return `${(grams / GRAMS_PER_OUNCE).toFixed(1)}oz`
   return `${Math.round(grams)}g`
 }
 
@@ -130,40 +131,16 @@ export function RecipePicker({
 
       {selectedList.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-2 pb-2 border-b border-[#E4D8C9]">
-          {selectedList.map((r) => {
-            const amount = selectedAmounts!.get(r.recipe_id)!
-            return (
-              <div key={r.recipe_id} className="flex items-center gap-1.5 rounded-md bg-[#EAF0F7] px-2 py-1.5">
-                <button
-                  onClick={() => onRemoveSelected?.(r.recipe_id)}
-                  className="flex-shrink-0 text-[#2E527F] hover:text-[#D62F3D] transition"
-                  aria-label={`Remove ${r.name}`}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-                <span className="min-w-0">
-                  <span className="flex items-center gap-1">
-                    <p className="font-medium text-[#4B2B1D] whitespace-nowrap text-xs">{r.name}</p>
-                    {r.supplierName && (
-                      <span className="shrink-0 whitespace-nowrap rounded-full bg-white px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">{r.supplierName}</span>
-                    )}
-                  </span>
-                  {selectedMacros?.get(r.recipe_id) && (
-                    <p className="whitespace-nowrap text-[10.5px] text-[#2E527F]">{selectedMacros.get(r.recipe_id)}</p>
-                  )}
-                </span>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={amount}
-                  onChange={(e) => onUpdateAmount?.(r.recipe_id, e.target.value)}
-                  className="w-14 h-7 flex-shrink-0 rounded border border-[#2E527F] bg-white px-1 text-xs text-center outline-none"
-                />
-                <span className="text-[10px] text-[#2E527F] flex-shrink-0 w-3">g</span>
-              </div>
-            )
-          })}
+          {selectedList.map((r) => (
+            <SelectedChip
+              key={r.recipe_id}
+              recipe={r}
+              amountG={selectedAmounts!.get(r.recipe_id)!}
+              macroText={selectedMacros?.get(r.recipe_id)}
+              onUpdateAmount={onUpdateAmount}
+              onRemove={onRemoveSelected}
+            />
+          ))}
         </div>
       )}
 
@@ -195,6 +172,65 @@ export function RecipePicker({
           ))
         )}
       </div>
+    </div>
+  )
+}
+
+// Stored amount is always grams (macros/cost/block conversion all work in
+// grams) -- only the displayed/edited value adapts to oz for proteins and
+// sauces, matching how their regular serving size is already shown. The
+// input's own text is local state, not re-derived from the rounded oz
+// conversion on every render -- otherwise typing a second digit ("10")
+// gets stomped by the "5.0"-style reformat triggered by the first ("1").
+function SelectedChip({
+  recipe,
+  amountG,
+  macroText,
+  onUpdateAmount,
+  onRemove,
+}: {
+  recipe: PickerRecipe
+  amountG: string
+  macroText?: string
+  onUpdateAmount?: (recipeId: number, grams: string) => void
+  onRemove?: (recipeId: number) => void
+}) {
+  const isOunce = OUNCE_RECIPE_CATEGORIES.has(recipe.category)
+  const [text, setText] = useState(() => (isOunce ? (parseFloat(amountG) / GRAMS_PER_OUNCE || 0).toFixed(1) : amountG))
+
+  const handleChange = (value: string) => {
+    setText(value)
+    const parsed = parseFloat(value) || 0
+    onUpdateAmount?.(recipe.recipe_id, isOunce ? String(parsed * GRAMS_PER_OUNCE) : value)
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 rounded-md bg-[#EAF0F7] px-2 py-1.5">
+      <button
+        onClick={() => onRemove?.(recipe.recipe_id)}
+        className="flex-shrink-0 text-[#2E527F] hover:text-[#D62F3D] transition"
+        aria-label={`Remove ${recipe.name}`}
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+      <span className="min-w-0">
+        <span className="flex items-center gap-1">
+          <p className="font-medium text-[#4B2B1D] whitespace-nowrap text-xs">{recipe.name}</p>
+          {recipe.supplierName && (
+            <span className="shrink-0 whitespace-nowrap rounded-full bg-white px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">{recipe.supplierName}</span>
+          )}
+        </span>
+        {macroText && <p className="whitespace-nowrap text-[10.5px] text-[#2E527F]">{macroText}</p>}
+      </span>
+      <input
+        type="number"
+        min={isOunce ? '0.1' : '1'}
+        step={isOunce ? '0.1' : '1'}
+        value={text}
+        onChange={(e) => handleChange(e.target.value)}
+        className="w-14 h-7 flex-shrink-0 rounded border border-[#2E527F] bg-white px-1 text-xs text-center outline-none"
+      />
+      <span className="text-[10px] text-[#2E527F] flex-shrink-0 w-4">{isOunce ? 'oz' : 'g'}</span>
     </div>
   )
 }
