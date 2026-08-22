@@ -12,13 +12,13 @@ export type PickerRecipe = {
 
 const GRAMS_PER_POUND = 455
 
-// Protein recipes are butcher-portioned (ounces), not weighed in grams like
-// everything else -- matches formatLbOz/formatIngredientWeight's convention
-// elsewhere in the app.
-export const PROTEIN_RECIPE_CATEGORIES = new Set(['beef', 'chicken', 'turkey'])
+// Proteins and sauces are portioned in ounces (butcher/pour-style), never
+// plain grams -- matches formatLbOz/formatIngredientWeight's convention
+// elsewhere in the app. Veggies and carbs stay in grams.
+export const OUNCE_RECIPE_CATEGORIES = new Set(['beef', 'chicken', 'turkey', 'sauces'])
 
 export function formatServingSize(grams: number, category: string) {
-  if (PROTEIN_RECIPE_CATEGORIES.has(category)) return `${(grams / 28.3495).toFixed(1)}oz`
+  if (OUNCE_RECIPE_CATEGORIES.has(category)) return `${(grams / 28.3495).toFixed(1)}oz`
   return `${Math.round(grams)}g`
 }
 
