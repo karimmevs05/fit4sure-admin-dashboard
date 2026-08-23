@@ -1187,6 +1187,15 @@ function FinancialsPage() {
     setPendingReceipts(prev => prev.filter((_, i) => i !== receiptIdx))
   }
 
+  // A grocery run often mixes business and personal items on the same
+  // receipt -- removing a line here (rather than just zeroing its price)
+  // keeps it out of both inventory and the expense total entirely.
+  const removePendingItem = (receiptIdx: number, itemIdx: number) => {
+    setPendingReceipts(prev => prev.map((r, ri) =>
+      ri !== receiptIdx ? r : { ...r, items: r.items.filter((_, ii) => ii !== itemIdx) }
+    ))
+  }
+
   // Saves the (possibly edited) reviewed receipts to inventory/expenses and
   // archives their source files in Drive.
   const confirmSyncedReceipts = async () => {
@@ -2087,14 +2096,25 @@ function FinancialsPage() {
                     <p className="text-xs text-amber-800 mt-1">Edit any display name below, or discard a receipt to leave it for next time. Nothing is saved until you confirm.</p>
                   </div>
 
-                  {pendingReceipts.map((receipt, ri) => (
+                  {pendingReceipts.map((receipt, ri) => {
+                    const currentTotal = receipt.items.reduce((sum, it) => sum + (it.amount || 0), 0)
+                    const totalMismatch = receipt.receiptTotal != null && Math.abs(currentTotal - receipt.receiptTotal) > 0.01
+                    return (
                     <div key={receipt.driveFileId} className="rounded-lg border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
                       <div className="flex items-start justify-between mb-3">
                         <div>
                           <p className="text-sm font-bold text-[#4B2B1D]">{receipt.vendor}</p>
-                          <p className="text-xs text-[#2E527F]">{receipt.fileName}{receipt.receiptTotal != null && ` · $${receipt.receiptTotal.toFixed(2)}`}</p>
-                          {receipt.lowConfidence && (
-                            <p className="text-xs font-semibold text-[#D62F3D] mt-1">⚠ Item total doesn't match receipt total — double-check amounts</p>
+                          <p className="text-xs text-[#2E527F]">{receipt.fileName}</p>
+                          <p className="text-xs mt-1">
+                            <span className="font-bold text-[#4B2B1D]">Current total: ${currentTotal.toFixed(2)}</span>
+                            {receipt.receiptTotal != null && (
+                              <span className={totalMismatch ? 'text-[#D62F3D] font-semibold' : 'text-[#2E527F]'}>
+                                {' '}(receipt printed ${receipt.receiptTotal.toFixed(2)})
+                              </span>
+                            )}
+                          </p>
+                          {(receipt.lowConfidence || totalMismatch) && (
+                            <p className="text-xs font-semibold text-[#D62F3D] mt-1">⚠ Doesn't match the receipt's printed total — remove any personal items or fix amounts below</p>
                           )}
                         </div>
                         <button
@@ -2108,7 +2128,7 @@ function FinancialsPage() {
                       <div className="space-y-2">
                         {receipt.items.map((item, ii) => (
                           <div key={ii} className="rounded-lg bg-[rgba(251,247,240,0.9)] border border-[#E4D8C9] p-2 space-y-2">
-                            <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
+                            <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 items-end">
                               <div>
                                 <p className="text-[10px] text-[#2E527F]">Parsed as</p>
                                 <p className="text-xs text-[#755B4C] truncate">{item.productName}</p>
@@ -2121,7 +2141,28 @@ function FinancialsPage() {
                                   className="w-full h-8 rounded border border-[#B9A88F] bg-[#FBF6EE] px-2 text-xs font-semibold text-[#4B2B1D] outline-none focus:border-[#3E6594]"
                                 />
                               </div>
-                              <p className="text-xs font-bold text-[#4B2B1D] text-right">${item.amount.toFixed(2)}</p>
+                              <div>
+                                <p className="text-[10px] text-[#2E527F]">Price</p>
+                                <div className="flex items-center gap-0.5">
+                                  <span className="text-xs text-[#4B2B1D]">$</span>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    value={item.amount}
+                                    onChange={(e) => updatePendingItemField(ri, ii, 'amount', parseFloat(e.target.value) || 0)}
+                                    className="w-16 h-8 rounded border border-[#B9A88F] bg-[#FBF6EE] px-1.5 text-xs font-bold text-[#4B2B1D] text-right outline-none focus:border-[#3E6594]"
+                                  />
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => removePendingItem(ri, ii)}
+                                className="h-8 w-8 flex items-center justify-center rounded border border-[#E4D8C9] text-[#9A7E6F] hover:text-[#D62F3D] hover:border-[#D62F3D]"
+                                aria-label={`Remove ${item.productName}`}
+                                title="Remove this item (e.g. a personal purchase on the same receipt)"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
                             </div>
                             <div className="grid grid-cols-[1fr_1.2fr_1fr] gap-2 items-end">
                               <div>
@@ -2167,7 +2208,8 @@ function FinancialsPage() {
                         ))}
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
 
                   <div className="flex gap-3">
                     <button
@@ -2431,7 +2473,12 @@ function FinancialsPage() {
                   </div>
                   <div className="rounded-lg bg-[rgba(251,247,240,0.9)] p-4 border border-[#2E527F]">
                     <label className="text-xs text-[#755B4C] font-semibold">Total Amount</label>
-                    <p className="text-lg font-bold text-[#4B2B1D]">${scannedReceipt.total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
+                    <p className="text-lg font-bold text-[#4B2B1D]">
+                      ${scannedReceipt.items.reduce((sum, it) => sum + (it.amount || 0), 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                    </p>
+                    {Math.abs(scannedReceipt.items.reduce((sum, it) => sum + (it.amount || 0), 0) - scannedReceipt.total) > 0.01 && (
+                      <p className="text-[10px] text-[#755B4C]">receipt printed ${scannedReceipt.total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</p>
+                    )}
                   </div>
                   <div className="rounded-lg bg-[rgba(251,247,240,0.9)] p-4 border border-[#2E527F]">
                     <label className="text-xs text-[#755B4C] font-semibold">Items Found</label>
@@ -2459,6 +2506,14 @@ function FinancialsPage() {
                         <p className="font-semibold text-[#4B2B1D] text-sm text-gray-600 italic">{item.description}</p>
                         <span className="text-xs text-[#2E527F] block">OCR confidence: {Math.round(item.confidence * 100)}%</span>
                       </div>
+                      <button
+                        onClick={() => setScannedReceipt({ ...scannedReceipt, items: scannedReceipt.items.filter((_, i) => i !== idx) })}
+                        className="flex-shrink-0 text-[#9A7E6F] hover:text-[#D62F3D] p-1"
+                        aria-label={`Remove ${item.description}`}
+                        title="Remove this item (e.g. a personal purchase on the same receipt)"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                       <div className="text-right">
                         {editingPriceIdx === idx ? (
                           <div className="flex gap-2 items-center">

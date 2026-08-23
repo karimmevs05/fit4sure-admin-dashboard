@@ -29,6 +29,8 @@ type RecipeIngredient = {
   category?: string | null;
   quantity_g: number;
   prep_section?: string | null;
+  cooking_method_id?: number | null;
+  cooking_method_name?: string | null;
   unit_price_cents?: number;
   priced_from_receipt?: boolean;
   ingredient_cost_cents?: number;
@@ -97,6 +99,20 @@ function computeRegularServings(category: Category, totalWeightG: number): numbe
   if (totalWeightG <= 0) return 0;
   const regularServingGrams = servingGramsFor(REGULAR_STRUCTURE_ROW, component);
   return regularServingGrams > 0 ? Math.max(1, Math.round(totalWeightG / regularServingGrams)) : 1;
+}
+
+type CookingMethod = { id: number; name: string; typical_yield_pct: number | string; notes?: string | null };
+
+// Cooking changes an ingredient's weight (water loss/gain) but not its
+// nutrient content -- mirrors calculateRecipeMacros in adminRecipes.js so
+// the builder's live preview matches what actually gets saved. No cooking
+// method set (or not found in the reference list yet) = 0% change, i.e.
+// the raw weight, same as every recipe before this feature existed.
+function cookedGrams(rawG: number, cookingMethodId: number | null, cookingMethods: CookingMethod[]): number {
+  const raw = Number(rawG) || 0;
+  const method = cookingMethodId != null ? cookingMethods.find((m) => m.id === cookingMethodId) : null;
+  const yieldPct = method ? Number(method.typical_yield_pct) || 0 : 0;
+  return raw * (1 + yieldPct / 100);
 }
 
 export default function Fit4SureRecipesPage() {
@@ -624,6 +640,45 @@ function MacroBadge({
   );
 }
 
+// Lets an ingredient row declare how it's cooked, so its weight (and every
+// per-pound/serving figure derived from it) reflects the actual finished
+// dish instead of raw inputs -- see cookedGrams above. Shared by both the
+// Add and Edit drawers' dry/wet ingredient lists.
+function CookingMethodSelect({
+  value,
+  rawG,
+  cookingMethods,
+  onChange,
+}: {
+  value: number | null;
+  rawG: number;
+  cookingMethods: CookingMethod[];
+  onChange: (id: number | null) => void;
+}) {
+  const method = value != null ? cookingMethods.find((m) => m.id === value) : null;
+  const cooked = cookedGrams(rawG, value, cookingMethods);
+  const changed = method && Math.round(cooked) !== Math.round(rawG);
+  return (
+    <div className="mt-1 flex items-center gap-1.5">
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+        className="h-6 rounded border border-[#D8CDBE] bg-white px-1 text-[9px] text-[#4B2B1D] outline-none"
+      >
+        <option value="">Raw / No Cooking</option>
+        {cookingMethods
+          .filter((m) => m.name !== "Raw / No Cooking")
+          .map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+      </select>
+      {changed && <span className="text-[9px] font-semibold text-[#2E527F]">→ {Math.round(cooked)}g cooked</span>}
+    </div>
+  );
+}
+
 function AddRecipeDrawer({
   open,
   onClose,
@@ -644,6 +699,7 @@ function AddRecipeDrawer({
     category?: string;
     quantity_g: number;
     prep_section: "dry" | "wet";
+    cooking_method_id: number | null;
     unit_price_cents: number | null;
     protein_per_100g: number | null;
     carbs_per_100g: number | null;
@@ -659,18 +715,37 @@ function AddRecipeDrawer({
   });
 
   const [ingredients, setIngredients] = useState<RecipeFormIngredient[]>([]);
+  const [cookingMethods, setCookingMethods] = useState<CookingMethod[]>([]);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const apiUrl = import.meta.env.VITE_API_BASE_URL;
+    axios
+      .get(`${apiUrl}/api/admin/cooking-methods`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => setCookingMethods(res.data.data || []))
+      .catch(() => {});
+  }, []);
 
   const addIngredient = (picked: PickedIngredient, prep_section: "dry" | "wet") => {
-    setIngredients((prev) => [...prev, { id: Date.now().toString(), ...picked, prep_section }]);
+    setIngredients((prev) => [...prev, { id: Date.now().toString(), ...picked, prep_section, cooking_method_id: null }]);
+  };
+  const updateIngredientCookingMethod = (id: string, cooking_method_id: number | null) => {
+    setIngredients((prev) => prev.map((ing) => (ing.id === id ? { ...ing, cooking_method_id } : ing)));
   };
   const [steps, setSteps] = useState<RecipeStep[]>([]);
 
   // Regular Servings isn't hand-entered either -- it's how many actual
-  // Regular-plate servings this batch yields, i.e. total ingredient weight
-  // divided by the Regular row's serving size for this category (see
-  // computeRegularServings above).
-  const totalWeightG = useMemo(() => ingredients.reduce((sum, ing) => sum + (Number(ing.quantity_g) || 0), 0), [ingredients]);
-  const regularServings = useMemo(() => computeRegularServings(form.category, totalWeightG), [form.category, totalWeightG]);
+  // Regular-plate servings this batch yields, i.e. total *cooked* weight
+  // (cooking changes water weight, not nutrient content -- see
+  // calculateRecipeMacros in adminRecipes.js) divided by the Regular row's
+  // serving size for this category (see computeRegularServings above). An
+  // ingredient with no cooking method set contributes its raw weight
+  // unchanged, so a recipe with nothing tagged behaves exactly as before.
+  const cookedWeightG = useMemo(
+    () => ingredients.reduce((sum, ing) => sum + cookedGrams(ing.quantity_g, ing.cooking_method_id, cookingMethods), 0),
+    [ingredients, cookingMethods]
+  );
+  const regularServings = useMemo(() => computeRegularServings(form.category, cookedWeightG), [form.category, cookedWeightG]);
 
   // Calories/macros are never hand-entered -- the backend recalculates them
   // live from ingredients on every read (see adminRecipes.js), so an
@@ -741,6 +816,7 @@ function AddRecipeDrawer({
             name: ing.name,
             quantity_g: ing.quantity_g,
             prep_section: ing.prep_section,
+            cooking_method_id: ing.cooking_method_id,
             unit_price_cents: ing.unit_price_cents ?? undefined,
           })),
           steps: steps.map((s, i) => ({
@@ -770,6 +846,7 @@ function AddRecipeDrawer({
               inventory_id: ing.inventory_id,
               quantity_g: ing.quantity_g,
               prep_section: ing.prep_section,
+              cooking_method_id: ing.cooking_method_id,
             })),
             steps: steps.map((s) => ({ title: s.title, description: s.description, time_estimate_minutes: s.time_estimate_minutes })),
           },
@@ -927,6 +1004,12 @@ function AddRecipeDrawer({
                               <p className="text-[10px] text-[#755B4C]">
                                 {formatIngredientWeight(ing.quantity_g, ing.category)}{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
                               </p>
+                              <CookingMethodSelect
+                                value={ing.cooking_method_id}
+                                rawG={ing.quantity_g}
+                                cookingMethods={cookingMethods}
+                                onChange={(id) => updateIngredientCookingMethod(ing.id, id)}
+                              />
                             </div>
                             <button
                               type="button"
@@ -959,6 +1042,12 @@ function AddRecipeDrawer({
                               <p className="text-[10px] text-[#755B4C]">
                                 {formatIngredientWeight(ing.quantity_g, ing.category)}{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
                               </p>
+                              <CookingMethodSelect
+                                value={ing.cooking_method_id}
+                                rawG={ing.quantity_g}
+                                cookingMethods={cookingMethods}
+                                onChange={(id) => updateIngredientCookingMethod(ing.id, id)}
+                              />
                             </div>
                             <button
                               type="button"
@@ -1027,6 +1116,7 @@ function AddRecipeDrawer({
                         name: ing.name,
                         quantity_g: ing.quantity_g,
                         prep_section: ing.prep_section,
+                        cooking_method_id: ing.cooking_method_id,
                         unit_price_cents: ing.unit_price_cents ?? undefined,
                       })),
                     };
@@ -1083,6 +1173,7 @@ function EditRecipeDrawer({
     category?: string;
     quantity_g: number;
     prep_section: "dry" | "wet";
+    cooking_method_id: number | null;
     unit_price_cents: number | null;
     protein_per_100g: number | null;
     carbs_per_100g: number | null;
@@ -1104,6 +1195,7 @@ function EditRecipeDrawer({
       name: ing.name || "",
       quantity_g: ing.quantity_g || 0,
       prep_section: ing.prep_section === "wet" ? "wet" : "dry",
+      cooking_method_id: ing.cooking_method_id ?? null,
       unit_price_cents: ing.unit_price_cents ?? null,
       protein_per_100g: ing.protein_per_100g ?? null,
       carbs_per_100g: ing.carbs_per_100g ?? null,
@@ -1111,9 +1203,22 @@ function EditRecipeDrawer({
       calories_per_100g: ing.calories_per_100g ?? null,
     })) || []
   );
+  const [cookingMethods, setCookingMethods] = useState<CookingMethod[]>([]);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const apiUrl = import.meta.env.VITE_API_BASE_URL;
+    axios
+      .get(`${apiUrl}/api/admin/cooking-methods`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => setCookingMethods(res.data.data || []))
+      .catch(() => {});
+  }, []);
 
   const addIngredient = (picked: PickedIngredient, prep_section: "dry" | "wet") => {
-    setIngredients((prev) => [...prev, { id: Date.now().toString(), ...picked, prep_section }]);
+    setIngredients((prev) => [...prev, { id: Date.now().toString(), ...picked, prep_section, cooking_method_id: null }]);
+  };
+  const updateIngredientCookingMethod = (id: string, cooking_method_id: number | null) => {
+    setIngredients((prev) => prev.map((ing) => (ing.id === id ? { ...ing, cooking_method_id } : ing)));
   };
   const [steps, setSteps] = useState<RecipeStep[]>(
     recipe.steps?.map((s) => ({
@@ -1125,11 +1230,14 @@ function EditRecipeDrawer({
   );
 
   // Regular Servings isn't hand-entered either -- it's how many actual
-  // Regular-plate servings this batch yields, i.e. total ingredient weight
-  // divided by the Regular row's serving size for this category (see
-  // computeRegularServings above).
-  const totalWeightG = useMemo(() => ingredients.reduce((sum, ing) => sum + (Number(ing.quantity_g) || 0), 0), [ingredients]);
-  const regularServings = useMemo(() => computeRegularServings(form.category, totalWeightG), [form.category, totalWeightG]);
+  // Regular-plate servings this batch yields, i.e. total *cooked* weight
+  // (see cookedGrams above) divided by the Regular row's serving size for
+  // this category (see computeRegularServings above).
+  const cookedWeightG = useMemo(
+    () => ingredients.reduce((sum, ing) => sum + cookedGrams(ing.quantity_g, ing.cooking_method_id, cookingMethods), 0),
+    [ingredients, cookingMethods]
+  );
+  const regularServings = useMemo(() => computeRegularServings(form.category, cookedWeightG), [form.category, cookedWeightG]);
 
   // Calories/macros are never hand-entered -- the backend recalculates them
   // live from ingredients on every read (see adminRecipes.js), so an
@@ -1206,6 +1314,7 @@ function EditRecipeDrawer({
         inventory_id: ing.inventory_id,
         quantity_g: ing.quantity_g,
         prep_section: ing.prep_section,
+        cooking_method_id: ing.cooking_method_id,
       })),
       steps: steps.map((s) => ({ title: s.title, description: s.description, time_estimate_minutes: s.time_estimate_minutes })),
     };
@@ -1589,6 +1698,11 @@ function RecipeDetailsDrawer({
                             <p className="text-sm font-medium text-[#4B2B1D]">{ing.name}</p>
                             <p className="text-xs text-[#755B4C]">
                               {formatIngredientWeight(ing.quantity_g, ing.category)}
+                              {ing.cooking_method_name && (
+                                <span className="ml-1.5 rounded-full bg-[#EAF0F7] px-1.5 py-[1px] text-[9px] font-bold text-[#2E527F] align-middle">
+                                  {ing.cooking_method_name}
+                                </span>
+                              )}
                               {ing.priced_from_receipt && (
                                 <span className="ml-1.5 text-[#D97706]" title="No price set in Inventory — using the real price last paid on a scanned receipt">
                                   ≈ from receipt
