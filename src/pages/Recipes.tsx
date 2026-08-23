@@ -1467,6 +1467,12 @@ function EditRecipeDrawer({
                                   g{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
                                 </span>
                               </div>
+                              <CookingMethodSelect
+                                value={ing.cooking_method_id}
+                                rawG={ing.quantity_g}
+                                cookingMethods={cookingMethods}
+                                onChange={(id) => updateIngredientCookingMethod(ing.id, id)}
+                              />
                             </div>
                             <button
                               type="button"
@@ -1506,6 +1512,12 @@ function EditRecipeDrawer({
                                   g{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
                                 </span>
                               </div>
+                              <CookingMethodSelect
+                                value={ing.cooking_method_id}
+                                rawG={ing.quantity_g}
+                                cookingMethods={cookingMethods}
+                                onChange={(id) => updateIngredientCookingMethod(ing.id, id)}
+                              />
                             </div>
                             <button
                               type="button"
