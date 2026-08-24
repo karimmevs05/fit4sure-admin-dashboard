@@ -27,6 +27,21 @@ export async function fetchCurrentUser(): Promise<{ user_id: number; display_nam
   return res.data
 }
 
+export type WeekSummary = {
+  weekStart: string
+  totalMeals: number
+  totalRevenueCents: number
+  totalCogsCents: number
+  profitCents: number
+  marginPct: number
+  prepTimeMinutes: number
+}
+
+export async function fetchThisWeekSummary(): Promise<WeekSummary> {
+  const res = await axios.get(`${apiUrl()}/api/admin/prep/this-week/summary`, authConfig())
+  return res.data.data
+}
+
 export async function createTask(input: {
   name: string
   owner_id: number

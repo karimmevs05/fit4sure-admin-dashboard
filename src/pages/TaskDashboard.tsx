@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { PieChart, Pencil, X } from 'lucide-react'
 import type { Task, ActivityLogEntry, StaffUser, MeetingHighlight } from '../lib/launchTasks/types'
+import type { WeekSummary } from '../lib/launchTasks/api'
 import { COLORS, Card, AttentionIconDot } from '../lib/launchTasks/ui'
 import { buildAttention, formatCents } from '../lib/launchTasks/selectors'
 import { ListView } from '../lib/launchTasks/ListView'
@@ -20,6 +21,7 @@ export default function TaskDashboardPage() {
   const [investor, setInvestor] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
   const [attentionEditTaskId, setAttentionEditTaskId] = useState<number | null>(null)
+  const [weekSummary, setWeekSummary] = useState<WeekSummary | null>(null)
 
   const today = useMemo(() => {
     const now = new Date()
@@ -50,6 +52,7 @@ export default function TaskDashboardPage() {
   useEffect(() => {
     loadAll()
     api.fetchMeetingHighlights().then(setHighlights)
+    api.fetchThisWeekSummary().then(setWeekSummary).catch(() => {})
   }, [])
 
   const addHighlight = async (text: string) => {
@@ -157,26 +160,52 @@ export default function TaskDashboardPage() {
         )}
 
         {!investor && (
-          <Card className="px-5 py-4 mb-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wide mb-[6px]" style={{ color: COLORS.textMuted }}>Needs attention</div>
-            {attention.length === 0 ? (
-              <div className="text-[13px] py-1" style={{ color: COLORS.textMuted }}>Nothing urgent right now.</div>
-            ) : attention.map((it, i) => (
-              <div key={i} className="flex items-center gap-[10px] py-[7px] text-[13px] border-t first:border-t-0" style={{ borderColor: '#f5f4f0' }}>
-                <AttentionIconDot icon={it.icon} />
-                <span className="flex-1" style={{ color: COLORS.textPrimary }}>{it.name}</span>
-                <span className="text-[11px]" style={{ color: COLORS.textMuted }}>{it.task} · {it.reason}</span>
-                <span
-                  className="text-[13px] px-1 py-[2px] rounded cursor-pointer flex-shrink-0"
-                  style={{ color: COLORS.textMuted }}
-                  title={`Fix "${it.task}"`}
-                  onClick={() => setAttentionEditTaskId(it.taskId)}
-                >
-                  <Pencil className="h-[13px] w-[13px]" />
-                </span>
-              </div>
-            ))}
-          </Card>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3 items-start">
+            <Card className="px-5 py-4">
+              <div className="text-[11px] font-semibold uppercase tracking-wide mb-[6px]" style={{ color: COLORS.textMuted }}>Needs attention</div>
+              {attention.length === 0 ? (
+                <div className="text-[13px] py-1" style={{ color: COLORS.textMuted }}>Nothing urgent right now.</div>
+              ) : attention.map((it, i) => (
+                <div key={i} className="flex items-center gap-[10px] py-[7px] text-[13px] border-t first:border-t-0" style={{ borderColor: '#f5f4f0' }}>
+                  <AttentionIconDot icon={it.icon} />
+                  <span className="flex-1" style={{ color: COLORS.textPrimary }}>{it.name}</span>
+                  <span className="text-[11px]" style={{ color: COLORS.textMuted }}>{it.task} · {it.reason}</span>
+                  <span
+                    className="text-[13px] px-1 py-[2px] rounded cursor-pointer flex-shrink-0"
+                    style={{ color: COLORS.textMuted }}
+                    title={`Fix "${it.task}"`}
+                    onClick={() => setAttentionEditTaskId(it.taskId)}
+                  >
+                    <Pencil className="h-[13px] w-[13px]" />
+                  </span>
+                </div>
+              ))}
+            </Card>
+
+            <Card className="px-5 py-4">
+              <div className="text-[11px] font-semibold uppercase tracking-wide mb-[10px]" style={{ color: COLORS.textMuted }}>This week's performance</div>
+              {!weekSummary ? (
+                <div className="text-[13px] py-1" style={{ color: COLORS.textMuted }}>Loading...</div>
+              ) : (
+                <div className="grid grid-cols-2 gap-[10px]">
+                  <SummaryStat label="Meals" value={weekSummary.totalMeals.toLocaleString()} />
+                  <SummaryStat label="Revenue" value={formatCents(weekSummary.totalRevenueCents)} />
+                  <SummaryStat label="COGS" value={formatCents(weekSummary.totalCogsCents)} />
+                  <SummaryStat
+                    label="Margin"
+                    value={`${weekSummary.marginPct}%`}
+                    color={weekSummary.marginPct >= 0 ? COLORS.green : COLORS.red}
+                  />
+                  <SummaryStat
+                    label="Profit"
+                    value={formatCents(weekSummary.profitCents)}
+                    color={weekSummary.profitCents >= 0 ? COLORS.green : COLORS.red}
+                  />
+                  <SummaryStat label="Prep time" value={formatPrepTime(weekSummary.prepTimeMinutes)} />
+                </div>
+              )}
+            </Card>
+          </div>
         )}
 
         {investor && (
@@ -258,4 +287,25 @@ function FinTile({ label, value }: { label: string; value: string }) {
       <div className="text-[22px] font-semibold" style={{ color: COLORS.textPrimary }}>{value}</div>
     </Card>
   )
+}
+
+function SummaryStat({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div className="rounded-xl px-3 py-[10px]" style={{ background: '#faf8f4' }}>
+      <div className="text-[10.5px] uppercase tracking-wide mb-[3px]" style={{ color: COLORS.textMuted }}>{label}</div>
+      <div className="text-[17px] font-semibold" style={{ color: color || COLORS.textPrimary }}>{value}</div>
+    </div>
+  )
+}
+
+// Prep time is tracked in minutes (recipe.prep_time_minutes x quantity sold
+// this week) -- shown as "Xh Ym" once it crosses an hour so a real week's
+// total labor investment reads at a glance, not as a triple-digit minute count.
+function formatPrepTime(totalMinutes: number): string {
+  if (totalMinutes <= 0) return '0m'
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (hours === 0) return `${minutes}m`
+  if (minutes === 0) return `${hours}h`
+  return `${hours}h ${minutes}m`
 }
