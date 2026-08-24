@@ -139,13 +139,14 @@ function ExpenseLedger({ task, onChanged }: { task: Task; onChanged: (t: Task) =
   )
 }
 
-export function TaskRow({ task, today, investor, roster, onChanged, onDeleted }: {
+export function TaskRow({ task, today, investor, roster, onChanged, onDeleted, isFirst = true }: {
   task: Task
   today: Date
   investor: boolean
   roster: StaffUser[]
   onChanged: (t: Task) => void
   onDeleted: (id: number) => void
+  isFirst?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -193,7 +194,7 @@ export function TaskRow({ task, today, investor, roster, onChanged, onDeleted }:
   }
 
   return (
-    <div className="rounded-3xl mb-2 border overflow-hidden" style={{ background: COLORS.cardBg, borderColor: COLORS.cardBorder }}>
+    <div className={isFirst ? '' : 'border-t'} style={{ background: COLORS.cardBg, borderColor: COLORS.divider }}>
       <div
         className="flex items-center gap-[10px] px-[14px] py-3"
         style={{ cursor: investor ? 'default' : 'pointer' }}

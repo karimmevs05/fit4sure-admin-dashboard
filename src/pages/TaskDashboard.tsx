@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { PieChart } from 'lucide-react'
+import { PieChart, Pencil, X } from 'lucide-react'
 import type { Task, ActivityLogEntry, StaffUser, MeetingHighlight } from '../lib/launchTasks/types'
 import { COLORS, Card, AttentionIconDot } from '../lib/launchTasks/ui'
 import { buildAttention, formatCents } from '../lib/launchTasks/selectors'
 import { ListView } from '../lib/launchTasks/ListView'
+import { EditTaskForm } from '../lib/launchTasks/TaskRow'
 import { CalendarMeetingPanel } from '../lib/launchTasks/CalendarMeetingPanel'
 import * as api from '../lib/launchTasks/api'
 
@@ -18,6 +19,7 @@ export default function TaskDashboardPage() {
 
   const [investor, setInvestor] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
+  const [attentionEditTaskId, setAttentionEditTaskId] = useState<number | null>(null)
 
   const today = useMemo(() => {
     const now = new Date()
@@ -164,6 +166,14 @@ export default function TaskDashboardPage() {
                 <AttentionIconDot icon={it.icon} />
                 <span className="flex-1" style={{ color: COLORS.textPrimary }}>{it.name}</span>
                 <span className="text-[11px]" style={{ color: COLORS.textMuted }}>{it.task} · {it.reason}</span>
+                <span
+                  className="text-[13px] px-1 py-[2px] rounded cursor-pointer flex-shrink-0"
+                  style={{ color: COLORS.textMuted }}
+                  title={`Fix "${it.task}"`}
+                  onClick={() => setAttentionEditTaskId(it.taskId)}
+                >
+                  <Pencil className="h-[13px] w-[13px]" />
+                </span>
               </div>
             ))}
           </Card>
@@ -198,6 +208,29 @@ export default function TaskDashboardPage() {
             ))}
           </div>
         )}
+
+        {attentionEditTaskId != null && (() => {
+          const attentionTask = tasks.find((t) => t.id === attentionEditTaskId)
+          if (!attentionTask) return null
+          return (
+            <div className="fixed inset-0 bg-black/40 flex items-start justify-center pt-24 px-4 z-50 overflow-y-auto" onClick={() => setAttentionEditTaskId(null)}>
+              <div className="w-full max-w-xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <span className="text-[13px] font-semibold" style={{ color: COLORS.textPrimary }}>Fix "{attentionTask.name}"</span>
+                  <span className="cursor-pointer" style={{ color: COLORS.textMuted }} onClick={() => setAttentionEditTaskId(null)}>
+                    <X className="h-4 w-4" />
+                  </span>
+                </div>
+                <EditTaskForm
+                  task={attentionTask}
+                  roster={roster}
+                  onCancel={() => setAttentionEditTaskId(null)}
+                  onSave={(t) => { handleChanged(t); setAttentionEditTaskId(null) }}
+                />
+              </div>
+            </div>
+          )
+        })()}
       </div>
     </div>
   )

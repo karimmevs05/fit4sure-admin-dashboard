@@ -60,12 +60,12 @@ export function collectTodoAttentionItems(tasks: Task[], today: Date): Attention
     for (const td of openTodos) {
       const todoUrgency = td.urgency || t.urgency
       if (isOverdue) {
-        items.push({ icon: 'overdue', name: td.text, task: taskName, reason: 'Overdue', priority: 0 })
+        items.push({ icon: 'overdue', name: td.text, task: taskName, taskId: t.id, reason: 'Overdue', priority: 0 })
       } else if (todoUrgency === 'critical' && days >= 0 && days <= 7 && t.status !== 'done') {
-        items.push({ icon: 'critical', name: td.text, task: taskName, reason: `Due in ${days}d`, priority: 1 })
+        items.push({ icon: 'critical', name: td.text, task: taskName, taskId: t.id, reason: `Due in ${days}d`, priority: 1 })
       }
       if (t.needs_decision) {
-        items.push({ icon: 'decision', name: td.text, task: taskName, reason: 'Needs decision', priority: 3 })
+        items.push({ icon: 'decision', name: td.text, task: taskName, taskId: t.id, reason: 'Needs decision', priority: 3 })
       }
     }
   }

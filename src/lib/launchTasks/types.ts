@@ -88,6 +88,7 @@ export type AttentionItem = {
   icon: AttentionIcon
   name: string
   task: string
+  taskId: number
   reason: string
   priority: number
 }

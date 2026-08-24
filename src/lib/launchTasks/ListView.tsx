@@ -45,6 +45,12 @@ export function ListView({ tasks, today, investor, roster, currentUserId, onChan
     return tasks.filter((t) => {
       const statusVal = t.needs_decision && fStatus === 'needs-decision' ? 'needs-decision' : t.status
       const dueBucket = dueBucketForTask(t, today)
+      // Done tasks clear out of the default staff view once checked off --
+      // still reachable via "Status: Done", so nothing's actually lost, but
+      // a finished recurring item (e.g. this week's "Cooking prep") doesn't
+      // sit around cluttering the active list. Investor view keeps them
+      // visible alongside the progress bar as a track record.
+      if (!investor && !fStatus && t.status === 'done') return false
       if (fOwner && String(t.owner_id) !== fOwner) return false
       if (fUrgency && t.urgency !== fUrgency) return false
       if (fStatus && statusVal !== fStatus && !(fStatus === 'needs-decision' && t.needs_decision)) return false
@@ -151,9 +157,13 @@ export function ListView({ tasks, today, investor, roster, currentUserId, onChan
               )}
             </div>
 
-            {sorted.map((task) => (
-              <TaskRow key={task.id} task={task} today={today} investor={investor} roster={roster} onChanged={onChanged} onDeleted={onDeleted} />
-            ))}
+            {sorted.length > 0 && (
+              <div className="rounded-3xl border overflow-hidden mb-2" style={{ borderColor: COLORS.cardBorder }}>
+                {sorted.map((task, i) => (
+                  <TaskRow key={task.id} task={task} today={today} investor={investor} roster={roster} onChanged={onChanged} onDeleted={onDeleted} isFirst={i === 0} />
+                ))}
+              </div>
+            )}
 
             {!investor && (
               addingTag === tag ? (
