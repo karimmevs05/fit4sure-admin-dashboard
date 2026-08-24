@@ -142,7 +142,14 @@ export default function TaskDashboardPage() {
         {!investor && (
           <div className="rounded-3xl p-5 mb-3 border" style={{ background: COLORS.cardBg, borderColor: COLORS.cardBorder, boxShadow: '0 8px 24px rgba(75,43,29,0.06)' }}>
             <div className="flex gap-[22px] items-stretch">
-              <CalendarBlock tasks={tasks} today={today} />
+              <CalendarBlock
+                tasks={tasks}
+                today={today}
+                roster={roster}
+                defaultOwnerId={currentUser?.user_id}
+                onChanged={handleChanged}
+                onCreated={handleCreated}
+              />
 
               <div className="flex-1 min-w-0 border-l pl-[22px]" style={{ borderColor: '#CDBDA8' }}>
                 <div className="text-[13px] font-extrabold mb-3" style={{ color: '#3D2314' }}>This week's performance</div>
@@ -166,20 +173,18 @@ export default function TaskDashboardPage() {
                     <SummaryStat label="Prep time" value={formatPrepTime(weekSummary.prepTimeMinutes)} />
                   </div>
                 )}
+
+                <MeetingTopicsPanel
+                  tasks={tasks}
+                  today={today}
+                  highlights={highlights}
+                  onAddHighlight={addHighlight}
+                  onEditHighlight={editHighlight}
+                  onDeleteHighlight={deleteHighlight}
+                />
               </div>
             </div>
           </div>
-        )}
-
-        {!investor && (
-          <MeetingTopicsPanel
-            tasks={tasks}
-            today={today}
-            highlights={highlights}
-            onAddHighlight={addHighlight}
-            onEditHighlight={editHighlight}
-            onDeleteHighlight={deleteHighlight}
-          />
         )}
 
         {investor && (
