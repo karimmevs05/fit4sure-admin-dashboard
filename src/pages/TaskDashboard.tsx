@@ -6,7 +6,7 @@ import { COLORS, Card, AttentionIconDot } from '../lib/launchTasks/ui'
 import { buildAttention, formatCents } from '../lib/launchTasks/selectors'
 import { ListView } from '../lib/launchTasks/ListView'
 import { EditTaskForm } from '../lib/launchTasks/TaskRow'
-import { CalendarMeetingPanel } from '../lib/launchTasks/CalendarMeetingPanel'
+import { CalendarBlock, MeetingTopicsPanel } from '../lib/launchTasks/CalendarMeetingPanel'
 import * as api from '../lib/launchTasks/api'
 
 export default function TaskDashboardPage() {
@@ -140,7 +140,39 @@ export default function TaskDashboardPage() {
         </header>
 
         {!investor && (
-          <CalendarMeetingPanel
+          <div className="rounded-3xl p-5 mb-3 border" style={{ background: COLORS.cardBg, borderColor: COLORS.cardBorder, boxShadow: '0 8px 24px rgba(75,43,29,0.06)' }}>
+            <div className="flex gap-[22px] items-stretch">
+              <CalendarBlock tasks={tasks} today={today} />
+
+              <div className="flex-1 min-w-0 border-l pl-[22px]" style={{ borderColor: '#CDBDA8' }}>
+                <div className="text-[13px] font-extrabold mb-3" style={{ color: '#3D2314' }}>This week's performance</div>
+                {!weekSummary ? (
+                  <div className="text-[13px]" style={{ color: '#6B3410' }}>Loading...</div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-[10px]">
+                    <SummaryStat label="Meals" value={weekSummary.totalMeals.toLocaleString()} />
+                    <SummaryStat label="Revenue" value={formatCents(weekSummary.totalRevenueCents)} />
+                    <SummaryStat label="COGS" value={formatCents(weekSummary.totalCogsCents)} />
+                    <SummaryStat
+                      label="Margin"
+                      value={`${weekSummary.marginPct}%`}
+                      color={weekSummary.marginPct >= 0 ? COLORS.green : COLORS.red}
+                    />
+                    <SummaryStat
+                      label="Profit"
+                      value={formatCents(weekSummary.profitCents)}
+                      color={weekSummary.profitCents >= 0 ? COLORS.green : COLORS.red}
+                    />
+                    <SummaryStat label="Prep time" value={formatPrepTime(weekSummary.prepTimeMinutes)} />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!investor && (
+          <MeetingTopicsPanel
             tasks={tasks}
             today={today}
             highlights={highlights}
@@ -160,52 +192,26 @@ export default function TaskDashboardPage() {
         )}
 
         {!investor && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3 items-start">
-            <Card className="px-5 py-4">
-              <div className="text-[11px] font-semibold uppercase tracking-wide mb-[6px]" style={{ color: COLORS.textMuted }}>Needs attention</div>
-              {attention.length === 0 ? (
-                <div className="text-[13px] py-1" style={{ color: COLORS.textMuted }}>Nothing urgent right now.</div>
-              ) : attention.map((it, i) => (
-                <div key={i} className="flex items-center gap-[10px] py-[7px] text-[13px] border-t first:border-t-0" style={{ borderColor: '#f5f4f0' }}>
-                  <AttentionIconDot icon={it.icon} />
-                  <span className="flex-1" style={{ color: COLORS.textPrimary }}>{it.name}</span>
-                  <span className="text-[11px]" style={{ color: COLORS.textMuted }}>{it.task} · {it.reason}</span>
-                  <span
-                    className="text-[13px] px-1 py-[2px] rounded cursor-pointer flex-shrink-0"
-                    style={{ color: COLORS.textMuted }}
-                    title={`Fix "${it.task}"`}
-                    onClick={() => setAttentionEditTaskId(it.taskId)}
-                  >
-                    <Pencil className="h-[13px] w-[13px]" />
-                  </span>
-                </div>
-              ))}
-            </Card>
-
-            <Card className="px-5 py-4">
-              <div className="text-[11px] font-semibold uppercase tracking-wide mb-[10px]" style={{ color: COLORS.textMuted }}>This week's performance</div>
-              {!weekSummary ? (
-                <div className="text-[13px] py-1" style={{ color: COLORS.textMuted }}>Loading...</div>
-              ) : (
-                <div className="grid grid-cols-2 gap-[10px]">
-                  <SummaryStat label="Meals" value={weekSummary.totalMeals.toLocaleString()} />
-                  <SummaryStat label="Revenue" value={formatCents(weekSummary.totalRevenueCents)} />
-                  <SummaryStat label="COGS" value={formatCents(weekSummary.totalCogsCents)} />
-                  <SummaryStat
-                    label="Margin"
-                    value={`${weekSummary.marginPct}%`}
-                    color={weekSummary.marginPct >= 0 ? COLORS.green : COLORS.red}
-                  />
-                  <SummaryStat
-                    label="Profit"
-                    value={formatCents(weekSummary.profitCents)}
-                    color={weekSummary.profitCents >= 0 ? COLORS.green : COLORS.red}
-                  />
-                  <SummaryStat label="Prep time" value={formatPrepTime(weekSummary.prepTimeMinutes)} />
-                </div>
-              )}
-            </Card>
-          </div>
+          <Card className="px-5 py-4 mb-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide mb-[6px]" style={{ color: COLORS.textMuted }}>Needs attention</div>
+            {attention.length === 0 ? (
+              <div className="text-[13px] py-1" style={{ color: COLORS.textMuted }}>Nothing urgent right now.</div>
+            ) : attention.map((it, i) => (
+              <div key={i} className="flex items-center gap-[10px] py-[7px] text-[13px] border-t first:border-t-0" style={{ borderColor: '#f5f4f0' }}>
+                <AttentionIconDot icon={it.icon} />
+                <span className="flex-1" style={{ color: COLORS.textPrimary }}>{it.name}</span>
+                <span className="text-[11px]" style={{ color: COLORS.textMuted }}>{it.task} · {it.reason}</span>
+                <span
+                  className="text-[13px] px-1 py-[2px] rounded cursor-pointer flex-shrink-0"
+                  style={{ color: COLORS.textMuted }}
+                  title={`Fix "${it.task}"`}
+                  onClick={() => setAttentionEditTaskId(it.taskId)}
+                >
+                  <Pencil className="h-[13px] w-[13px]" />
+                </span>
+              </div>
+            ))}
+          </Card>
         )}
 
         {investor && (
