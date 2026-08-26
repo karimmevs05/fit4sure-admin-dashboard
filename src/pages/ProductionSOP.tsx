@@ -11,6 +11,7 @@ type ChecklistItem = {
   sort_order: number
   group_label: string | null
   line_kind: string | null
+  category: string | null
 }
 
 type TaskDetail = {
@@ -20,19 +21,6 @@ type TaskDetail = {
   due_date: string | null
   estimated_minutes: number | null
   checklist_items: ChecklistItem[]
-}
-
-// Reverse of CATEGORY_LABELS on the backend -- the batch task title always
-// reads "{Verb}: {Category Label} — ...", so this recovers which category
-// swatch to accent the page with from that label text.
-const LABEL_TO_CATEGORY: Record<string, string> = {
-  Beef: 'beef', Chicken: 'chicken', Turkey: 'turkey', Carbs: 'carbohydrates',
-  Vegetables: 'vegetables', Sauces: 'sauces', Beverage: 'beverage', Breakfast: 'breakfast', Custom: 'custom',
-}
-
-function categoryFromTitle(title: string): string | null {
-  const match = title.match(/:\s*([A-Za-z]+)\s+—/)
-  return match ? LABEL_TO_CATEGORY[match[1]] || null : null
 }
 
 const KIND_SECTION_TITLE: Record<string, string> = {
@@ -105,12 +93,16 @@ export default function ProductionSOP() {
     )
   }
 
-  const category = categoryFromTitle(task.title)
-  const accentBg = (category && CATEGORY_CARD_BG[category]) || DEFAULT_CARD_BG
+  // The header banner stays neutral -- a task can span every category now
+  // (one section per operational day instead of one per protein), so the
+  // color-coding lives on each recipe's own column instead of the page header.
+  const accentBg = DEFAULT_CARD_BG
 
   // Group by recipe (group_label); cleanup/global lines (group_label null)
-  // render as a full-width closer at the bottom, not their own column.
-  const columns: { name: string; items: ChecklistItem[] }[] = []
+  // render as a full-width closer at the bottom, not their own column. Each
+  // column keeps its recipe's own category so it's colored independently of
+  // its neighbors even though they're all one task.
+  const columns: { name: string; category: string | null; items: ChecklistItem[] }[] = []
   const columnIndex: Record<string, number> = {}
   const employeeItems: ChecklistItem[] = []
   const cleanupItems: ChecklistItem[] = []
@@ -122,7 +114,7 @@ export default function ProductionSOP() {
     }
     if (!(item.group_label in columnIndex)) {
       columnIndex[item.group_label] = columns.length
-      columns.push({ name: item.group_label, items: [] })
+      columns.push({ name: item.group_label, category: item.category, items: [] })
     }
     columns[columnIndex[item.group_label]].items.push(item)
   }
@@ -211,7 +203,7 @@ export default function ProductionSOP() {
             }
             return (
               <div key={col.name} className="w-[320px] flex-shrink-0 rounded-2xl border border-[#2E527F] bg-white shadow-[0_8px_24px_rgba(75,43,29,0.06)] overflow-hidden print:break-inside-avoid">
-                <div className={`border-b border-[#DED2C2] ${accentBg} px-4 py-3`}>
+                <div className={`border-b border-[#DED2C2] ${(col.category && CATEGORY_CARD_BG[col.category]) || DEFAULT_CARD_BG} px-4 py-3`}>
                   <h2 className="font-extrabold text-[#4B2B1D]">{col.name}</h2>
                   <p className="text-xs text-[#755B4C]">{colDone}/{col.items.length} done</p>
                 </div>
