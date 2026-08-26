@@ -17,7 +17,10 @@ import {
   Search,
   Clock,
   Link2,
+  ChefHat,
 } from 'lucide-react'
+
+const SOP_SOURCE_TYPES = new Set(['weekly_recipe_plan_batch', 'weekly_recipe_plan_production'])
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,6 +49,8 @@ type Task = {
   created_at: string
   updated_at: string
   completed_at: string | null
+  checklist_total?: number
+  checklist_done?: number
 }
 
 type ChecklistItem = {
@@ -184,6 +189,10 @@ const SOURCE_TYPE_LABELS: Record<string, string> = {
   inventory: 'Inventory',
   menu_plate: 'Menu',
   menu: 'Menu',
+  weekly_recipe_plan: 'Menu Plan',
+  weekly_recipe_plan_batch: 'Menu Plan',
+  weekly_recipe_plan_production: 'Menu Plan',
+  weekly_recipe_plan_shopping: 'Shopping List',
   production_task: 'Production',
 }
 
@@ -200,8 +209,13 @@ function toISODate(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
+// dateStr may be a plain "YYYY-MM-DD" (built locally, e.g. by addDays) or a
+// full ISO timestamp straight from the API (Postgres DATE columns come back
+// as "YYYY-MM-DDT00:00:00.000Z") -- slice to the date portion first so both
+// parse the same local midnight instead of the timestamp form producing
+// "T00:00:00.000ZT00:00:00" (Invalid Date).
 function parseISODate(dateStr: string): Date {
-  return new Date(`${dateStr}T00:00:00`)
+  return new Date(`${dateStr.slice(0, 10)}T00:00:00`)
 }
 
 function addDays(dateStr: string, days: number): string {
@@ -687,10 +701,40 @@ export default function OperationsHubPage() {
                     {formatDate(task.due_date)}
                   </span>
                 )}
+                {task.estimated_minutes != null && (
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    ~{task.estimated_minutes} min
+                  </span>
+                )}
               </div>
+              {!!task.checklist_total && (
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="h-1.5 flex-1 max-w-[160px] rounded-full bg-[#E4D8C9] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-[#16A34A] transition-all"
+                      style={{ width: `${Math.round(((task.checklist_done || 0) / task.checklist_total) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-bold text-[#755B4C]">
+                    {task.checklist_done || 0}/{task.checklist_total} done
+                  </span>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
+            {task.source_type && SOP_SOURCE_TYPES.has(task.source_type) && (
+              <a
+                href={`/operational-optimization/sop/${task.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1 text-[#2E527F] hover:bg-[#EAF0F7] rounded transition"
+                title="Open full SOP"
+              >
+                <ChefHat className="h-3.5 w-3.5" />
+              </a>
+            )}
             <button onClick={() => openEditModal(task)} className="p-1 text-[#755B4C] hover:text-[#2E527F] hover:bg-[#F9F5F0] rounded transition" title="Edit">
               <Pencil className="h-3.5 w-3.5" />
             </button>

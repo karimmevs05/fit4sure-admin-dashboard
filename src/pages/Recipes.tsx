@@ -5,6 +5,7 @@ import { RecipeImportPanel } from "../components/RecipeImportPanel";
 import { RecipeStepsEditor, RecipeStep } from "../components/RecipeStepsEditor";
 import { formatIngredientWeight } from "../utils/unitConversion";
 import { PLATE_STRUCTURE_SERVINGS, plateComponentFor, servingGramsFor } from "../utils/plateStructure";
+import { cardBgForCategory } from "../utils/categoryColors";
 import {
   BookOpen,
   ChevronDown,
@@ -479,6 +480,7 @@ function RecipeCard({
     "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=500&q=80";
   const categoryKey = recipe.category as Category;
   const colors = CATEGORY_CLASSES[categoryKey] || CATEGORY_CLASSES.beef;
+  const cardBg = cardBgForCategory(categoryKey);
   const [showStructureMenu, setShowStructureMenu] = useState(false);
   const selectedStructureIdx = structureIdx;
 
@@ -497,12 +499,12 @@ function RecipeCard({
     : "per lb (455g)";
 
   return (
-    <article onClick={() => onSelect(recipe)} className="group cursor-pointer overflow-hidden rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] shadow-[0_8px_24px_rgba(75,43,29,0.06)] transition duration-200 hover:-translate-y-0.5 hover:border-[#3E6594]/50 hover:shadow-[0_14px_32px_rgba(75,43,29,0.10)]">
+    <article onClick={() => onSelect(recipe)} className={`group cursor-pointer overflow-hidden rounded-2xl border border-[#2E527F] ${cardBg} shadow-[0_8px_24px_rgba(75,43,29,0.06)] transition duration-200 hover:-translate-y-0.5 hover:border-[#3E6594]/50 hover:shadow-[0_14px_32px_rgba(75,43,29,0.10)]`}>
       <div className="relative h-[140px] overflow-hidden bg-[#E3D8C9]">
         <img
           src={recipe.image || defaultImage}
           alt={recipe.name}
-          className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.025]"
+          className="h-full w-full object-cover object-center transition duration-300 group-hover:scale-[1.025]"
           onError={(e) => {
             (e.target as HTMLImageElement).src = defaultImage;
           }}

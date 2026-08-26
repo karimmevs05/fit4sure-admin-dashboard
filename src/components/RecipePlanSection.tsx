@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { AlertCircle, Plus, X } from 'lucide-react'
 import { RecipePicker } from './RecipePicker'
 import type { PickerRecipe } from './RecipePicker'
+import { rowAccentForCategory } from '../utils/categoryColors'
 
 export type PlanRecipeRow = {
   recipe_id: number | null
@@ -109,7 +110,7 @@ export default function RecipePlanSection({
                   <p className="text-xs text-[#755B4C] italic px-1 py-2">Nothing added yet</p>
                 ) : (
                   selected.map((r) => (
-                    <div key={rowKey(r)} className="flex items-center gap-2 rounded-lg bg-white border border-[#E4D8C9] px-2.5 py-1.5">
+                    <div key={rowKey(r)} className={`flex items-center gap-2 rounded-lg ${rowAccentForCategory(r.category)} border border-[#E4D8C9] px-2.5 py-1.5`}>
                       <button
                         onClick={() => onRemoveRow(block, r)}
                         className="flex-shrink-0 text-[#9A7E6F] hover:text-[#D62F3D] transition"

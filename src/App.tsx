@@ -7,6 +7,7 @@ import OrdersPage from './pages/Orders.tsx'
 import MenuPlannerPage from './pages/MenuPlanner.tsx'
 import TaskDashboardPage from './pages/TaskDashboard.tsx'
 import OperationsHubPage from './pages/OperationsHub.tsx'
+import ProductionSOPPage from './pages/ProductionSOP.tsx'
 import CustomersPage from './pages/Customers.tsx'
 import FinancialsPage from './pages/Financials.tsx'
 import ReportsPage from './pages/Reports.tsx'
@@ -23,10 +24,11 @@ function App() {
   const token = localStorage.getItem('token') || (import.meta.env.DEV ? 'dev-mode' : null)
   const location = useLocation()
   const isLoginPage = location.pathname === '/login'
+  const isSOPPage = location.pathname.startsWith('/operational-optimization/sop/')
   const [converterCollapsed, setConverterCollapsed] = React.useState(
     () => localStorage.getItem('kitchenConverterCollapsed') === 'true'
   )
-  const showChrome = token && !isLoginPage
+  const showChrome = token && !isLoginPage && !isSOPPage
   const contentMarginLeft = showChrome ? 256 + (converterCollapsed ? 0 : 288) : 0
 
   return (
@@ -39,6 +41,7 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={token ? <Navigate to="/dashboard" /> : <Navigate to="/login" />} />
           <Route path="/operational-optimization" element={token ? <OperationsHubPage /> : <Navigate to="/login" />} />
+          <Route path="/operational-optimization/sop/:taskId" element={token ? <ProductionSOPPage /> : <Navigate to="/login" />} />
           <Route path="/operations-hub" element={<Navigate to="/operational-optimization" />} />
           <Route path="/task-management" element={<Navigate to="/dashboard" />} />
           <Route path="/dashboard" element={token ? <TaskDashboardPage /> : <Navigate to="/login" />} />

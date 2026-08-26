@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Plus, Search, X } from 'lucide-react'
+import { rowAccentForCategory } from '../utils/categoryColors'
 
 export type PickerRecipe = {
   recipe_id: number
@@ -156,7 +157,7 @@ export function RecipePicker({
             <button
               key={r.recipe_id}
               onClick={() => onAdd(r)}
-              className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-[#F1EAE0] transition"
+              className={`flex w-full items-start gap-2 rounded-md ${rowAccentForCategory(r.category)} px-2 py-1.5 text-left hover:bg-[#F1EAE0] transition`}
             >
               <Plus className="h-3 w-3 text-[#2E527F] flex-shrink-0 mt-[3px]" />
               <span className="flex-1 min-w-0">
@@ -205,7 +206,7 @@ function SelectedChip({
   }
 
   return (
-    <div className="flex items-center gap-1.5 rounded-md bg-[#EAF0F7] px-2 py-1.5">
+    <div className={`flex items-center gap-1.5 rounded-md ${rowAccentForCategory(recipe.category)} px-2 py-1.5`}>
       <button
         onClick={() => onRemove?.(recipe.recipe_id)}
         className="flex-shrink-0 text-[#2E527F] hover:text-[#D62F3D] transition"
