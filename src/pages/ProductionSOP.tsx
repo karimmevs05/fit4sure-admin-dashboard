@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import axios from 'axios'
 import {
   ArrowLeft, ArrowRight, Printer, CheckSquare, Square, Clock, ChefHat,
-  ShieldCheck, Sparkles, Info, ClipboardList,
+  ShieldCheck, Sparkles, Info, ClipboardList, Timer as TimerIcon, X,
 } from 'lucide-react'
 import { CATEGORY_CARD_BG, DEFAULT_CARD_BG } from '../utils/categoryColors'
 
@@ -28,20 +28,66 @@ type TaskDetail = {
 
 type Column = { name: string; category: string | null; items: ChecklistItem[] }
 
+type TimerEntry = { itemId: number; label: string; recipeName: string; endsAt: number; alarmed: boolean }
+
 const KIND_SECTION_TITLE: Record<string, string> = {
   ingredient: 'Ingredients',
   mise_en_place: 'Mise en Place',
-  step: 'Cook Steps',
+  prep_step: 'Prep Steps',
+  cook_step: 'Cook Steps',
   qc: 'Checkpoints',
   portion: 'Checkpoints',
   label: 'Checkpoints',
 }
+
+// Only these kinds ever reference a duration worth timing -- portioning,
+// labeling, and the ingredient list itself never do.
+const TIMEABLE_KINDS = new Set(['prep_step', 'cook_step', 'mise_en_place', 'qc'])
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '—'
   return new Date(`${dateStr.slice(0, 10)}T00:00:00`).toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric',
   })
+}
+
+// Best-effort guess from the step's own text ("grill for 6 to 8 minutes",
+// "chill for at least 4 hours") -- a starting point the cook can override,
+// never assumed correct on its own.
+function extractMinutes(text: string): number | null {
+  const range = text.match(/(\d+)\s*(?:to|-|–)\s*(\d+)\s*(hour|hr|minute|min)/i)
+  if (range) {
+    const upper = parseInt(range[2], 10)
+    return range[3].toLowerCase().startsWith('h') ? upper * 60 : upper
+  }
+  const single = text.match(/(\d+)\s*(hour|hr|minute|min)/i)
+  if (single) {
+    const val = parseInt(single[1], 10)
+    return single[2].toLowerCase().startsWith('h') ? val * 60 : val
+  }
+  return null
+}
+
+function playAlarm() {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+    const ctx = new AudioCtx()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.frequency.value = 880
+    gain.gain.setValueAtTime(0.25, ctx.currentTime)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.6)
+    osc.onended = () => ctx.close()
+  } catch {
+    // best-effort -- silent failure if the browser blocks audio without a gesture
+  }
+}
+
+function nextActionableItem(col: Column): ChecklistItem | null {
+  return col.items.find((i) => i.line_kind !== 'info' && !i.is_completed) || null
 }
 
 function CheckRow({ item, onToggle, numbered, index, bold }: {
@@ -65,14 +111,83 @@ function CheckRow({ item, onToggle, numbered, index, bold }: {
   )
 }
 
+// Idle: a minutes input (pre-filled with a guess parsed from the step text)
+// + Start. Running: a live countdown + Stop. Alarmed: pulses red until
+// dismissed -- never auto-clears, so a timer going off in another recipe's
+// tab doesn't get missed by disappearing on its own.
+function TimerButton({ item, recipeName, timers, onStart, onStop, now }: {
+  item: ChecklistItem
+  recipeName: string
+  timers: TimerEntry[]
+  onStart: (item: ChecklistItem, recipeName: string, minutes: number) => void
+  onStop: (itemId: number) => void
+  now: number
+}) {
+  const [minutes, setMinutes] = useState<string>(() => {
+    const guess = extractMinutes(item.label)
+    return guess ? String(guess) : ''
+  })
+  const running = timers.find((t) => t.itemId === item.id)
+
+  if (running) {
+    const remaining = Math.max(0, Math.round((running.endsAt - now) / 1000))
+    const mm = Math.floor(remaining / 60)
+    const ss = remaining % 60
+    const done = remaining <= 0
+    return (
+      <div
+        className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-bold ${done ? 'bg-[#DC2626] text-white animate-pulse' : 'bg-[#2E527F] text-white'}`}
+      >
+        <TimerIcon className="h-3.5 w-3.5" />
+        {done ? "Time's up!" : `${mm}:${String(ss).padStart(2, '0')}`}
+        <button onClick={() => onStop(item.id)} className="ml-0.5 opacity-80 hover:opacity-100" aria-label="Stop timer">
+          <X className="h-3 w-3" />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="inline-flex items-center gap-1">
+      <input
+        type="number"
+        min="1"
+        value={minutes}
+        onChange={(e) => setMinutes(e.target.value)}
+        placeholder="min"
+        className="w-12 h-7 rounded border border-[#B9A88F] text-xs text-center outline-none"
+      />
+      <button
+        onClick={() => {
+          const m = parseFloat(minutes)
+          if (m > 0) onStart(item, recipeName, m)
+        }}
+        className="flex items-center gap-1 rounded-lg border border-[#2E527F] px-2 py-1 text-xs font-bold text-[#2E527F] hover:bg-[#EAF0F7] transition"
+      >
+        <TimerIcon className="h-3.5 w-3.5" /> Start
+      </button>
+    </div>
+  )
+}
+
+type TimerProps = {
+  timers: TimerEntry[]
+  now: number
+  onStart: (item: ChecklistItem, recipeName: string, minutes: number) => void
+  onStop: (itemId: number) => void
+}
+
 // One recipe's content -- info subtitle (time/equipment/cutting board) up
 // top as plain text, not a checkbox (it's context, not an action), then the
 // real sections. Shared between the on-screen single-page view and the
-// always-rendered print sheet so both read identically.
-function RecipeCard({ col, onToggle, cleanupForThisColumn }: {
+// always-rendered print sheet (which omits timerProps/highlight -- nothing
+// interactive belongs on paper).
+function RecipeCard({ col, onToggle, cleanupForThisColumn, nextItemId, timerProps }: {
   col: Column
   onToggle: (item: ChecklistItem) => void
   cleanupForThisColumn: ChecklistItem[]
+  nextItemId?: number | null
+  timerProps?: TimerProps
 }) {
   const infoItem = col.items.find((i) => i.line_kind === 'info')
   const actionItems = col.items.filter((i) => i.line_kind !== 'info')
@@ -84,7 +199,7 @@ function RecipeCard({ col, onToggle, cleanupForThisColumn }: {
     const kind = item.line_kind || 'step'
     const title = KIND_SECTION_TITLE[kind] || 'Checkpoints'
     if (!bySection[title]) {
-      bySection[title] = { items: [], numbered: kind === 'step' }
+      bySection[title] = { items: [], numbered: kind === 'prep_step' || kind === 'cook_step' }
       sectionOrder.push(title)
     }
     bySection[title].items.push(item)
@@ -108,7 +223,24 @@ function RecipeCard({ col, onToggle, cleanupForThisColumn }: {
             <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#755B4C] mb-2">{title}</p>
             <div className="space-y-2">
               {bySection[title].items.map((item, i) => (
-                <CheckRow key={item.id} item={item} onToggle={onToggle} numbered={bySection[title].numbered} index={i} />
+                <div
+                  key={item.id}
+                  className={item.id === nextItemId ? 'rounded-lg bg-[#EAF0F7] ring-1 ring-[#2E527F] p-2 -mx-2' : ''}
+                >
+                  <CheckRow item={item} onToggle={onToggle} numbered={bySection[title].numbered} index={i} />
+                  {timerProps && item.line_kind && TIMEABLE_KINDS.has(item.line_kind) && (
+                    <div className="mt-1.5 ml-6 print:hidden">
+                      <TimerButton
+                        item={item}
+                        recipeName={col.name}
+                        timers={timerProps.timers}
+                        onStart={timerProps.onStart}
+                        onStop={timerProps.onStop}
+                        now={timerProps.now}
+                      />
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </div>
@@ -136,6 +268,8 @@ export default function ProductionSOP() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState<number>(-1) // -1 = overview page, else index into columns
+  const [timers, setTimers] = useState<TimerEntry[]>([])
+  const [now, setNow] = useState<number>(() => Date.now())
 
   const apiUrl = import.meta.env.VITE_API_BASE_URL
   const token = localStorage.getItem('token')
@@ -157,6 +291,31 @@ export default function ProductionSOP() {
     fetchTask()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId])
+
+  // One clock, ticking once a second, drives every running countdown across
+  // every recipe -- so timers keep going no matter which page you're on.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Fire the alarm exactly once per timer, the moment it crosses zero.
+  useEffect(() => {
+    const justFinished = timers.filter((t) => !t.alarmed && now >= t.endsAt)
+    if (justFinished.length > 0) {
+      playAlarm()
+      setTimers((prev) => prev.map((t) => (justFinished.some((j) => j.itemId === t.itemId) ? { ...t, alarmed: true } : t)))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [now])
+
+  const startTimer = (item: ChecklistItem, recipeName: string, minutes: number) => {
+    setTimers((prev) => [
+      ...prev.filter((t) => t.itemId !== item.id),
+      { itemId: item.id, label: item.label, recipeName, endsAt: Date.now() + Math.round(minutes * 60) * 1000, alarmed: false },
+    ])
+  }
+  const stopTimer = (itemId: number) => setTimers((prev) => prev.filter((t) => t.itemId !== itemId))
 
   const toggleItem = async (item: ChecklistItem) => {
     if (!task) return
@@ -217,57 +376,97 @@ export default function ProductionSOP() {
   const totalItems = task.checklist_items.length
   const doneItems = task.checklist_items.filter((i) => i.is_completed).length
   const employeeDone = employeeItems.filter((i) => i.is_completed).length
+  const timerProps: TimerProps = { timers, now, onStart: startTimer, onStop: stopTimer }
 
   const goPrev = () => setPage((p) => Math.max(-1, p - 1))
   const goNext = () => setPage((p) => Math.min(columns.length - 1, p + 1))
 
   return (
     <main className="min-h-screen bg-[#F5EFE5]">
-      <div className="print:hidden sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-[#DED2C2] bg-[#FBF7F0] px-6 py-3">
-        <Link to="/operational-optimization" className="flex items-center gap-1.5 text-sm font-bold text-[#2E527F] hover:text-[#1a344f] transition">
-          <ArrowLeft className="h-4 w-4" /> Operations Hub
-        </Link>
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-extrabold text-[#4B2B1D] truncate max-w-[280px] sm:max-w-none">{task.title}</p>
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-1.5 rounded-lg border border-[#2E527F] px-3 py-1.5 text-sm font-bold text-[#2E527F] hover:bg-[#EAF0F7] transition flex-shrink-0"
-          >
-            <Printer className="h-4 w-4" /> Print SOP
-          </button>
-        </div>
-      </div>
-
-      {/* Notebook tabs -- one per recipe, colored by category, plus Overview */}
-      <div className="print:hidden flex items-center gap-1.5 overflow-x-auto border-b border-[#DED2C2] bg-white px-4 py-2">
-        <button
-          onClick={() => setPage(-1)}
-          className={`flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${
-            page === -1 ? 'bg-[#2E527F] text-white' : 'bg-[#F1EAE0] text-[#755B4C] hover:bg-[#E4D8C9]'
-          }`}
-        >
-          <ClipboardList className="h-3.5 w-3.5" /> Overview
-        </button>
-        {columns.map((col, idx) => {
-          const colDone = col.items.filter((i) => i.line_kind !== 'info' && i.is_completed).length
-          const colTotal = col.items.filter((i) => i.line_kind !== 'info').length
-          return (
+      <div className="print:hidden sticky top-0 z-20">
+        <div className="flex items-center justify-between gap-4 border-b border-[#DED2C2] bg-[#FBF7F0] px-6 py-3">
+          <Link to="/operational-optimization" className="flex items-center gap-1.5 text-sm font-bold text-[#2E527F] hover:text-[#1a344f] transition">
+            <ArrowLeft className="h-4 w-4" /> Operations Hub
+          </Link>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-extrabold text-[#4B2B1D] truncate max-w-[280px] sm:max-w-none">{task.title}</p>
             <button
-              key={col.name}
-              onClick={() => setPage(idx)}
-              className={`flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold whitespace-nowrap transition ${
-                page === idx ? 'bg-[#2E527F] text-white' : 'bg-[#F1EAE0] text-[#755B4C] hover:bg-[#E4D8C9]'
-              }`}
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 rounded-lg border border-[#2E527F] px-3 py-1.5 text-sm font-bold text-[#2E527F] hover:bg-[#EAF0F7] transition flex-shrink-0"
             >
-              <span
-                className="h-2 w-2 rounded-full flex-shrink-0"
-                style={{ background: col.category === 'vegetables' ? '#A4B89E' : col.category === 'carbohydrates' ? '#D9BE5F' : col.category === 'sauces' ? '#ABBCCF' : '#E89E93' }}
-              />
-              {col.name}
-              <span className={page === idx ? 'text-white/70' : 'text-[#9A7E6F]'}>{colDone}/{colTotal}</span>
+              <Printer className="h-4 w-4" /> Print SOP
             </button>
-          )
-        })}
+          </div>
+        </div>
+
+        {/* Notebook tabs -- one per recipe, colored by category, plus Overview */}
+        <div className="flex items-center gap-1.5 overflow-x-auto border-b border-[#DED2C2] bg-white px-4 py-2">
+          <button
+            onClick={() => setPage(-1)}
+            className={`flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${
+              page === -1 ? 'bg-[#2E527F] text-white' : 'bg-[#F1EAE0] text-[#755B4C] hover:bg-[#E4D8C9]'
+            }`}
+          >
+            <ClipboardList className="h-3.5 w-3.5" /> Overview
+          </button>
+          {columns.map((col, idx) => {
+            const colDone = col.items.filter((i) => i.line_kind !== 'info' && i.is_completed).length
+            const colTotal = col.items.filter((i) => i.line_kind !== 'info').length
+            const hasRunningTimer = timers.some((t) => t.recipeName === col.name)
+            return (
+              <button
+                key={col.name}
+                onClick={() => setPage(idx)}
+                className={`flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold whitespace-nowrap transition ${
+                  page === idx ? 'bg-[#2E527F] text-white' : 'bg-[#F1EAE0] text-[#755B4C] hover:bg-[#E4D8C9]'
+                }`}
+              >
+                <span
+                  className="h-2 w-2 rounded-full flex-shrink-0"
+                  style={{ background: col.category === 'vegetables' ? '#A4B89E' : col.category === 'carbohydrates' ? '#D9BE5F' : col.category === 'sauces' ? '#ABBCCF' : '#E89E93' }}
+                />
+                {col.name}
+                <span className={page === idx ? 'text-white/70' : 'text-[#9A7E6F]'}>{colDone}/{colTotal}</span>
+                {hasRunningTimer && <TimerIcon className={`h-3 w-3 ${page === idx ? 'text-white' : 'text-[#D97706]'}`} />}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Active timers -- pinned across every page, since multiple recipes
+            run in parallel and a timer started on one shouldn't vanish from
+            view the moment you flip to another. */}
+        {timers.length > 0 && (
+          <div className="flex items-center gap-2 overflow-x-auto border-b border-[#DED2C2] bg-[#FEF3C7] px-4 py-2">
+            <span className="flex-shrink-0 text-[10px] font-extrabold uppercase tracking-wide text-[#92400E]">Active timers</span>
+            {timers.map((t) => {
+              const remaining = Math.max(0, Math.round((t.endsAt - now) / 1000))
+              const mm = Math.floor(remaining / 60)
+              const ss = remaining % 60
+              const done = remaining <= 0
+              const colIdx = columnIndex[t.recipeName]
+              return (
+                <button
+                  key={t.itemId}
+                  onClick={() => setPage(colIdx)}
+                  className={`flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition ${
+                    done ? 'bg-[#DC2626] text-white animate-pulse' : 'bg-[#2E527F] text-white hover:bg-[#24466E]'
+                  }`}
+                >
+                  <TimerIcon className="h-3.5 w-3.5" />
+                  {t.recipeName}: {done ? "Time's up!" : `${mm}:${String(ss).padStart(2, '0')}`}
+                  <span
+                    role="button"
+                    onClick={(e) => { e.stopPropagation(); stopTimer(t.itemId) }}
+                    className="ml-0.5 opacity-80 hover:opacity-100"
+                  >
+                    <X className="h-3 w-3" />
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* ---------- On-screen: one page at a time ---------- */}
@@ -313,23 +512,51 @@ export default function ProductionSOP() {
               </div>
             )}
 
+            {/* Kitchen Board -- the actual control surface for juggling
+                several recipes at once: what's next on each, one tap to
+                check it off or start timing it, without opening the page. */}
             <div className="rounded-2xl border border-[#2E527F] bg-white overflow-hidden">
-              <p className="px-4 pt-4 text-[10px] font-extrabold uppercase tracking-wide text-[#755B4C]">Recipes in this sheet — tap to open</p>
+              <p className="px-4 pt-4 text-[10px] font-extrabold uppercase tracking-wide text-[#755B4C]">Kitchen board — what's next on each recipe</p>
               <div className="divide-y divide-[#E4D8C9]">
                 {columns.map((col, idx) => {
                   const colActionItems = col.items.filter((i) => i.line_kind !== 'info')
                   const colDone = colActionItems.filter((i) => i.is_completed).length
                   const info = col.items.find((i) => i.line_kind === 'info')
+                  const next = nextActionableItem(col)
                   return (
-                    <button key={col.name} onClick={() => setPage(idx)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#F9F5F0] transition">
-                      <span className={`h-3 w-3 rounded-full flex-shrink-0 ${(col.category && CATEGORY_CARD_BG[col.category]) || DEFAULT_CARD_BG}`} />
-                      <span className="flex-1 min-w-0">
-                        <span className="block font-bold text-[#4B2B1D] truncate">{col.name}</span>
-                        {info && <span className="block text-[11px] text-[#9A7E6F] truncate">{info.label}</span>}
-                      </span>
-                      <span className="flex-shrink-0 text-xs font-bold text-[#755B4C]">{colDone}/{colActionItems.length}</span>
-                      <ArrowRight className="h-4 w-4 flex-shrink-0 text-[#B9A88F]" />
-                    </button>
+                    <div key={col.name} className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => setPage(idx)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                          <span className={`h-3 w-3 rounded-full flex-shrink-0 ${(col.category && CATEGORY_CARD_BG[col.category]) || DEFAULT_CARD_BG}`} />
+                          <span className="flex-1 min-w-0">
+                            <span className="block font-bold text-[#4B2B1D] truncate">{col.name}</span>
+                            {next ? (
+                              <span className="block text-[11px] text-[#2E527F] truncate">Next: {next.label}</span>
+                            ) : (
+                              <span className="block text-[11px] font-bold text-[#16A34A]">All steps done</span>
+                            )}
+                            {!next && info && <span className="block text-[11px] text-[#9A7E6F] truncate">{info.label}</span>}
+                          </span>
+                        </button>
+                        <span className="flex-shrink-0 text-xs font-bold text-[#755B4C]">{colDone}/{colActionItems.length}</span>
+                        <button onClick={() => setPage(idx)} className="flex-shrink-0">
+                          <ArrowRight className="h-4 w-4 text-[#B9A88F]" />
+                        </button>
+                      </div>
+                      {next && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 pl-6">
+                          <button
+                            onClick={() => toggleItem(next)}
+                            className="flex items-center gap-1 rounded-lg border border-[#16A34A] px-2 py-1 text-xs font-bold text-[#16A34A] hover:bg-[#EAF5EC] transition"
+                          >
+                            <CheckSquare className="h-3.5 w-3.5" /> Mark done
+                          </button>
+                          {next.line_kind && TIMEABLE_KINDS.has(next.line_kind) && (
+                            <TimerButton item={next} recipeName={col.name} timers={timers} onStart={startTimer} onStop={stopTimer} now={now} />
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )
                 })}
               </div>
@@ -337,7 +564,13 @@ export default function ProductionSOP() {
           </div>
         ) : (
           <div className="space-y-4">
-            <RecipeCard col={columns[page]} onToggle={toggleItem} cleanupForThisColumn={cleanupForColumn(page)} />
+            <RecipeCard
+              col={columns[page]}
+              onToggle={toggleItem}
+              cleanupForThisColumn={cleanupForColumn(page)}
+              nextItemId={nextActionableItem(columns[page])?.id ?? null}
+              timerProps={timerProps}
+            />
             <div className="flex items-center justify-between">
               <button
                 onClick={goPrev}
