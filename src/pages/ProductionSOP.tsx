@@ -403,11 +403,12 @@ export default function ProductionSOP() {
         <div className="flex items-center gap-1.5 overflow-x-auto border-b border-[#DED2C2] bg-white px-4 py-2">
           <button
             onClick={() => setPage(-1)}
-            className={`flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${
+            className={`flex-shrink-0 w-[152px] flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${
               page === -1 ? 'bg-[#2E527F] text-white' : 'bg-[#F1EAE0] text-[#755B4C] hover:bg-[#E4D8C9]'
             }`}
           >
-            <ClipboardList className="h-3.5 w-3.5" /> Overview
+            <ClipboardList className="h-3.5 w-3.5 flex-shrink-0" />
+            <span className="truncate">Overview</span>
           </button>
           {columns.map((col, idx) => {
             const colDone = col.items.filter((i) => i.line_kind !== 'info' && i.is_completed).length
@@ -417,7 +418,8 @@ export default function ProductionSOP() {
               <button
                 key={col.name}
                 onClick={() => setPage(idx)}
-                className={`flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold whitespace-nowrap transition ${
+                title={col.name}
+                className={`flex-shrink-0 w-[152px] flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition ${
                   page === idx ? 'bg-[#2E527F] text-white' : 'bg-[#F1EAE0] text-[#755B4C] hover:bg-[#E4D8C9]'
                 }`}
               >
@@ -425,9 +427,9 @@ export default function ProductionSOP() {
                   className="h-2 w-2 rounded-full flex-shrink-0"
                   style={{ background: col.category === 'vegetables' ? '#A4B89E' : col.category === 'carbohydrates' ? '#D9BE5F' : col.category === 'sauces' ? '#ABBCCF' : '#E89E93' }}
                 />
-                {col.name}
-                <span className={page === idx ? 'text-white/70' : 'text-[#9A7E6F]'}>{colDone}/{colTotal}</span>
-                {hasRunningTimer && <TimerIcon className={`h-3 w-3 ${page === idx ? 'text-white' : 'text-[#D97706]'}`} />}
+                <span className="flex-1 min-w-0 truncate text-left">{col.name}</span>
+                <span className={`flex-shrink-0 ${page === idx ? 'text-white/70' : 'text-[#9A7E6F]'}`}>{colDone}/{colTotal}</span>
+                {hasRunningTimer && <TimerIcon className={`h-3 w-3 flex-shrink-0 ${page === idx ? 'text-white' : 'text-[#D97706]'}`} />}
               </button>
             )
           })}
