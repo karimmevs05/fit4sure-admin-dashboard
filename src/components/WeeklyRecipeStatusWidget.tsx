@@ -390,7 +390,7 @@ export function WeeklyRecipeStatusWidget() {
 
         <button
           onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-2 rounded-t-xl border border-b-0 border-[#DED2C2] bg-white px-4 py-2.5 shadow-[0_-4px_16px_rgba(75,43,29,0.12)] hover:bg-[#F9F5F0] transition"
+          className="w-72 flex-shrink-0 flex items-center gap-2 rounded-t-xl border border-b-0 border-[#DED2C2] bg-white px-4 py-2.5 shadow-[0_-4px_16px_rgba(75,43,29,0.12)] hover:bg-[#F9F5F0] transition"
         >
           <span className="relative flex-shrink-0">
             {sorted.length > 0 ? (
@@ -404,11 +404,11 @@ export function WeeklyRecipeStatusWidget() {
             )}
             <span className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-white ${bubbleDot} ${overdueCount > 0 ? 'animate-pulse' : ''}`} />
           </span>
-          <span className="text-xs font-bold text-[#4B2B1D]">This Week's Recipes</span>
+          <span className="flex-1 min-w-0 truncate text-left text-xs font-bold text-[#4B2B1D]">This Week's Recipes</span>
           {overdueCount > 0 ? (
-            <AlertTriangle className="h-3.5 w-3.5 text-[#DC2626]" />
+            <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 text-[#DC2626]" />
           ) : recipes.length > 0 ? (
-            <CheckCircle2 className="h-3.5 w-3.5 text-[#16A34A]" />
+            <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-[#16A34A]" />
           ) : null}
         </button>
       </div>
