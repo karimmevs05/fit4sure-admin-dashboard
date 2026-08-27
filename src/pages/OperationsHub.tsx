@@ -19,6 +19,7 @@ import {
   Link2,
   ChefHat,
 } from 'lucide-react'
+import { WeeklyRecipeStatusWidget } from '../components/WeeklyRecipeStatusWidget'
 
 const SOP_SOURCE_TYPES = new Set(['weekly_recipe_plan_batch', 'weekly_recipe_plan_production'])
 
@@ -761,6 +762,7 @@ export default function OperationsHubPage() {
   }
 
   return (
+    <>
     <main className="flex-1 space-y-6 p-8">
       {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -1226,5 +1228,7 @@ export default function OperationsHubPage() {
         </div>
       )}
     </main>
+    <WeeklyRecipeStatusWidget />
+    </>
   )
 }
