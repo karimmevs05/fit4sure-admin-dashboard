@@ -6,11 +6,53 @@ import { CATEGORY_CARD_BG, DEFAULT_CARD_BG } from '../utils/categoryColors'
 type RecipeStatus = {
   name: string
   category: string | null
+  image: string | null
   dueDate: string
   taskId: number
   taskIds: number[]
   done: number
   total: number
+}
+
+// Same generic food photo Recipes.tsx falls back to when a recipe has no
+// photo on file -- only 5 of 36 recipes have a real one right now, so most
+// avatars will show this; consistent with how the rest of the app already
+// handles a missing recipe image, not a fabricated per-recipe placeholder.
+const DEFAULT_RECIPE_IMAGE = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=200&q=80'
+
+const CATEGORY_RING_COLOR: Record<string, string> = {
+  vegetables: '#A4B89E',
+  carbohydrates: '#D9BE5F',
+  sauces: '#ABBCCF',
+  beef: '#E89E93',
+  chicken: '#E89E93',
+  turkey: '#E89E93',
+}
+
+function ringColorFor(category: string | null): string {
+  return (category && CATEGORY_RING_COLOR[category]) || '#B9A88F'
+}
+
+// Facebook chat heads are a face, not a status dot -- this is that photo,
+// with a thin ring in the recipe's category color so the color-coding
+// established across the rest of the app (Recipes, Menu Planner, SOP
+// columns) still reads at a glance.
+function RecipeAvatar({ image, category, size = 32 }: { image: string | null; category: string | null; size?: number }) {
+  const [src, setSrc] = useState(image || DEFAULT_RECIPE_IMAGE)
+  useEffect(() => setSrc(image || DEFAULT_RECIPE_IMAGE), [image])
+  return (
+    <span
+      className="flex-shrink-0 rounded-full overflow-hidden border-2 bg-[#F1EAE0]"
+      style={{ width: size, height: size, borderColor: ringColorFor(category) }}
+    >
+      <img
+        src={src}
+        alt=""
+        className="h-full w-full object-cover"
+        onError={() => setSrc(DEFAULT_RECIPE_IMAGE)}
+      />
+    </span>
+  )
 }
 
 type Urgency = 'overdue' | 'due_today' | 'upcoming' | 'done'
@@ -25,7 +67,7 @@ type CardItem = {
   taskId: number
 }
 
-type OpenCard = { name: string; category: string | null; taskIds: number[]; dueDate: string; collapsed: boolean }
+type OpenCard = { name: string; category: string | null; image: string | null; taskIds: number[]; dueDate: string; collapsed: boolean }
 
 function toISODate(d: Date): string {
   const y = d.getFullYear()
@@ -153,6 +195,7 @@ function RecipeMiniCard({ card, onClose, onToggleCollapse, apiUrl, token }: {
         onClick={onToggleCollapse}
         className={`flex items-center gap-2 px-3 py-2.5 text-left ${(card.category && CATEGORY_CARD_BG[card.category]) || DEFAULT_CARD_BG}`}
       >
+        <RecipeAvatar image={card.image} category={card.category} size={30} />
         <span className="flex-1 min-w-0">
           <span className="block text-sm font-extrabold text-[#4B2B1D] truncate">{card.name}</span>
           <span className="block text-[10px] text-[#4B2B1D]/70">{done}/{total} done</span>
@@ -260,7 +303,7 @@ export function WeeklyRecipeStatusWidget() {
       if (prev.some((c) => c.name === r.name)) {
         return prev.map((c) => (c.name === r.name ? { ...c, collapsed: false } : c))
       }
-      return [{ name: r.name, category: r.category, taskIds: r.taskIds, dueDate: r.dueDate, collapsed: false }, ...prev]
+      return [{ name: r.name, category: r.category, image: r.image, taskIds: r.taskIds, dueDate: r.dueDate, collapsed: false }, ...prev]
     })
   }
   const closeCard = (name: string) => setOpenCards((prev) => prev.filter((c) => c.name !== name))
@@ -306,7 +349,7 @@ export function WeeklyRecipeStatusWidget() {
                       onClick={() => openRecipeCard(r)}
                       className={`flex w-full items-start gap-2.5 px-4 py-3 text-left hover:bg-[#F9F5F0] transition ${isOpen ? 'bg-[#EAF0F7]' : ''}`}
                     >
-                      <span className={`mt-1 h-2 w-2 rounded-full flex-shrink-0 ${(r.category && CATEGORY_CARD_BG[r.category]) || DEFAULT_CARD_BG}`} />
+                      <RecipeAvatar image={r.image} category={r.category} size={34} />
                       <span className="flex-1 min-w-0">
                         <span className="flex items-center justify-between gap-2">
                           <span className="font-bold text-[#4B2B1D] text-sm truncate">{r.name}</span>
@@ -334,8 +377,16 @@ export function WeeklyRecipeStatusWidget() {
           className="flex items-center gap-2 rounded-t-xl border border-b-0 border-[#DED2C2] bg-white px-4 py-2.5 shadow-[0_-4px_16px_rgba(75,43,29,0.12)] hover:bg-[#F9F5F0] transition"
         >
           <span className="relative flex-shrink-0">
-            <ChefHat className="h-4 w-4 text-[#4B2B1D]" />
-            <span className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ${bubbleDot} ${overdueCount > 0 ? 'animate-pulse' : ''}`} />
+            {sorted.length > 0 ? (
+              <span className="flex items-center -space-x-2">
+                {sorted.slice(0, 3).map((r) => (
+                  <RecipeAvatar key={r.name} image={r.image} category={r.category} size={22} />
+                ))}
+              </span>
+            ) : (
+              <ChefHat className="h-4 w-4 text-[#4B2B1D]" />
+            )}
+            <span className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-white ${bubbleDot} ${overdueCount > 0 ? 'animate-pulse' : ''}`} />
           </span>
           <span className="text-xs font-bold text-[#4B2B1D]">This Week's Recipes</span>
           {overdueCount > 0 ? (
