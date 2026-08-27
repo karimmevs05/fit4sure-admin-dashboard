@@ -396,6 +396,24 @@ export default function CustomersPage() {
                       </div>
                     </div>
                     </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openEditCustomer(customer) }}
+                        className="p-2 rounded-lg text-[#2E527F] hover:bg-[#EAF0F7] transition"
+                        aria-label={`Edit ${customer.name}`}
+                        title="Edit"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteCustomer(customer.id) }}
+                        className="p-2 rounded-lg text-[#D62F3D] hover:bg-[#FFF4F4] transition"
+                        aria-label={`Delete ${customer.name}`}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )
@@ -477,6 +495,24 @@ export default function CustomersPage() {
                       ${getLifetimeValue(customer.lifetime_value_cents || 0)}
                     </p>
                   </div>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openEditCustomer(customer) }}
+                      className="p-2 rounded-lg text-[#2E527F] hover:bg-[#EAF0F7] transition"
+                      aria-label={`Edit ${customer.name}`}
+                      title="Edit"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDeleteCustomer(customer.id) }}
+                      className="p-2 rounded-lg text-[#D62F3D] hover:bg-[#FFF4F4] transition"
+                      aria-label={`Delete ${customer.name}`}
+                      title="Delete"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               </div>
