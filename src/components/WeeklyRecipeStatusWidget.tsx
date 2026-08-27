@@ -76,16 +76,32 @@ function toISODate(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-// Same Sunday-anchored operational week as Operations Hub itself, computed
-// independently here so this widget always reflects the real current week
-// regardless of which week the user has paged to in the main view.
-function currentWeekStart(): string {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  const day = d.getDay()
-  if (day === 6) d.setDate(d.getDate() + 1) // Saturday belongs to next week's Sunday anchor
-  else d.setDate(d.getDate() - day)
-  return toISODate(d)
+function mondayOnOrBefore(d: Date): Date {
+  const copy = new Date(d)
+  const day = copy.getDay() // 0=Sun..6=Sat
+  copy.setDate(copy.getDate() + (day === 0 ? -6 : 1 - day))
+  return copy
+}
+
+// Menu Planner only ever has one editable week open at a time -- whatever's
+// saved in the Monday/Thursday blocks right now always targets the week
+// *after* today's own calendar week (adminMenuPlanner.js's
+// getNextWeekDates(): "date_trunc('week', NOW()+1day) - 1day + 7days"),
+// never "this literal Sunday-Saturday span". This mirrors that exact
+// calculation in JS so the widget looks at the same week the blocks were
+// actually just saved for, instead of a week that (until it arrives) never
+// has any Kitchen tasks in it at all.
+function plannedWeekStart(): string {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const shifted = new Date(today)
+  shifted.setDate(shifted.getDate() + 1)
+  const monday = mondayOnOrBefore(shifted)
+  const sundayBefore = new Date(monday)
+  sundayBefore.setDate(sundayBefore.getDate() - 1)
+  const target = new Date(sundayBefore)
+  target.setDate(target.getDate() + 7)
+  return toISODate(target)
 }
 
 function urgencyOf(r: RecipeStatus, todayStr: string): Urgency {
@@ -276,7 +292,7 @@ export function WeeklyRecipeStatusWidget() {
 
   const fetchStatus = async () => {
     try {
-      const weekStart = currentWeekStart()
+      const weekStart = plannedWeekStart()
       const res = await axios.get(`${apiUrl}/api/admin/tasks/week/${weekStart}/recipe-status`, {
         headers: { Authorization: `Bearer ${token}` },
       })
