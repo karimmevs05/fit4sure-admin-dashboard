@@ -761,7 +761,7 @@ function ThisWeekTab({
           )}
         </div>
         <div className="space-y-3">
-          <DeliveryMapTab apiUrl={apiUrl} token={token} compact />
+          <DeliveryMapTab customers={byCustomer.map((c) => ({ name: c.name, address: c.address }))} compact />
           <NextDeliveriesToggle byCustomer={byCustomer} />
         </div>
       </div>
@@ -1083,11 +1083,8 @@ function InsightsTab({ insights }: { insights: InsightsData }) {
 }
 
 type MapCustomer = {
-  id: number
   name: string
-  phone: string | null
   address: string | null
-  status: string | null
 }
 
 // Loads the Google Maps JS SDK exactly once per page (a second tab visit,
@@ -1108,14 +1105,16 @@ function loadGoogleMaps(apiKey: string): Promise<void> {
   return googleMapsLoadPromise
 }
 
-// Every active customer's delivery address plotted on a real Google Map,
-// routed from the kitchen -- geocoded live via the Maps JS SDK's own
-// Geocoder rather than storing lat/lng, since address changes shouldn't
-// silently go stale against a cached coordinate. Map view only for now, no
-// route sequencing or delivery-status tracking yet.
-function DeliveryMapTab({ apiUrl, token, compact }: { apiUrl: string; token: string | null; compact?: boolean }) {
+// This week's ordering customers' delivery addresses plotted on a real
+// Google Map, routed from the kitchen -- geocoded live via the Maps JS
+// SDK's own Geocoder rather than storing lat/lng, since address changes
+// shouldn't silently go stale against a cached coordinate. Sourced from the
+// same byCustomer data as the Individual Orders table below (not the
+// customer record's "status" field, which doesn't reliably track who's
+// actually ordering this week) so the two views can never disagree. Map
+// view only for now, no route sequencing or delivery-status tracking yet.
+function DeliveryMapTab({ customers, compact }: { customers: MapCustomer[]; compact?: boolean }) {
   const mapDivRef = React.useRef<HTMLDivElement>(null)
-  const [customers, setCustomers] = useState<MapCustomer[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [plotted, setPlotted] = useState(0)
   const [failed, setFailed] = useState<string[]>([])
@@ -1124,22 +1123,12 @@ function DeliveryMapTab({ apiUrl, token, compact }: { apiUrl: string; token: str
   const apiKey = (import.meta as any).env.VITE_GOOGLE_MAPS_API_KEY as string | undefined
 
   useEffect(() => {
-    axios
-      .get(`${apiUrl}/api/admin/customers`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => {
-        const active = (res.data.data || []).filter((c: MapCustomer) => c.status === 'active')
-        setCustomers(active)
-      })
-      .catch(() => setError('Failed to load customers'))
-  }, [apiUrl, token])
-
-  useEffect(() => {
     if (!apiKey) {
       setError('Google Maps API key is not configured (VITE_GOOGLE_MAPS_API_KEY)')
       setLoadingMap(false)
       return
     }
-    if (customers === null || !mapDivRef.current) return
+    if (!mapDivRef.current) return
 
     let cancelled = false
 
@@ -1193,7 +1182,7 @@ function DeliveryMapTab({ apiUrl, token, compact }: { apiUrl: string; token: str
             geocodeFailures.push(`${c.name} (no address on file)`)
             continue
           }
-          const info = `<strong>${c.name}</strong><br/>${c.address}${c.phone ? `<br/>${c.phone}` : ''}`
+          const info = `<strong>${c.name}</strong><br/>${c.address}`
           await geocodeAndPlace(c.address, c.name, info, false)
         }
 
@@ -1227,7 +1216,7 @@ function DeliveryMapTab({ apiUrl, token, compact }: { apiUrl: string; token: str
           </p>
           {!compact && (
             <p className="text-xs text-[#755B4C]">
-              Every active customer's delivery address, routed from the kitchen at {KITCHEN_ADDRESS}.
+              This week's ordering customers' delivery addresses, routed from the kitchen at {KITCHEN_ADDRESS}.
             </p>
           )}
         </div>
