@@ -13,6 +13,8 @@ import {
   Plus,
   X,
   Phone,
+  MapPin,
+  AlertCircle,
 } from 'lucide-react'
 import WeeklyPrepPage from './WeeklyPrep'
 import { formatIngredientWeight } from '../utils/unitConversion'
@@ -89,6 +91,10 @@ type InsightsData = {
 }
 
 type Tab = 'this-week' | 'packing-sheet' | 'history' | 'insights'
+
+// Fixed route origin for the delivery map -- every customer pin is plotted
+// relative to this, since deliveries all originate from here.
+const KITCHEN_ADDRESS = "4109 Land O' Lakes Blvd, Land O' Lakes, FL 34639, United States"
 
 type MenuFormat = {
   id: string
@@ -394,6 +400,8 @@ export default function OrdersPage() {
                 }}
                 onEditLine={(line) => setEditingLine(line)}
                 onDeletePlate={deletePlate}
+                apiUrl={apiUrl}
+                token={token}
               />
             )}
             {activeTab === 'packing-sheet' && thisWeekData && <PackingSheetTab orders={thisWeekData.orders} />}
@@ -514,6 +522,8 @@ function ThisWeekTab({
   onAddOrderFor,
   onEditLine,
   onDeletePlate,
+  apiUrl,
+  token,
 }: {
   data: ThisWeekData
   searchCustomer: string
@@ -521,6 +531,8 @@ function ThisWeekTab({
   onAddOrderFor: (customer: NonResponder) => void
   onEditLine: (line: OrderLine) => void
   onDeletePlate: (lines: OrderLine[]) => void
+  apiUrl: string
+  token: string | null
 }) {
   const { orders, summary, alerts, nonResponders } = data
 
@@ -635,31 +647,38 @@ function ThisWeekTab({
         </div>
       </div>
 
-      {/* Non-Responders Worklist */}
-      {nonResponders.length > 0 && (
+      {/* Needs Follow-Up + Delivery Map, side by side -- who to chase down
+          next to where everyone already active actually lives, since both
+          are "who needs attention" reads at a glance. */}
+      <div className="grid gap-4 lg:grid-cols-2 items-start">
         <div className="rounded-xl border border-[#E4D8C9] bg-[rgba(251,247,240,0.9)]">
           <p className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-[#2E527F]">
             <Phone className="h-3 w-3" />
             Needs Follow-Up ({nonResponders.length})
           </p>
-          <div className="border-t border-[#E4D8C9]">
-            {nonResponders.map((customer, idx) => (
-              <div
-                key={customer.id}
-                className={`flex items-center justify-between px-4 py-1.5 ${idx > 0 ? 'border-t border-[#F0EAE0]' : ''}`}
-              >
-                <p className="text-xs text-[#4B2B1D]">{customer.name}</p>
-                <button
-                  onClick={() => onAddOrderFor(customer)}
-                  className="text-xs font-semibold text-[#2E527F] hover:underline"
+          {nonResponders.length > 0 ? (
+            <div className="border-t border-[#E4D8C9]">
+              {nonResponders.map((customer, idx) => (
+                <div
+                  key={customer.id}
+                  className={`flex items-center justify-between px-4 py-1.5 ${idx > 0 ? 'border-t border-[#F0EAE0]' : ''}`}
                 >
-                  + Add New Order
-                </button>
-              </div>
-            ))}
-          </div>
+                  <p className="text-xs text-[#4B2B1D]">{customer.name}</p>
+                  <button
+                    onClick={() => onAddOrderFor(customer)}
+                    className="text-xs font-semibold text-[#2E527F] hover:underline"
+                  >
+                    + Add New Order
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="border-t border-[#E4D8C9] px-4 py-3 text-xs text-[#755B4C]">Nobody needs follow-up right now.</p>
+          )}
         </div>
-      )}
+        <DeliveryMapTab apiUrl={apiUrl} token={token} compact />
+      </div>
 
       {/* Individual Orders */}
       <div className="space-y-2">
@@ -973,6 +992,202 @@ function InsightsTab({ insights }: { insights: InsightsData }) {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+type MapCustomer = {
+  id: number
+  name: string
+  phone: string | null
+  address: string | null
+  status: string | null
+}
+
+// Loads the Google Maps JS SDK exactly once per page (a second tab visit,
+// or another component on the same page, reuses the same script tag and
+// promise rather than re-injecting it) -- appending it again throws.
+let googleMapsLoadPromise: Promise<void> | null = null
+function loadGoogleMaps(apiKey: string): Promise<void> {
+  if ((window as any).google?.maps) return Promise.resolve()
+  if (googleMapsLoadPromise) return googleMapsLoadPromise
+  googleMapsLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}`
+    script.async = true
+    script.onload = () => resolve()
+    script.onerror = () => reject(new Error('Failed to load Google Maps'))
+    document.head.appendChild(script)
+  })
+  return googleMapsLoadPromise
+}
+
+// Every active customer's delivery address plotted on a real Google Map,
+// routed from the kitchen -- geocoded live via the Maps JS SDK's own
+// Geocoder rather than storing lat/lng, since address changes shouldn't
+// silently go stale against a cached coordinate. Map view only for now, no
+// route sequencing or delivery-status tracking yet.
+function DeliveryMapTab({ apiUrl, token, compact }: { apiUrl: string; token: string | null; compact?: boolean }) {
+  const mapDivRef = React.useRef<HTMLDivElement>(null)
+  const [customers, setCustomers] = useState<MapCustomer[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [plotted, setPlotted] = useState(0)
+  const [failed, setFailed] = useState<string[]>([])
+  const [loadingMap, setLoadingMap] = useState(true)
+
+  const apiKey = (import.meta as any).env.VITE_GOOGLE_MAPS_API_KEY as string | undefined
+
+  useEffect(() => {
+    axios
+      .get(`${apiUrl}/api/admin/customers`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => {
+        const active = (res.data.data || []).filter((c: MapCustomer) => c.status === 'active')
+        setCustomers(active)
+      })
+      .catch(() => setError('Failed to load customers'))
+  }, [apiUrl, token])
+
+  useEffect(() => {
+    if (!apiKey) {
+      setError('Google Maps API key is not configured (VITE_GOOGLE_MAPS_API_KEY)')
+      setLoadingMap(false)
+      return
+    }
+    if (customers === null || !mapDivRef.current) return
+
+    let cancelled = false
+
+    loadGoogleMaps(apiKey)
+      .then(async () => {
+        if (cancelled || !mapDivRef.current) return
+        const google = (window as any).google
+        const map = new google.maps.Map(mapDivRef.current, {
+          zoom: 11,
+          center: { lat: 28.15, lng: -82.46 }, // rough Tampa Bay default, replaced by fitBounds below once real points are in
+        })
+        const geocoder = new google.maps.Geocoder()
+        const bounds = new google.maps.LatLngBounds()
+        const infoWindow = new google.maps.InfoWindow()
+        const geocodeFailures: string[] = []
+        let placedCount = 0
+
+        // Sequential, not Promise.all -- Geocoder has a real per-second rate
+        // limit, and this list is small (kitchen + a handful of customers),
+        // so there's no meaningful latency cost to being safe about it.
+        const geocodeAndPlace = (address: string, title: string, infoHtml: string, isKitchen: boolean) =>
+          new Promise<void>((resolve) => {
+            geocoder.geocode({ address }, (results: any, status: string) => {
+              if (status === 'OK' && results?.[0]) {
+                const position = results[0].geometry.location
+                const marker = new google.maps.Marker({
+                  position,
+                  map,
+                  title,
+                  icon: isKitchen ? 'https://maps.google.com/mapfiles/ms/icons/red-dot.png' : undefined,
+                  zIndex: isKitchen ? 999 : undefined,
+                })
+                marker.addListener('click', () => {
+                  infoWindow.setContent(infoHtml)
+                  infoWindow.open(map, marker)
+                })
+                bounds.extend(position)
+                placedCount += 1
+              } else {
+                geocodeFailures.push(title)
+              }
+              resolve()
+            })
+          })
+
+        await geocodeAndPlace(KITCHEN_ADDRESS, 'Fit For Sure Kitchen', `<strong>Fit For Sure Kitchen</strong><br/>${KITCHEN_ADDRESS}`, true)
+        placedCount = 0 // don't count the kitchen itself toward "customers plotted"
+
+        for (const c of customers) {
+          if (!c.address || !c.address.trim()) {
+            geocodeFailures.push(`${c.name} (no address on file)`)
+            continue
+          }
+          const info = `<strong>${c.name}</strong><br/>${c.address}${c.phone ? `<br/>${c.phone}` : ''}`
+          await geocodeAndPlace(c.address, c.name, info, false)
+        }
+
+        if (cancelled) return
+        if (!bounds.isEmpty()) map.fitBounds(bounds)
+        setPlotted(placedCount)
+        setFailed(geocodeFailures)
+        setLoadingMap(false)
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setError(e.message || 'Failed to load Google Maps')
+          setLoadingMap(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [apiKey, customers])
+
+  const mapHeight = compact ? 220 : 560
+
+  return (
+    <div className={compact ? 'rounded-xl border border-[#E4D8C9] bg-[rgba(251,247,240,0.9)] overflow-hidden' : 'space-y-4'}>
+      <div className={compact ? 'flex items-center justify-between px-4 py-2' : 'flex items-center justify-between'}>
+        <div>
+          <p className={compact ? 'flex items-center gap-1.5 text-xs font-semibold text-[#2E527F]' : 'font-bold text-[#4B2B1D]'}>
+            {compact && <MapPin className="h-3 w-3" />}
+            Delivery Map
+          </p>
+          {!compact && (
+            <p className="text-xs text-[#755B4C]">
+              Every active customer's delivery address, routed from the kitchen at {KITCHEN_ADDRESS}.
+            </p>
+          )}
+        </div>
+        {!loadingMap && !error && (
+          <span className="text-xs font-bold text-[#2E527F]">{plotted} plotted</span>
+        )}
+      </div>
+
+      {error ? (
+        <div className={`flex items-start gap-3 ${compact ? 'border-t border-[#E4D8C9] p-3' : 'rounded-2xl border border-[#E8B4B9] bg-[#FFF4F5] p-6'}`}>
+          <AlertCircle className="h-4 w-4 text-[#D62F3D] flex-shrink-0 mt-0.5" />
+          <p className={compact ? 'text-xs text-[#D62F3D]' : 'text-sm text-[#D62F3D]'}>{error}</p>
+        </div>
+      ) : (
+        <div
+          className={compact ? 'border-t border-[#E4D8C9] overflow-hidden relative' : 'rounded-3xl border border-[#2E527F] overflow-hidden relative'}
+          style={{ height: mapHeight }}
+        >
+          {loadingMap && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-[rgba(251,247,240,0.9)]">
+              <p className="text-xs text-[#755B4C]">Loading map…</p>
+            </div>
+          )}
+          <div ref={mapDivRef} className="h-full w-full" />
+        </div>
+      )}
+
+      {!loadingMap && failed.length > 0 && (
+        compact ? (
+          <p className="border-t border-[#E4D8C9] px-4 py-2 text-[10px] text-[#9A6D34]">
+            {failed.length} not shown (no address on file or couldn't be located)
+          </p>
+        ) : (
+          <div className="rounded-2xl border border-[#F0C5B8] bg-[#FFF0E6] p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <MapPin className="h-4 w-4 text-[#C97C34]" />
+              <p className="text-sm font-bold text-[#C97C34]">Not shown on the map ({failed.length})</p>
+            </div>
+            <ul className="text-xs text-[#9A6D34] space-y-1">
+              {failed.map((f) => (
+                <li key={f}>{f}</li>
+              ))}
+            </ul>
+          </div>
+        )
+      )}
     </div>
   )
 }
