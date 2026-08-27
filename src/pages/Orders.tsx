@@ -515,6 +515,81 @@ function PlateLabel({ group }: { group: { mains: OrderLine[]; addOns: OrderLine[
   )
 }
 
+const DAY_LABEL: Record<string, string> = { monday: 'Monday', thursday: 'Thursday' }
+
+// Collapsed by default -- a toggle, not another always-open list competing
+// with the map for the same column. Pulls straight from the same
+// byCustomer/groupLinesByDay data the Individual Orders table below already
+// computes, so "next deliveries" never disagrees with the real order table.
+function NextDeliveriesToggle({
+  byCustomer,
+}: {
+  byCustomer: { name: string; address: string | null; lines: OrderLine[] }[]
+}) {
+  const [open, setOpen] = useState(false)
+
+  const byDay = useMemo(() => {
+    const map = new Map<string, { name: string; address: string | null; group: { day: string | null; mains: OrderLine[]; addOns: OrderLine[] } }[]>()
+    for (const c of byCustomer) {
+      for (const group of groupLinesByDay(c.lines)) {
+        const key = group.day || 'unscheduled'
+        if (!map.has(key)) map.set(key, [])
+        map.get(key)!.push({ name: c.name, address: c.address, group })
+      }
+    }
+    // Monday, then Thursday, then anything else -- matches the rest of the
+    // page's delivery-day ordering instead of whatever order customers happened to load in.
+    return Array.from(map.entries()).sort((a, b) => {
+      const order = ['monday', 'thursday']
+      const ai = order.indexOf(a[0])
+      const bi = order.indexOf(b[0])
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+    })
+  }, [byCustomer])
+
+  const totalDeliveries = byDay.reduce((sum, [, rows]) => sum + rows.length, 0)
+
+  return (
+    <div className="rounded-xl border border-[#E4D8C9] bg-[rgba(251,247,240,0.9)] overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-4 py-2.5 text-left"
+      >
+        <span className="flex items-center gap-1.5 text-xs font-semibold text-[#2E527F]">
+          <Calendar className="h-3 w-3" />
+          Next Deliveries ({totalDeliveries})
+        </span>
+        <span className={`h-4 w-8 rounded-full transition-colors relative flex-shrink-0 ${open ? 'bg-[#2E527F]' : 'bg-[#D8CDBE]'}`}>
+          <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${open ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+        </span>
+      </button>
+      {open && (
+        <div className="border-t border-[#E4D8C9] max-h-[280px] overflow-y-auto">
+          {byDay.length === 0 ? (
+            <p className="px-4 py-3 text-xs text-[#755B4C]">No orders placed for this week yet.</p>
+          ) : (
+            byDay.map(([day, rows]) => (
+              <div key={day}>
+                <p className="px-4 pt-2 text-[10px] font-extrabold uppercase tracking-wide text-[#9A7E6F]">
+                  {DAY_LABEL[day] || day} ({rows.length})
+                </p>
+                {rows.map((r, i) => (
+                  <div key={`${day}-${r.name}-${i}`} className="px-4 py-1.5 border-t border-[#F0EAE0] first:border-t-0">
+                    <p className="text-xs font-semibold text-[#4B2B1D]">
+                      {r.name} — <PlateLabel group={r.group} />
+                    </p>
+                    <p className="text-[10.5px] text-[#755B4C] truncate">{r.address || 'No delivery address on file'}</p>
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ThisWeekTab({
   data,
   searchCustomer,
@@ -663,7 +738,15 @@ function ThisWeekTab({
                   key={customer.id}
                   className={`flex items-center justify-between px-4 py-1.5 ${idx > 0 ? 'border-t border-[#F0EAE0]' : ''}`}
                 >
-                  <p className="text-xs text-[#4B2B1D]">{customer.name}</p>
+                  <Link
+                    to={`/customers?openId=${customer.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-[#4B2B1D] hover:text-[#2E527F] hover:underline"
+                    title="Open customer card (delivery address, contact info)"
+                  >
+                    {customer.name}
+                  </Link>
                   <button
                     onClick={() => onAddOrderFor(customer)}
                     className="text-xs font-semibold text-[#2E527F] hover:underline"
@@ -677,7 +760,10 @@ function ThisWeekTab({
             <p className="border-t border-[#E4D8C9] px-4 py-3 text-xs text-[#755B4C]">Nobody needs follow-up right now.</p>
           )}
         </div>
-        <DeliveryMapTab apiUrl={apiUrl} token={token} compact />
+        <div className="space-y-3">
+          <DeliveryMapTab apiUrl={apiUrl} token={token} compact />
+          <NextDeliveriesToggle byCustomer={byCustomer} />
+        </div>
       </div>
 
       {/* Individual Orders */}
@@ -1129,7 +1215,7 @@ function DeliveryMapTab({ apiUrl, token, compact }: { apiUrl: string; token: str
     }
   }, [apiKey, customers])
 
-  const mapHeight = compact ? 220 : 560
+  const mapHeight = compact ? 420 : 560
 
   return (
     <div className={compact ? 'rounded-xl border border-[#E4D8C9] bg-[rgba(251,247,240,0.9)] overflow-hidden' : 'space-y-4'}>
@@ -1151,13 +1237,13 @@ function DeliveryMapTab({ apiUrl, token, compact }: { apiUrl: string; token: str
       </div>
 
       {error ? (
-        <div className={`flex items-start gap-3 ${compact ? 'border-t border-[#E4D8C9] p-3' : 'rounded-2xl border border-[#E8B4B9] bg-[#FFF4F5] p-6'}`}>
+        <div className={`flex items-start gap-3 ${compact ? 'p-3' : 'rounded-2xl border border-[#E8B4B9] bg-[#FFF4F5] p-6'}`}>
           <AlertCircle className="h-4 w-4 text-[#D62F3D] flex-shrink-0 mt-0.5" />
           <p className={compact ? 'text-xs text-[#D62F3D]' : 'text-sm text-[#D62F3D]'}>{error}</p>
         </div>
       ) : (
         <div
-          className={compact ? 'border-t border-[#E4D8C9] overflow-hidden relative' : 'rounded-3xl border border-[#2E527F] overflow-hidden relative'}
+          className={compact ? 'overflow-hidden relative' : 'rounded-3xl border border-[#2E527F] overflow-hidden relative'}
           style={{ height: mapHeight }}
         >
           {loadingMap && (

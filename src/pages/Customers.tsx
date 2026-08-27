@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { Search, Plus, Mail, Phone, MapPin, Edit, Trash2, X, Home, DollarSign, Users, Briefcase, Target, AlertCircle, Heart, Utensils, TrendingUp, MessageCircle, Clock, Zap } from 'lucide-react'
 import { CustomerActivityPanel } from '../components/CustomerActivityPanel'
@@ -37,6 +38,7 @@ type Customer = {
 type Tab = 'pipeline' | 'active' | 'prospects' | 'at_risk' | 'insights' | 'activities' | 'automations' | 'lists' | 'tasks'
 
 export default function CustomersPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<Tab>('pipeline')
@@ -80,6 +82,23 @@ export default function CustomersPage() {
   useEffect(() => {
     fetchCustomers()
   }, [])
+
+  // Deep link from elsewhere in the app (e.g. Orders' Needs Follow-Up list)
+  // -- /customers?openId=123 jumps straight to that customer's card instead
+  // of making staff search for them by name after already knowing who it is.
+  useEffect(() => {
+    const openId = searchParams.get('openId')
+    if (!openId || customers.length === 0) return
+    const match = customers.find((c) => c.id === Number(openId))
+    if (match) {
+      setSelectedCustomer(match)
+      setShowCustomerDetail(true)
+    }
+    const next = new URLSearchParams(searchParams)
+    next.delete('openId')
+    setSearchParams(next, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customers])
 
   useEffect(() => {
     if (activeTab !== 'activities') return
