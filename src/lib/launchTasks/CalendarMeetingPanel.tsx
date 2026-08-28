@@ -194,7 +194,7 @@ export function MeetingTopicsPanel({
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const meetingGroups = useMemo(() => buildMeetingZone(tasks, today).filter((g) => g.key !== 'overdue'), [tasks, today])
+  const meetingGroups = useMemo(() => buildMeetingZone(tasks, today).filter((g) => g.key !== 'overdue' && g.key !== 'critical'), [tasks, today])
 
   const displayGroups = useMemo(() => {
     const groups: { key: string; label: string; items: { name: string; meta?: string; highlightId?: number }[] }[] = []
