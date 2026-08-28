@@ -726,44 +726,44 @@ function ThisWeekTab({
           next to where everyone already active actually lives, since both
           are "who needs attention" reads at a glance. */}
       <div className="grid gap-4 lg:grid-cols-2 items-start">
-        <div className="rounded-xl border border-[#E4D8C9] bg-[rgba(251,247,240,0.9)]">
-          <p className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-[#2E527F]">
-            <Phone className="h-3 w-3" />
-            Needs Follow-Up ({nonResponders.length})
-          </p>
-          {nonResponders.length > 0 ? (
-            <div className="border-t border-[#E4D8C9]">
-              {nonResponders.map((customer, idx) => (
-                <div
-                  key={customer.id}
-                  className={`flex items-center justify-between px-4 py-1.5 ${idx > 0 ? 'border-t border-[#F0EAE0]' : ''}`}
-                >
-                  <Link
-                    to={`/customers?openId=${customer.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-[#4B2B1D] hover:text-[#2E527F] hover:underline"
-                    title="Open customer card (delivery address, contact info)"
-                  >
-                    {customer.name}
-                  </Link>
-                  <button
-                    onClick={() => onAddOrderFor(customer)}
-                    className="text-xs font-semibold text-[#2E527F] hover:underline"
-                  >
-                    + Add New Order
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="border-t border-[#E4D8C9] px-4 py-3 text-xs text-[#755B4C]">Nobody needs follow-up right now.</p>
-          )}
-        </div>
         <div className="space-y-3">
-          <DeliveryMapTab customers={byCustomer.map((c) => ({ name: c.name, address: c.address }))} compact />
+          <div className="rounded-xl border border-[#E4D8C9] bg-[rgba(251,247,240,0.9)]">
+            <p className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-[#2E527F]">
+              <Phone className="h-3 w-3" />
+              Needs Follow-Up ({nonResponders.length})
+            </p>
+            {nonResponders.length > 0 ? (
+              <div className="border-t border-[#E4D8C9]">
+                {nonResponders.map((customer, idx) => (
+                  <div
+                    key={customer.id}
+                    className={`flex items-center justify-between px-4 py-1.5 ${idx > 0 ? 'border-t border-[#F0EAE0]' : ''}`}
+                  >
+                    <Link
+                      to={`/customers?openId=${customer.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-[#4B2B1D] hover:text-[#2E527F] hover:underline"
+                      title="Open customer card (delivery address, contact info)"
+                    >
+                      {customer.name}
+                    </Link>
+                    <button
+                      onClick={() => onAddOrderFor(customer)}
+                      className="text-xs font-semibold text-[#2E527F] hover:underline"
+                    >
+                      + Add New Order
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="border-t border-[#E4D8C9] px-4 py-3 text-xs text-[#755B4C]">Nobody needs follow-up right now.</p>
+            )}
+          </div>
           <NextDeliveriesToggle byCustomer={byCustomer} />
         </div>
+        <DeliveryMapTab customers={byCustomer.map((c) => ({ name: c.name, address: c.address }))} compact />
       </div>
 
       {/* Individual Orders */}
