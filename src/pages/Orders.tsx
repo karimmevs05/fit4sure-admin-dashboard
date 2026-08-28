@@ -15,6 +15,8 @@ import {
   Phone,
   MapPin,
   AlertCircle,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react'
 import WeeklyPrepPage from './WeeklyPrep'
 import { formatIngredientWeight } from '../utils/unitConversion'
@@ -517,24 +519,61 @@ function PlateLabel({ group }: { group: { mains: OrderLine[]; addOns: OrderLine[
 
 const DAY_LABEL: Record<string, string> = { monday: 'Monday', thursday: 'Thursday' }
 
+type RouteStop = {
+  customerId: number
+  name: string
+  address: string | null
+  group: { day: string | null; mains: OrderLine[]; addOns: OrderLine[] }
+}
+
+const STOP_ORDER_KEY = 'f4s_delivery_stop_order'
+const DEPARTURE_TIME_KEY = 'f4s_delivery_departure_times'
+
+function readLocalJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) : fallback
+  } catch {
+    return fallback
+  }
+}
+
 // Collapsed by default -- a toggle, not another always-open list competing
 // with the map for the same column. Pulls straight from the same
 // byCustomer/groupLinesByDay data the Individual Orders table below already
 // computes, so "next deliveries" never disagrees with the real order table.
+// Stop order and departure time are reorderable and saved to this browser
+// only (not the backend) -- kept simple since only one person plans a route
+// at a time. ETAs are computed live via the Directions API from the kitchen,
+// through each stop in the chosen order, rather than stored.
 function NextDeliveriesToggle({
   byCustomer,
 }: {
   byCustomer: { name: string; address: string | null; lines: OrderLine[] }[]
 }) {
   const [open, setOpen] = useState(false)
+  const [stopOrder, setStopOrder] = useState<Record<string, number[]>>(() => readLocalJson(STOP_ORDER_KEY, {}))
+  const [departureTimes, setDepartureTimes] = useState<Record<string, string>>(() => readLocalJson(DEPARTURE_TIME_KEY, {}))
+  const [etas, setEtas] = useState<Record<string, Record<number, string>>>({})
+  const [etaErrors, setEtaErrors] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    localStorage.setItem(STOP_ORDER_KEY, JSON.stringify(stopOrder))
+  }, [stopOrder])
+
+  useEffect(() => {
+    localStorage.setItem(DEPARTURE_TIME_KEY, JSON.stringify(departureTimes))
+  }, [departureTimes])
 
   const byDay = useMemo(() => {
-    const map = new Map<string, { name: string; address: string | null; group: { day: string | null; mains: OrderLine[]; addOns: OrderLine[] } }[]>()
+    const map = new Map<string, RouteStop[]>()
     for (const c of byCustomer) {
       for (const group of groupLinesByDay(c.lines)) {
         const key = group.day || 'unscheduled'
+        const customerId = group.mains[0]?.customer_id ?? group.addOns[0]?.customer_id
+        if (customerId == null) continue
         if (!map.has(key)) map.set(key, [])
-        map.get(key)!.push({ name: c.name, address: c.address, group })
+        map.get(key)!.push({ customerId, name: c.name, address: c.address, group })
       }
     }
     // Monday, then Thursday, then anything else -- matches the rest of the
@@ -547,7 +586,98 @@ function NextDeliveriesToggle({
     })
   }, [byCustomer])
 
-  const totalDeliveries = byDay.reduce((sum, [, rows]) => sum + rows.length, 0)
+  // Applies the saved manual order on top of the freshly-loaded rows --
+  // stops with no saved position (new orders since the route was last
+  // arranged) fall to the end rather than disappearing or erroring.
+  const orderedByDay = useMemo(() => {
+    return byDay.map(([day, rows]) => {
+      const saved = stopOrder[day]
+      if (!saved || saved.length === 0) return [day, rows] as const
+      const rankOf = (id: number) => {
+        const idx = saved.indexOf(id)
+        return idx === -1 ? 999 : idx
+      }
+      return [day, [...rows].sort((a, b) => rankOf(a.customerId) - rankOf(b.customerId))] as const
+    })
+  }, [byDay, stopOrder])
+
+  const totalDeliveries = orderedByDay.reduce((sum, [, rows]) => sum + rows.length, 0)
+
+  const moveStop = (day: string, rows: RouteStop[], index: number, direction: -1 | 1) => {
+    const newIndex = index + direction
+    if (newIndex < 0 || newIndex >= rows.length) return
+    const reordered = [...rows]
+    const [moved] = reordered.splice(index, 1)
+    reordered.splice(newIndex, 0, moved)
+    setStopOrder((prev) => ({ ...prev, [day]: reordered.map((r) => r.customerId) }))
+  }
+
+  const apiKey = (import.meta as any).env.VITE_GOOGLE_MAPS_API_KEY as string | undefined
+
+  // Computed only while the panel is open, to avoid burning Directions API
+  // calls on every page load for a list nobody's looking at.
+  useEffect(() => {
+    if (!open || !apiKey) return
+    let cancelled = false
+
+    loadGoogleMaps(apiKey).then(() => {
+      if (cancelled) return
+      const google = (window as any).google
+      const directionsService = new google.maps.DirectionsService()
+
+      for (const [day, rows] of orderedByDay) {
+        const validRows = rows.filter((r) => r.address && r.address.trim())
+        if (validRows.length === 0) continue
+
+        const waypoints = validRows.slice(0, -1).map((r) => ({ location: r.address as string, stopover: true }))
+        const destination = validRows[validRows.length - 1].address as string
+
+        directionsService.route(
+          {
+            origin: KITCHEN_ADDRESS,
+            destination,
+            waypoints,
+            optimizeWaypoints: false,
+            travelMode: google.maps.TravelMode.DRIVING,
+          },
+          (result: any, status: string) => {
+            if (cancelled) return
+            if (status !== 'OK' || !result?.routes?.[0]) {
+              setEtaErrors((prev) => ({
+                ...prev,
+                [day]: status === 'REQUEST_DENIED'
+                  ? "Directions API isn't enabled for this key yet."
+                  : "Couldn't calculate ETAs for this route.",
+              }))
+              return
+            }
+            setEtaErrors((prev) => {
+              if (!(day in prev)) return prev
+              const next = { ...prev }
+              delete next[day]
+              return next
+            })
+            const legs = result.routes[0].legs
+            const [h, m] = (departureTimes[day] || '09:00').split(':').map(Number)
+            const base = new Date()
+            base.setHours(h, m, 0, 0)
+            let cumulativeSeconds = 0
+            const dayEtas: Record<number, string> = {}
+            validRows.forEach((r, i) => {
+              cumulativeSeconds += legs[i]?.duration?.value || 0
+              const eta = new Date(base.getTime() + cumulativeSeconds * 1000)
+              dayEtas[r.customerId] = eta.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+            })
+            setEtas((prev) => ({ ...prev, [day]: dayEtas }))
+          }
+        )
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, apiKey, orderedByDay, departureTimes])
 
   return (
     <div className="rounded-xl border border-[#E4D8C9] bg-[rgba(251,247,240,0.9)] overflow-hidden">
@@ -564,21 +694,61 @@ function NextDeliveriesToggle({
         </span>
       </button>
       {open && (
-        <div className="border-t border-[#E4D8C9] max-h-[280px] overflow-y-auto">
-          {byDay.length === 0 ? (
+        <div className="border-t border-[#E4D8C9] max-h-[360px] overflow-y-auto">
+          {orderedByDay.length === 0 ? (
             <p className="px-4 py-3 text-xs text-[#755B4C]">No orders placed for this week yet.</p>
           ) : (
-            byDay.map(([day, rows]) => (
+            orderedByDay.map(([day, rows]) => (
               <div key={day}>
-                <p className="px-4 pt-2 text-[10px] font-extrabold uppercase tracking-wide text-[#9A7E6F]">
-                  {DAY_LABEL[day] || day} ({rows.length})
-                </p>
+                <div className="flex items-center justify-between gap-2 px-4 pt-2">
+                  <p className="text-[10px] font-extrabold uppercase tracking-wide text-[#9A7E6F]">
+                    {DAY_LABEL[day] || day} ({rows.length})
+                  </p>
+                  <label className="flex items-center gap-1 text-[10px] text-[#755B4C]">
+                    Depart
+                    <input
+                      type="time"
+                      value={departureTimes[day] || '09:00'}
+                      onChange={(e) => setDepartureTimes((prev) => ({ ...prev, [day]: e.target.value }))}
+                      className="rounded border border-[#D8CDBE] bg-white px-1 py-0.5 text-[10px] text-[#4B2B1D]"
+                    />
+                  </label>
+                </div>
+                {etaErrors[day] && (
+                  <p className="px-4 pt-1 text-[10px] text-[#D62F3D]">{etaErrors[day]}</p>
+                )}
                 {rows.map((r, i) => (
-                  <div key={`${day}-${r.name}-${i}`} className="px-4 py-1.5 border-t border-[#F0EAE0] first:border-t-0">
-                    <p className="text-xs font-semibold text-[#4B2B1D]">
-                      {r.name} — <PlateLabel group={r.group} />
-                    </p>
-                    <p className="text-[10.5px] text-[#755B4C] truncate">{r.address || 'No delivery address on file'}</p>
+                  <div key={`${day}-${r.customerId}`} className="px-4 py-1.5 border-t border-[#F0EAE0] first:border-t-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="flex items-center gap-1.5 text-xs font-semibold text-[#4B2B1D]">
+                        <span className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-[#2E527F] text-[9px] font-bold text-white">
+                          {i + 1}
+                        </span>
+                        {r.name} — <PlateLabel group={r.group} />
+                      </p>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {etas[day]?.[r.customerId] && (
+                          <span className="text-[10px] font-bold text-[#16A34A]">ETA {etas[day][r.customerId]}</span>
+                        )}
+                        <button
+                          onClick={() => moveStop(day, rows, i, -1)}
+                          disabled={i === 0}
+                          title="Move earlier in the route"
+                          className="rounded text-[#2E527F] hover:bg-[#E4D8C9] disabled:opacity-25 disabled:hover:bg-transparent"
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => moveStop(day, rows, i, 1)}
+                          disabled={i === rows.length - 1}
+                          title="Move later in the route"
+                          className="rounded text-[#2E527F] hover:bg-[#E4D8C9] disabled:opacity-25 disabled:hover:bg-transparent"
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[10.5px] text-[#755B4C] truncate pl-[22px]">{r.address || 'No delivery address on file'}</p>
                   </div>
                 ))}
               </div>
