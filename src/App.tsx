@@ -9,6 +9,7 @@ import TaskDashboardPage from './pages/TaskDashboard.tsx'
 import OperationsHubPage from './pages/OperationsHub.tsx'
 import ProductionSOPPage from './pages/ProductionSOP.tsx'
 import CustomersPage from './pages/Customers.tsx'
+import SalesPipelineProposal from './pages/SalesPipelineProposal.tsx'
 import FinancialsPage from './pages/Financials.tsx'
 import ReportsPage from './pages/Reports.tsx'
 import SettingsPage from './pages/Settings.tsx'
@@ -47,6 +48,7 @@ function App() {
           <Route path="/dashboard" element={token ? <TaskDashboardPage /> : <Navigate to="/login" />} />
           <Route path="/orders" element={token ? <OrdersPage /> : <Navigate to="/login" />} />
           <Route path="/customers" element={token ? <CustomersPage /> : <Navigate to="/login" />} />
+          <Route path="/customers-proposal" element={token ? <SalesPipelineProposal /> : <Navigate to="/login" />} />
           <Route path="/menu-planner" element={token ? <MenuPlannerPage /> : <Navigate to="/login" />} />
           <Route path="/recipes" element={token ? <Fit4SureRecipesPage /> : <Navigate to="/login" />} />
           <Route path="/inventory" element={token ? <InventoryPage /> : <Navigate to="/login" />} />
