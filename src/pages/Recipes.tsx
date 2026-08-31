@@ -931,7 +931,7 @@ function AddRecipeDrawer({
                 }));
                 setIngredients((prev) => [
                   ...prev,
-                  ...imported.ingredients.map((ing) => ({ id: Date.now().toString() + Math.random(), ...ing, prep_section: "dry" as const })),
+                  ...imported.ingredients.map((ing) => ({ id: Date.now().toString() + Math.random(), ...ing, cooking_method_id: null })),
                 ]);
                 setSteps((prev) => [...prev, ...imported.steps]);
               }}
@@ -1356,7 +1356,7 @@ function EditRecipeDrawer({
       />
 
       <aside
-        className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-[380px] flex-col border-l border-[#D8CDBE] bg-[#F8F2E8] shadow-[-18px_0_50px_rgba(75,43,29,0.12)] transition-transform duration-300 translate-x-0`}
+        className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-[33vw] min-w-[420px] flex-col border-l border-[#D8CDBE] bg-[#F8F2E8] shadow-[-18px_0_50px_rgba(75,43,29,0.12)] transition-transform duration-300 translate-x-0`}
       >
         <div className="flex items-center justify-between border-b border-[#DED2C2] px-6 py-5">
           <div>

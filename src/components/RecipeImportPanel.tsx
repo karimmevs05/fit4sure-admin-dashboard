@@ -14,7 +14,7 @@
 
 import React, { useRef, useState } from 'react'
 import axios from 'axios'
-import { AlertTriangle, Camera, Check, Link2, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, Camera, Check, GripVertical, Link2, Sparkles, X } from 'lucide-react'
 import { IngredientPicker, PickedIngredient } from './IngredientPicker'
 import { RecipeStepsEditor, RecipeStep } from './RecipeStepsEditor'
 
@@ -22,6 +22,7 @@ type ExtractedIngredient = {
   raw_text: string
   name: string
   quantity_g: number
+  is_liquid: boolean
   low_confidence: boolean
   match: {
     inventory_id: number
@@ -52,6 +53,11 @@ type DraftIngredientRow = {
   raw_text: string
   matchConfidence: 'exact' | 'high' | 'low' | null
   quantityLowConfidence: boolean
+  // The AI's wet/dry guess (used for the cup/tbsp/tsp -> grams conversion at
+  // extraction time -- see recipeImportService.js). Wrong often enough on
+  // ambiguous ingredients that it needs a quick human fix here, via drag and
+  // drop between the two sections below, before Apply.
+  isLiquid: boolean
   resolved: PickedIngredient | null
 }
 
@@ -62,7 +68,7 @@ type ApplyPayload = {
   prep_time_minutes: number | null
   image: string | null
   steps: RecipeStep[]
-  ingredients: PickedIngredient[]
+  ingredients: (PickedIngredient & { prep_section: 'wet' | 'dry' })[]
 }
 
 const VALID_CATEGORIES = ['beef', 'chicken', 'turkey', 'carbohydrates', 'vegetables', 'sauces', 'beverage', 'breakfast']
@@ -119,6 +125,7 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
         raw_text: ing.raw_text,
         matchConfidence: ing.match?.confidence ?? null,
         quantityLowConfidence: ing.low_confidence,
+        isLiquid: ing.is_liquid !== false,
         resolved: ing.match
           ? {
               inventory_id: ing.match.inventory_id,
@@ -178,7 +185,16 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
     setPickerOpenFor(null)
   }
 
+  const setIngredientLiquid = (key: string, isLiquid: boolean) => {
+    setDraftIngredients((prev) => prev.map((r) => (r.key === key ? { ...r, isLiquid } : r)))
+  }
+
+  const [draggingKey, setDraggingKey] = useState<string | null>(null)
+  const [dragOverSection, setDragOverSection] = useState<'wet' | 'dry' | null>(null)
+
   const matchedCount = draftIngredients.filter((r) => r.resolved).length
+  const dryRows = draftIngredients.filter((r) => !r.isLiquid)
+  const wetRows = draftIngredients.filter((r) => r.isLiquid)
 
   const confirmApply = () => {
     onApply({
@@ -188,7 +204,9 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
       prep_time_minutes: draftPrepTime ? Number(draftPrepTime) : null,
       image: draftImage.trim() || null,
       steps: draftSteps,
-      ingredients: draftIngredients.filter((r) => r.resolved).map((r) => r.resolved!),
+      ingredients: draftIngredients
+        .filter((r) => r.resolved)
+        .map((r) => ({ ...r.resolved!, prep_section: r.isLiquid ? ('wet' as const) : ('dry' as const) })),
     })
     setApplied(true)
   }
@@ -351,66 +369,110 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
 
           <div>
             <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#9A7E6F]">
-              Ingredients ({matchedCount} of {draftIngredients.length} matched)
+              Ingredients ({matchedCount} of {draftIngredients.length} matched) -- drag between sections if the wet/dry guess is wrong
             </p>
-            <div className="max-h-64 space-y-1.5 overflow-y-auto">
-              {draftIngredients.map((row) => {
-                const uncertain = row.resolved && row.matchConfidence === 'low'
-                const state = row.resolved ? (uncertain || row.quantityLowConfidence ? 'warn' : 'ok') : 'missing'
+            <div className="grid grid-cols-2 gap-2">
+              {(['dry', 'wet'] as const).map((section) => {
+                const rows = section === 'dry' ? dryRows : wetRows
                 return (
                   <div
-                    key={row.key}
-                    className={`rounded-lg px-2 py-1.5 text-[11px] ${
-                      state === 'ok' ? 'bg-white' : state === 'warn' ? 'bg-[#FFF7E6]' : 'bg-[#FFF4F4]'
+                    key={section}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      setDragOverSection(section)
+                    }}
+                    onDragLeave={() => setDragOverSection((s) => (s === section ? null : s))}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      const key = e.dataTransfer.getData('text/plain')
+                      if (key) setIngredientLiquid(key, section === 'wet')
+                      setDraggingKey(null)
+                      setDragOverSection(null)
+                    }}
+                    className={`rounded-lg border p-1.5 transition ${
+                      dragOverSection === section ? 'border-[#3E6594] bg-[#EAF0F7]' : 'border-[#E4D8C9] bg-[#FBF6EE]'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      {state === 'ok' && <Check className="h-3.5 w-3.5 shrink-0 text-[#16834A]" />}
-                      {state !== 'ok' && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#DC6500]" />}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-[#4B2B1D] truncate">{row.raw_text}</p>
-                        <p className="text-[9px] text-[#9A7E6F]">
-                          {row.resolved
-                            ? `matched: ${row.resolved.name}${uncertain ? ' -- check this is the right item' : ''}${row.quantityLowConfidence ? ' -- check quantity' : ''}`
-                            : 'no inventory match'}
-                        </p>
-                      </div>
-                      {row.resolved && (
-                        <input
-                          type="number"
-                          min={0}
-                          value={row.resolved.quantity_g}
-                          onChange={(e) => updateIngredientQty(row.key, Number(e.target.value) || 0)}
-                          className="h-7 w-16 shrink-0 rounded border border-[#B9A88F] bg-white px-1.5 text-[10px] text-center outline-none focus:border-[#3E6594]"
-                        />
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setPickerOpenFor(pickerOpenFor === row.key ? null : row.key)}
-                        className="shrink-0 text-[10px] font-bold text-[#2E527F] underline"
-                      >
-                        {row.resolved ? 'Change' : 'Pick match'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeIngredientRow(row.key)}
-                        className="shrink-0 text-[#D62F3D] hover:bg-[#FDEBEC] p-0.5 rounded"
-                        aria-label="Remove ingredient"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                    <p className="mb-1 px-0.5 text-[9px] font-extrabold uppercase tracking-wide text-[#9A7E6F]">
+                      {section === 'dry' ? 'Dry' : 'Wet'} ({rows.length})
+                    </p>
+                    <div className="max-h-64 space-y-1 overflow-y-auto">
+                      {rows.map((row) => {
+                        const uncertain = row.resolved && row.matchConfidence === 'low'
+                        const state = row.resolved ? (uncertain || row.quantityLowConfidence ? 'warn' : 'ok') : 'missing'
+                        return (
+                          <div
+                            key={row.key}
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('text/plain', row.key)
+                              setDraggingKey(row.key)
+                            }}
+                            onDragEnd={() => {
+                              setDraggingKey(null)
+                              setDragOverSection(null)
+                            }}
+                            className={`rounded-lg px-1.5 py-1.5 text-[11px] cursor-grab active:cursor-grabbing ${
+                              draggingKey === row.key ? 'opacity-40' : ''
+                            } ${state === 'ok' ? 'bg-white' : state === 'warn' ? 'bg-[#FFF7E6]' : 'bg-[#FFF4F4]'}`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <GripVertical className="h-3 w-3 shrink-0 text-[#C9BBA8]" />
+                              {state === 'ok' && <Check className="h-3.5 w-3.5 shrink-0 text-[#16834A]" />}
+                              {state !== 'ok' && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#DC6500]" />}
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-[#4B2B1D] truncate">{row.raw_text}</p>
+                                <p className="text-[9px] text-[#9A7E6F] truncate">
+                                  {row.resolved
+                                    ? `matched: ${row.resolved.name}${uncertain ? ' -- check this' : ''}${row.quantityLowConfidence ? ' -- check qty' : ''}`
+                                    : 'no inventory match'}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeIngredientRow(row.key)}
+                                className="shrink-0 text-[#D62F3D] hover:bg-[#FDEBEC] p-0.5 rounded"
+                                aria-label="Remove ingredient"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                            <div className="mt-1 flex items-center gap-1.5 pl-[18px]">
+                              {row.resolved && (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={row.resolved.quantity_g}
+                                  onChange={(e) => updateIngredientQty(row.key, Number(e.target.value) || 0)}
+                                  className="h-7 w-16 shrink-0 rounded border border-[#B9A88F] bg-white px-1.5 text-[10px] text-center outline-none focus:border-[#3E6594]"
+                                />
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setPickerOpenFor(pickerOpenFor === row.key ? null : row.key)}
+                                className="shrink-0 text-[10px] font-bold text-[#2E527F] underline"
+                              >
+                                {row.resolved ? 'Change' : 'Pick match'}
+                              </button>
+                            </div>
 
-                    {pickerOpenFor === row.key && (
-                      <div className="mt-2 rounded-lg border border-[#3E6594] bg-white p-2">
-                        <IngredientPicker onAdd={(picked) => resolveIngredientRow(row.key, picked)} />
-                      </div>
-                    )}
+                            {pickerOpenFor === row.key && (
+                              <div className="mt-2 rounded-lg border border-[#3E6594] bg-white p-2">
+                                <IngredientPicker onAdd={(picked) => resolveIngredientRow(row.key, picked)} />
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                      {rows.length === 0 && (
+                        <p className="px-1 py-2 text-center text-[10px] text-[#9A7E6F]">Drop {section} ingredients here</p>
+                      )}
+                    </div>
                   </div>
                 )
               })}
-              {draftIngredients.length === 0 && <p className="text-[11px] text-[#9A7E6F] px-1">No ingredients left -- add some via the picker below once applied.</p>}
             </div>
+            {draftIngredients.length === 0 && <p className="mt-1.5 text-[11px] text-[#9A7E6F] px-1">No ingredients left -- add some via the picker below once applied.</p>}
           </div>
 
           <div className="flex gap-2">

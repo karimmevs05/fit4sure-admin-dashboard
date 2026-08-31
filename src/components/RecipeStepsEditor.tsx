@@ -10,13 +10,23 @@
 // reports changes back via onChange.
 
 import React, { useState } from 'react'
-import { ChevronDown, ChevronUp, Pencil, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Flame, Pencil, Trash2 } from 'lucide-react'
 
 export type RecipeStep = {
   id: string
   title: string
   description: string
   time_estimate_minutes: number | null
+}
+
+// Same heat-application heuristic the backend uses to split a recipe's
+// steps into Prep-day vs. Production-day batch sheets (see classifyStep /
+// COOK_STEP_PATTERN in adminMenuPlanner.js) -- kept in sync here purely for
+// display, so what a chef sees while writing/reviewing a recipe's steps
+// already previews how it'll get split once it hits the kitchen.
+const COOK_STEP_PATTERN = /\b(grill|bake|cook|sauté|saute|fry|boil|simmer|roast|broil|sear|steam|poach)|heat\b.*\b(oven|grill|skillet|pan|stove)/i
+function isCookStep(description: string): boolean {
+  return COOK_STEP_PATTERN.test(description)
 }
 
 export function RecipeStepsEditor({
@@ -161,12 +171,22 @@ export function RecipeStepsEditor({
                 </div>
               </div>
             ) : (
-              <div key={step.id} className="rounded-lg border border-[#E4D8C9] bg-[#FBF7F0] p-2">
+              <div
+                key={step.id}
+                className={`rounded-lg border p-2 ${isCookStep(step.description) ? 'border-[#F0C89A] bg-[#FFF7EC]' : 'border-[#E4D8C9] bg-[#FBF7F0]'}`}
+              >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1">
                     <p className="text-xs font-bold text-[#4B2B1D]">
                       Step {i + 1}
                       {step.title ? ` -- ${step.title}` : ''}
+                      {isCookStep(step.description) ? (
+                        <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-[#FCE4C8] px-1.5 py-0.5 text-[9px] font-extrabold text-[#B5651D]">
+                          <Flame className="h-2.5 w-2.5" /> Cook
+                        </span>
+                      ) : (
+                        <span className="ml-1.5 rounded-full bg-[#EDE7DC] px-1.5 py-0.5 text-[9px] font-extrabold text-[#755B4C]">Prep</span>
+                      )}
                       {step.time_estimate_minutes ? (
                         <span className="ml-1.5 rounded-full bg-[#E8EEF5] px-1.5 py-0.5 text-[9px] font-extrabold text-[#134DA1]">
                           {step.time_estimate_minutes} min
