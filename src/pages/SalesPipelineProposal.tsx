@@ -5,6 +5,7 @@ import {
   Search, Plus, Mail, Phone, Edit, Trash2, X, Clock, Zap,
   Download, LayoutGrid, AlignJustify, AlertTriangle, ChevronLeft, ChevronRight, ChevronDown,
   Building2, UserPlus, Info, Square, Send, List,
+  FileText, Image as ImageIcon, Video, Link as LinkIcon, Copy, Eye,
 } from 'lucide-react'
 import { CustomerActivityPanel } from '../components/CustomerActivityPanel'
 import { AutomationBuilder } from '../components/AutomationBuilder'
@@ -27,12 +28,18 @@ type Customer = {
   dietary_restrictions?: string
   notes?: string
   created_at?: string
+  stage_entered_at?: string | null
   total_meals_ordered?: number
   weeks_active?: number
   last_order_date?: string
   lifetime_value_cents?: number
   sales_pipeline_stage?: 'prospect' | 'engaged' | 'trial' | 'active' | 'at_risk' | 'churned'
   conversion_probability?: number
+  conversion_probability_prev?: number | null
+  win_probability_momentum?: number
+  win_probability_recency?: number
+  win_probability_completeness?: number
+  win_probability_objection?: number
   days_since_last_contact?: number
   engagement_score?: number
 }
@@ -377,6 +384,11 @@ const STAGE_COLORS: Record<string, { bg: string; border: string; text: string }>
   churned: { bg: '#F5F5F5', border: '#D4D4D4', text: '#666666' },
 }
 
+const ASSET_CATEGORY_LABEL: Record<string, string> = {
+  pricing_offers: 'Pricing & Offers', menus_samples: 'Menus & Samples', social_proof: 'Social Proof', partnerships: 'Partnerships',
+}
+const ASSET_TYPE_ICON: Record<string, React.ElementType> = { pdf: FileText, image: ImageIcon, video: Video, link: LinkIcon }
+
 function LeadSourceBadge({ source }: { source?: LeadSource }) {
   const s = source || 'organic'
   const c = LEAD_SOURCE_COLORS[s]
@@ -387,6 +399,118 @@ function LeadSourceBadge({ source }: { source?: LeadSource }) {
     >
       {LEAD_SOURCE_LABEL[s]}
     </span>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// WIN PROBABILITY -- real now (backend computes it from stage momentum,
+// contact recency, profile completeness, and a logged objection, not the
+// old flat per-stage constants). The ring is colored by band, the arrow
+// compares today's live score against the last recompute-pipeline snapshot
+// (conversion_probability_prev), and clicking it expands the four real
+// component values instead of a placeholder breakdown.
+// ---------------------------------------------------------------------------
+function winProbabilityBand(score: number): { bg: string; border: string; text: string; ring: string } {
+  if (score >= 65) return { bg: '#EBF8F0', border: '#B3DFC7', text: '#158A4D', ring: '#16A34A' }
+  if (score >= 40) return { bg: '#FFF0E6', border: '#FFD4B0', text: '#C97C34', ring: '#D97706' }
+  return { bg: '#FFE6EC', border: '#F7B3C5', text: '#C21E3C', ring: '#D62F3D' }
+}
+
+function WinProbabilityRing({ score, size = 44 }: { score: number; size?: number }) {
+  const band = winProbabilityBand(score)
+  const stroke = size >= 40 ? 4 : 3
+  const r = (size - stroke) / 2
+  const circumference = 2 * Math.PI * r
+  const offset = circumference * (1 - score / 100)
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="flex-shrink-0">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#F0EAE0" strokeWidth={stroke} />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke={band.ring}
+        strokeWidth={stroke}
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+      <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central" fontSize={size * 0.3} fontWeight="800" fill={band.text}>
+        {score}
+      </text>
+    </svg>
+  )
+}
+
+function WinProbabilityTrend({ score, prev }: { score: number; prev?: number | null }) {
+  if (prev == null) return <span className="text-[9px] text-[#9A7E6F]">new</span>
+  const diff = score - prev
+  if (diff === 0) return <span className="text-[10px] font-bold text-[#9A7E6F]">— flat</span>
+  if (diff > 0) return <span className="text-[10px] font-bold text-[#16A34A]">▲ +{diff}</span>
+  return <span className="text-[10px] font-bold text-[#D62F3D]">▼ {diff}</span>
+}
+
+// Each component has a different natural range (momentum -10..30, recency
+// -30..30, completeness/objection 0..18) -- normalized to a 0-100% bar so
+// they're visually comparable, with the real point value labeled alongside.
+function WinProbabilityBreakdown({ customer }: { customer: Customer }) {
+  const rows: { label: string; value: number; min: number; max: number; hint: string }[] = [
+    { label: 'Stage momentum', value: customer.win_probability_momentum ?? 0, min: -10, max: 30, hint: 'Faster than typical pace for this stage = positive' },
+    { label: 'Contact recency', value: customer.win_probability_recency ?? 0, min: -30, max: 30, hint: 'Decays the longer since last contact' },
+    { label: 'Profile completeness', value: customer.win_probability_completeness ?? 0, min: 0, max: 18, hint: 'Goal + protein + dietary preference filled in' },
+    { label: 'Objection logged', value: customer.win_probability_objection ?? 0, min: 0, max: 18, hint: customer.biggest_hurdle || 'No objection logged yet' },
+  ]
+  return (
+    <div className="space-y-2 mt-1">
+      {rows.map((r) => {
+        const pct = clampPct(((r.value - r.min) / (r.max - r.min)) * 100)
+        const positive = r.value >= 0
+        return (
+          <div key={r.label}>
+            <div className="flex items-center justify-between text-[10px] mb-0.5">
+              <span className="font-bold text-[#4B2B1D]">{r.label}</span>
+              <span className={`font-bold ${positive ? 'text-[#16A34A]' : 'text-[#D62F3D]'}`}>{r.value > 0 ? `+${r.value}` : r.value}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-[#F0EAE0] overflow-hidden">
+              <div className={`h-1.5 rounded-full ${positive ? 'bg-[#16A34A]' : 'bg-[#D62F3D]'}`} style={{ width: `${pct}%` }} />
+            </div>
+            <p className="text-[9px] text-[#9A7E6F] mt-0.5 truncate">{r.hint}</p>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+function clampPct(n: number) {
+  return Math.max(4, Math.min(100, n))
+}
+
+// The one thing used everywhere conversion_probability used to be a flat
+// number: a ring + trend arrow, click to expand the real breakdown.
+function WinProbabilityBadge({ customer, size = 44, compact = false }: { customer: Customer; size?: number; compact?: boolean }) {
+  const [open, setOpen] = useState(false)
+  const score = Math.round(customer.conversion_probability || 0)
+  return (
+    <div onClick={(e) => e.stopPropagation()} className={compact ? 'w-full' : undefined}>
+      <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-2 group">
+        <WinProbabilityRing score={score} size={size} />
+        {!compact && (
+          <div className="text-left">
+            <p className="text-[10px] font-bold text-[#755B4C] group-hover:text-[#2E527F]">Win Probability</p>
+            <WinProbabilityTrend score={score} prev={customer.conversion_probability_prev} />
+          </div>
+        )}
+        {compact && <WinProbabilityTrend score={score} prev={customer.conversion_probability_prev} />}
+        <ChevronDown className={`h-3.5 w-3.5 text-[#9A7E6F] transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className={`mt-2 rounded-lg bg-[#FBF7F0] border border-[#E4D8C9] p-3 ${compact ? 'w-full' : 'w-64'}`}>
+          <WinProbabilityBreakdown customer={customer} />
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -758,8 +882,20 @@ export default function SalesPipelineProposal() {
   // `crm-tasks` (fetched, completed via the real endpoint) with the local
   // follow-up entries above (created here since there's no POST endpoint on
   // crm-tasks yet). One add row that stays open, not a modal. ----
-  const [realTasks, setRealTasks] = useState<{ id: number; title: string; customer_name: string | null; completed_at: string | null }[]>([])
+  type RealTask = {
+    id: number
+    customer_id: number | null
+    customer_name: string | null
+    title: string
+    description: string | null
+    completed_at: string | null
+    system_source: 'stale_flag' | 'win_probability_drop' | 'automation' | null
+    source_automation_rule_id: number | null
+  }
+  const [realTasks, setRealTasks] = useState<RealTask[]>([])
   const [newTaskText, setNewTaskText] = useState('')
+  const [savingTask, setSavingTask] = useState(false)
+  const [taskFilter, setTaskFilter] = useState<'all' | 'auto' | 'manual'>('all')
 
   const fetchRealTasks = async () => {
     try {
@@ -784,12 +920,40 @@ export default function SalesPipelineProposal() {
     }
   }
 
-  const addQuickTask = () => {
+  // Real now -- POST /api/admin/crm-tasks was the missing piece that used to
+  // force manually-added tasks to live only in local followUps state (gone
+  // on refresh). Now they're real rows, same as the auto-flagged ones.
+  const addQuickTask = async () => {
     const text = newTaskText.trim()
-    if (!text) return
-    setFollowUps((prev) => [{ customerId: -Date.now(), name: text, note: '', createdAt: new Date().toISOString() }, ...prev])
-    setNewTaskText('')
+    if (!text || savingTask) return
+    setSavingTask(true)
+    try {
+      const res = await axios.post(
+        `${apiUrl}/api/admin/crm-tasks`,
+        { title: text },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      setRealTasks((prev) => [res.data.data, ...prev])
+      setNewTaskText('')
+    } catch (error) {
+      console.error('Error creating task:', error)
+    } finally {
+      setSavingTask(false)
+    }
   }
+
+  const taskSourceTag = (t: RealTask): { label: string; bg: string; text: string } => {
+    if (t.system_source === 'stale_flag') return { label: 'Auto · Stale', bg: '#FFF0E6', text: '#C97C34' }
+    if (t.system_source === 'win_probability_drop') return { label: 'Auto · WP drop', bg: '#FFE6EC', text: '#C21E3C' }
+    if (t.system_source === 'automation' || t.source_automation_rule_id) return { label: 'Auto · Sequence', bg: '#E3F3FF', text: '#1E6BA8' }
+    return { label: 'Manual', bg: '#F5F0E8', text: '#755B4C' }
+  }
+
+  const filteredRealTasks = realTasks.filter((t) => {
+    if (taskFilter === 'all') return true
+    const isAuto = !!t.system_source || !!t.source_automation_rule_id
+    return taskFilter === 'auto' ? isAuto : !isAuto
+  })
 
   // ---- new: Send & Automate -- one action instead of three separate
   // sections to browse. Targets whoever's currently ticked, or the whole
@@ -830,6 +994,87 @@ export default function SalesPipelineProposal() {
       setEnrolling(false)
     }
   }
+
+  // ---- new: Sales Assets library -- a real catalog + tracking layer over
+  // wherever the files actually live (a Google Drive share link by default,
+  // per the build spec's open question), not a file store of its own.
+  // Categories and asset_type are fixed to what the sales_assets CHECK
+  // constraint allows -- see migrations/create_pipeline_intelligence.sql. ----
+  type SalesAsset = {
+    id: number
+    title: string
+    category: 'pricing_offers' | 'menus_samples' | 'social_proof' | 'partnerships'
+    asset_type: 'pdf' | 'image' | 'video' | 'link'
+    source_url: string
+    credit: string | null
+    created_at: string
+    sent_count: string | number
+    scan_count: string | number
+    opened_count: string | number
+  }
+  const [salesAssets, setSalesAssets] = useState<SalesAsset[]>([])
+  const [assetCategoryFilter, setAssetCategoryFilter] = useState<SalesAsset['category'] | 'all'>('all')
+  const [showAddAsset, setShowAddAsset] = useState(false)
+  const [newAsset, setNewAsset] = useState({ title: '', category: 'pricing_offers' as SalesAsset['category'], asset_type: 'link' as SalesAsset['asset_type'], source_url: '', credit: '' })
+  const [savingAsset, setSavingAsset] = useState(false)
+  const [sharingAssetId, setSharingAssetId] = useState<number | null>(null)
+  const [copiedAssetId, setCopiedAssetId] = useState<number | null>(null)
+
+  const fetchSalesAssets = async () => {
+    try {
+      const res = await axios.get(`${apiUrl}/api/admin/sales-assets`, { headers: { Authorization: `Bearer ${token}` } })
+      setSalesAssets(res.data.data || [])
+    } catch (error) {
+      console.error('Error fetching sales assets:', error)
+    }
+  }
+  useEffect(() => {
+    fetchSalesAssets()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const addSalesAsset = async () => {
+    if (!newAsset.title.trim() || !newAsset.source_url.trim() || savingAsset) return
+    setSavingAsset(true)
+    try {
+      const res = await axios.post(
+        `${apiUrl}/api/admin/sales-assets`,
+        { ...newAsset, title: newAsset.title.trim(), source_url: newAsset.source_url.trim(), credit: newAsset.credit.trim() || null },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      setSalesAssets((prev) => [{ ...res.data.data, sent_count: 0, scan_count: 0, opened_count: 0 }, ...prev])
+      setNewAsset({ title: '', category: 'pricing_offers', asset_type: 'link', source_url: '', credit: '' })
+      setShowAddAsset(false)
+    } catch (error) {
+      console.error('Error creating sales asset:', error)
+    } finally {
+      setSavingAsset(false)
+    }
+  }
+
+  // Mints a fresh trackable link every click rather than reusing one -- each
+  // share row is its own open-event bucket, which is what lets a future pass
+  // tie an open back to the specific customer/context it was sent in.
+  const shareSalesAsset = async (asset: SalesAsset) => {
+    setSharingAssetId(asset.id)
+    try {
+      const res = await axios.post(
+        `${apiUrl}/api/admin/sales-assets/${asset.id}/share`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      await navigator.clipboard.writeText(res.data.share_url)
+      setCopiedAssetId(asset.id)
+      setTimeout(() => setCopiedAssetId((id) => (id === asset.id ? null : id)), 2000)
+      fetchSalesAssets()
+    } catch (error) {
+      console.error('Error sharing sales asset:', error)
+    } finally {
+      setSharingAssetId(null)
+    }
+  }
+
+  const filteredSalesAssets = assetCategoryFilter === 'all' ? salesAssets : salesAssets.filter((a) => a.category === assetCategoryFilter)
 
   // ---- new: quick add lead modal ----
   const [showQuickAdd, setShowQuickAdd] = useState(false)
@@ -924,6 +1169,50 @@ export default function SalesPipelineProposal() {
       if (list.length > 1) list.forEach((id) => ids.add(id))
     }
     return ids
+  }, [customers])
+
+  // Pipeline Intelligence strip. v1, computed client-side from what
+  // GET /customers already returns -- no cohort/history table, so Win Rate
+  // and Avg Sales Cycle are both approximations built on stage_entered_at
+  // (which only tells you when a customer entered its CURRENT stage):
+  //   - Win Rate: of everyone currently sitting in trial or who converted
+  //     out of it into active within the last 90 days, what share converted.
+  //     Customers who converted more than 90 days ago age out of the
+  //     numerator on purpose -- this is a recent-rate, not a lifetime one.
+  //   - Avg Sales Cycle: avg(stage_entered_at - created_at) for customers
+  //     currently active. Doesn't capture anyone who churned before this
+  //     column existed or after leaving active, which is the real limit of
+  //     computing this without a full stage-history log.
+  const pipelineIntelligence = useMemo(() => {
+    const now = Date.now()
+    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000
+
+    const recentlyWon = customers.filter((c) => {
+      if (c.sales_pipeline_stage !== 'active' || !c.stage_entered_at) return false
+      return now - new Date(c.stage_entered_at).getTime() <= ninetyDaysMs
+    })
+    const stillInTrial = customers.filter((c) => c.sales_pipeline_stage === 'trial')
+    const trialCohort = recentlyWon.length + stillInTrial.length
+    const winRate = trialCohort > 0 ? Math.round((recentlyWon.length / trialCohort) * 100) : null
+
+    const activeWithCycle = customers.filter((c) => c.sales_pipeline_stage === 'active' && c.stage_entered_at && c.created_at)
+    const avgCycleDays =
+      activeWithCycle.length > 0
+        ? Math.round(
+            activeWithCycle.reduce((sum, c) => {
+              const days = (new Date(c.stage_entered_at as string).getTime() - new Date(c.created_at as string).getTime()) / (24 * 60 * 60 * 1000)
+              return sum + Math.max(0, days)
+            }, 0) / activeWithCycle.length
+          )
+        : null
+
+    const total = customers.length
+    const funnel = STAGE_ORDER.map((stage) => {
+      const count = customers.filter((c) => c.sales_pipeline_stage === stage).length
+      return { stage, count, pct: total > 0 ? Math.round((count / total) * 100) : 0 }
+    })
+
+    return { winRate, avgCycleDays, funnel, trialCohortSize: trialCohort }
   }, [customers])
 
   const filteredCustomers = useMemo(() => {
@@ -1235,6 +1524,48 @@ export default function SalesPipelineProposal() {
         </div>
       </div>
 
+      {/* Pipeline Intelligence -- Win Rate, Avg Sales Cycle, and the current
+          stage funnel, all real numbers computed from what's already loaded.
+          See the pipelineIntelligence useMemo for what these approximate and
+          why (no stage-history log yet, so this is a v1 read, not a cohort
+          funnel). */}
+      <div className="rounded-2xl border border-[#E4D8C9] bg-[rgba(251,247,240,0.9)] p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-extrabold text-[#4B2B1D]">Pipeline Intelligence</h3>
+          <p className="text-[10px] text-[#9A7E6F]">Win Rate & Avg Sales Cycle are last-90-day reads, not lifetime</p>
+        </div>
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="rounded-xl bg-white border border-[#E4D8C9] px-4 py-3">
+            <p className="text-xs font-bold text-[#755B4C]">Win Rate (Trial → Active, 90d)</p>
+            <p className="text-2xl font-extrabold text-[#16A34A] mt-1">
+              {pipelineIntelligence.winRate == null ? '—' : `${pipelineIntelligence.winRate}%`}
+            </p>
+            <p className="text-[10px] text-[#9A7E6F] mt-0.5">
+              {pipelineIntelligence.trialCohortSize > 0 ? `of ${pipelineIntelligence.trialCohortSize} in the trial cohort` : 'No trial activity yet'}
+            </p>
+          </div>
+          <div className="rounded-xl bg-white border border-[#E4D8C9] px-4 py-3">
+            <p className="text-xs font-bold text-[#755B4C]">Avg Sales Cycle</p>
+            <p className="text-2xl font-extrabold text-[#2E527F] mt-1">
+              {pipelineIntelligence.avgCycleDays == null ? '—' : `${pipelineIntelligence.avgCycleDays}d`}
+            </p>
+            <p className="text-[10px] text-[#9A7E6F] mt-0.5">Lead created → entered Active</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          {pipelineIntelligence.funnel.map((f, i) => (
+            <React.Fragment key={f.stage}>
+              <div className="flex-1 rounded-lg px-2 py-2 text-center" style={{ backgroundColor: STAGE_COLORS[f.stage]?.bg, border: `1px solid ${STAGE_COLORS[f.stage]?.border}` }}>
+                <p className="text-[9px] font-bold uppercase tracking-wide" style={{ color: STAGE_COLORS[f.stage]?.text }}>{STAGE_LABEL[f.stage]}</p>
+                <p className="text-sm font-extrabold mt-0.5" style={{ color: STAGE_COLORS[f.stage]?.text }}>{f.count}</p>
+                <p className="text-[9px] text-[#9A7E6F]">{f.pct}%</p>
+              </div>
+              {i < pipelineIntelligence.funnel.length - 1 && <ChevronRight className="h-3 w-3 text-[#C9BBA8] flex-shrink-0" />}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+
       {/* Tabs */}
       <div className="flex gap-2 border-b border-[#D8CDBE] overflow-x-auto">
         {[
@@ -1536,7 +1867,7 @@ export default function SalesPipelineProposal() {
                           </div>
                           <div className="mt-2 flex items-center justify-between text-[10px] text-[#755B4C]">
                             <span>${getLifetimeValue(customer.lifetime_value_cents || 0)}</span>
-                            <span>{Math.round(customer.conversion_probability || 0)}% win</span>
+                            <WinProbabilityBadge customer={customer} size={22} compact />
                           </div>
                           <div className="mt-2 flex items-center justify-between border-t border-[#F0EAE0] pt-1.5">
                             <button
@@ -1657,10 +1988,9 @@ export default function SalesPipelineProposal() {
                       </div>
 
                       <div className="rounded-lg bg-white p-2 text-center">
-                        <p className="text-[#755B4C] text-xs font-bold">Win Probability</p>
-                        <p className="text-lg font-extrabold text-[#16A34A]">{Math.round(customer.conversion_probability || 0)}%</p>
-                        <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                          <div className="bg-[#16A34A] h-1.5 rounded-full" style={{ width: `${customer.conversion_probability || 0}%` }}></div>
+                        <p className="text-[#755B4C] text-xs font-bold mb-1">Win Probability</p>
+                        <div className="flex items-center justify-center">
+                          <WinProbabilityBadge customer={customer} size={40} compact />
                         </div>
                       </div>
                     </div>
@@ -2371,12 +2701,32 @@ export default function SalesPipelineProposal() {
           />
           <button
             onClick={addQuickTask}
-            disabled={!newTaskText.trim()}
+            disabled={!newTaskText.trim() || savingTask}
             className="rounded-lg bg-[#2E527F] text-white px-4 py-2.5 text-sm font-bold hover:bg-[#24466E] disabled:opacity-40 transition"
           >
-            Add
+            {savingTask ? 'Adding...' : 'Add'}
           </button>
         </div>
+
+        {realTasks.length > 0 && (
+          <div className="flex gap-2 mb-3">
+            {([
+              ['all', `All (${realTasks.length})`],
+              ['auto', `Auto (${realTasks.filter((t) => !!t.system_source || !!t.source_automation_rule_id).length})`],
+              ['manual', `Manual (${realTasks.filter((t) => !t.system_source && !t.source_automation_rule_id).length})`],
+            ] as [typeof taskFilter, string][]).map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setTaskFilter(id)}
+                className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
+                  taskFilter === id ? 'bg-[#2E527F] text-white' : 'bg-[#FBF6EE] border border-[#B9A88F] text-[#4B2B1D] hover:bg-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {followUps.length === 0 && realTasks.length === 0 ? (
           <p className="text-xs text-[#755B4C]">Nothing open. Tasks you add here, and anyone you mark "✓ Done" on the board above, show up in this list.</p>
@@ -2415,17 +2765,27 @@ export default function SalesPipelineProposal() {
                 )}
               </div>
             ))}
-            {realTasks.map((t) => (
-              <div key={`t-${t.id}`} className="rounded-xl border border-[#E4D8C9] bg-white p-3 flex items-start gap-3">
-                <button onClick={() => completeRealTask(t.id)} className="mt-0.5 flex-shrink-0 text-[#755B4C] hover:text-[#16A34A]" title="Mark done">
-                  <Square className="h-4 w-4" />
-                </button>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-extrabold text-[#4B2B1D]">{t.title}</p>
-                  {t.customer_name && <p className="text-[10px] text-[#9A7E6F]">{t.customer_name}</p>}
+            {filteredRealTasks.length === 0 && realTasks.length > 0 && (
+              <p className="text-xs text-[#755B4C] py-2">No tasks match this filter.</p>
+            )}
+            {filteredRealTasks.map((t) => {
+              const tag = taskSourceTag(t)
+              return (
+                <div key={`t-${t.id}`} className="rounded-xl border border-[#E4D8C9] bg-white p-3 flex items-start gap-3">
+                  <button onClick={() => completeRealTask(t.id)} className="mt-0.5 flex-shrink-0 text-[#755B4C] hover:text-[#16A34A]" title="Mark done">
+                    <Square className="h-4 w-4" />
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-extrabold text-[#4B2B1D] flex items-center gap-1.5 flex-wrap">
+                      {t.title}
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: tag.bg, color: tag.text }}>{tag.label}</span>
+                    </p>
+                    {t.description && <p className="text-[10.5px] text-[#755B4C] mt-0.5">{t.description}</p>}
+                    {t.customer_name && <p className="text-[10px] text-[#9A7E6F] mt-0.5">{t.customer_name}</p>}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -2504,6 +2864,136 @@ export default function SalesPipelineProposal() {
                   </div>
                 </div>
               </div>
+            </div>
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title="Sales Assets"
+            icon="📁"
+            subtitle="One-click trackable links for pricing sheets, sample menus, testimonials -- see who's actually opened what"
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex gap-2 flex-wrap">
+                  {([
+                    ['all', `All (${salesAssets.length})`],
+                    ...(['pricing_offers', 'menus_samples', 'social_proof', 'partnerships'] as SalesAsset['category'][]).map(
+                      (c) => [c, `${ASSET_CATEGORY_LABEL[c]} (${salesAssets.filter((a) => a.category === c).length})`] as [string, string]
+                    ),
+                  ] as [SalesAsset['category'] | 'all', string][]).map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => setAssetCategoryFilter(id)}
+                      className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
+                        assetCategoryFilter === id ? 'bg-[#2E527F] text-white' : 'bg-[#FBF6EE] border border-[#B9A88F] text-[#4B2B1D] hover:bg-white'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setShowAddAsset((v) => !v)}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#2E527F] text-white px-3 py-2 text-xs font-bold hover:bg-[#24466E] transition"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Asset
+                </button>
+              </div>
+
+              {showAddAsset && (
+                <div className="rounded-xl border border-[#3E6594] bg-[#EAF0F7] p-4 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      value={newAsset.title}
+                      onChange={(e) => setNewAsset({ ...newAsset, title: e.target.value })}
+                      placeholder="Title (e.g. 'Fall Pricing Sheet')"
+                      className="rounded-lg border border-[#B9A88F] bg-white px-3 py-2 text-sm text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                    />
+                    <input
+                      type="text"
+                      value={newAsset.credit}
+                      onChange={(e) => setNewAsset({ ...newAsset, credit: e.target.value })}
+                      placeholder="Credit, optional (e.g. 'shot by Daniela')"
+                      className="rounded-lg border border-[#B9A88F] bg-white px-3 py-2 text-sm text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                    />
+                    <select
+                      value={newAsset.category}
+                      onChange={(e) => setNewAsset({ ...newAsset, category: e.target.value as SalesAsset['category'] })}
+                      className="rounded-lg border border-[#B9A88F] bg-white px-3 py-2 text-sm text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                    >
+                      {(['pricing_offers', 'menus_samples', 'social_proof', 'partnerships'] as SalesAsset['category'][]).map((c) => (
+                        <option key={c} value={c}>{ASSET_CATEGORY_LABEL[c]}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={newAsset.asset_type}
+                      onChange={(e) => setNewAsset({ ...newAsset, asset_type: e.target.value as SalesAsset['asset_type'] })}
+                      className="rounded-lg border border-[#B9A88F] bg-white px-3 py-2 text-sm text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                    >
+                      <option value="link">Link</option>
+                      <option value="pdf">PDF</option>
+                      <option value="image">Image</option>
+                      <option value="video">Video</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={newAsset.source_url}
+                      onChange={(e) => setNewAsset({ ...newAsset, source_url: e.target.value })}
+                      placeholder="Source URL (e.g. a Google Drive share link)"
+                      className="col-span-2 rounded-lg border border-[#B9A88F] bg-white px-3 py-2 text-sm text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setShowAddAsset(false)} className="rounded-lg px-3 py-2 text-xs font-bold text-[#755B4C] hover:bg-white/50 transition">Cancel</button>
+                    <button
+                      onClick={addSalesAsset}
+                      disabled={!newAsset.title.trim() || !newAsset.source_url.trim() || savingAsset}
+                      className="rounded-lg bg-[#2E527F] text-white px-4 py-2 text-xs font-bold hover:bg-[#24466E] disabled:opacity-40 transition"
+                    >
+                      {savingAsset ? 'Saving...' : 'Save Asset'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {filteredSalesAssets.length === 0 ? (
+                <p className="text-xs text-[#755B4C]">No assets in this category yet. Add a pricing sheet, sample menu, or testimonial to start tracking who opens what.</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {filteredSalesAssets.map((asset) => {
+                    const Icon = ASSET_TYPE_ICON[asset.asset_type] || FileText
+                    const sent = Number(asset.sent_count) || 0
+                    const scans = Number(asset.scan_count) || 0
+                    const opened = Number(asset.opened_count) || 0
+                    return (
+                      <div key={asset.id} className="rounded-xl border border-[#E4D8C9] bg-white p-3 flex items-start gap-3">
+                        <div className="rounded-lg bg-[#EAF0F7] p-2 flex-shrink-0">
+                          <Icon className="h-4 w-4 text-[#2E527F]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-extrabold text-[#4B2B1D] truncate">{asset.title}</p>
+                          <p className="text-[10px] text-[#9A7E6F]">{ASSET_CATEGORY_LABEL[asset.category]}{asset.credit ? ` · ${asset.credit}` : ''}</p>
+                          <div className="flex items-center gap-3 mt-1.5 text-[10px] text-[#755B4C]">
+                            <span className="flex items-center gap-1"><Send className="h-2.5 w-2.5" /> {sent} sent</span>
+                            <span className="flex items-center gap-1"><Eye className="h-2.5 w-2.5" /> {sent > 0 ? `${opened} opened` : 'N/A'}</span>
+                            {scans > 0 && <span>{scans} scanned</span>}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => shareSalesAsset(asset)}
+                          disabled={sharingAssetId === asset.id}
+                          className="flex items-center gap-1 rounded-lg border border-[#B9A88F] px-2.5 py-1.5 text-[10px] font-bold text-[#2E527F] hover:bg-[#EAF0F7] disabled:opacity-40 transition flex-shrink-0"
+                          title="Create a trackable link and copy it"
+                        >
+                          <Copy className="h-3 w-3" />
+                          {copiedAssetId === asset.id ? 'Copied!' : sharingAssetId === asset.id ? '...' : 'Copy link'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </CollapsibleSection>
       </div>
