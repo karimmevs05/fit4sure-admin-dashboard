@@ -1633,7 +1633,7 @@ function FinancialsPage() {
                     {automationRules.length > 0 ? (
                       <>"Collect" enrolls the customer into your Automations rule ({automationRules[0].name}).</>
                     ) : (
-                      <>No collection automation set up yet — create one in <button onClick={() => window.location.assign('/customers')} className="underline font-bold">Customers → Automations</button>.</>
+                      <>No collection automation set up yet — create one in <button onClick={() => window.location.assign('/customers')} className="underline font-bold">Customers → Send &amp; Automate</button>.</>
                     )}
                   </div>
                   {pendingBalancesLoading ? (
