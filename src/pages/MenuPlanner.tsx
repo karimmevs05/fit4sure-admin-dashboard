@@ -5,6 +5,7 @@ import RecipePlanSection, { rowKey } from '../components/RecipePlanSection'
 import type { Block, PlanRecipeRow } from '../components/RecipePlanSection'
 import { PlateCostSimulator } from '../components/PlateCostSimulator'
 import { formatIngredientWeight } from '../utils/unitConversion'
+import { CATEGORY_GROUP, GROUP_ORDER } from '../utils/categoryGroups'
 import WeeklyPrepPage from './WeeklyPrep'
 
 const GRAMS_PER_POUND = 455
@@ -13,20 +14,6 @@ type MenuItem = { id: number; name: string; category: string; recipeId: number |
 type CurrentWeekMenu = { monday: MenuItem[]; thursday: MenuItem[] }
 
 const formatMinutes = (mins: number) => (mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`)
-
-// Coarser than the raw recipe category (beef/chicken/turkey all read as
-// "Proteins" here) -- This Week's Menu groups by this bucket so a 14-recipe
-// week collapses to a handful of rows instead of one per recipe.
-const CATEGORY_GROUP: Record<string, string> = {
-  beef: 'Proteins', chicken: 'Proteins', turkey: 'Proteins',
-  carbohydrates: 'Carbs',
-  vegetables: 'Veggies',
-  sauces: 'Sauces',
-  breakfast: 'Breakfast',
-  beverage: 'Beverages',
-  custom: 'Custom',
-}
-const GROUP_ORDER = ['Proteins', 'Carbs', 'Veggies', 'Sauces', 'Breakfast', 'Beverages', 'Custom']
 
 type PrepIngredient = {
   inventoryId: number

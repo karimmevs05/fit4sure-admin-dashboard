@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import {
   ChevronLeft,
@@ -297,14 +298,30 @@ export default function OperationsHubPage() {
   const apiUrl = import.meta.env.VITE_API_BASE_URL
   const authConfig = { headers: { Authorization: `Bearer ${token}` } }
 
-  const [weekStart, setWeekStart] = useState<string>(() => getWeekStartOf(new Date()))
+  // ?week=YYYY-MM-DD lets another page (Weekly Prep's "View Kitchen Tasks")
+  // deep-link straight to the week it's already looking at, instead of
+  // always landing on whatever week is current today.
+  const [searchParams] = useSearchParams()
+  const initialWeekStart = useMemo(() => {
+    const requested = searchParams.get('week')
+    return requested && /^\d{4}-\d{2}-\d{2}$/.test(requested) ? requested : getWeekStartOf(new Date())
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [weekStart, setWeekStart] = useState<string>(initialWeekStart)
   const [weekTasks, setWeekTasks] = useState<Record<OperationalDay, Task[]>>(emptyWeekTasks())
   const [loadingWeek, setLoadingWeek] = useState(true)
 
-  const [selectedDay, setSelectedDay] = useState<OperationalDay>(() => operationalDayForToday(getWeekStartOf(new Date())))
+  const [selectedDay, setSelectedDay] = useState<OperationalDay>(() => operationalDayForToday(initialWeekStart))
   const [dayDepartments, setDayDepartments] = useState<Record<string, Task[]>>({})
   const [loadingDay, setLoadingDay] = useState(true)
-  const [collapsedDepartments, setCollapsedDepartments] = useState<Record<string, boolean>>({})
+  // Arriving via ?week= (Weekly Prep's "View Kitchen Tasks" link) means
+  // Kitchen is specifically what's being followed up on -- collapse every
+  // other department so it doesn't get lost in the rest of the day's board.
+  const [collapsedDepartments, setCollapsedDepartments] = useState<Record<string, boolean>>(() =>
+    searchParams.get('week')
+      ? Object.fromEntries(DEPARTMENTS.filter((d) => d !== 'Kitchen').map((d) => [d, true]))
+      : {}
+  )
 
   const [staff, setStaff] = useState<Staff[]>([])
   const [todayOverview, setTodayOverview] = useState<TodayOverview | null>(null)

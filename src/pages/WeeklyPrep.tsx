@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
-import { ChevronLeft, AlertCircle, Package, DollarSign, TrendingUp, CheckCircle2, Link2, Link2Off } from 'lucide-react'
+import { ChevronLeft, DollarSign, TrendingUp, ChefHat, ExternalLink, Link2, Link2Off } from 'lucide-react'
 import { formatIngredientWeight } from '../utils/unitConversion'
+import { CATEGORY_GROUP, GROUP_ORDER } from '../utils/categoryGroups'
 
 type MenuItemRow = {
   menu_id: number
@@ -71,9 +72,10 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
   const [prepData, setPrepData] = useState<PrepData | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [fulfillment, setFulfillment] = useState<Record<number, boolean>>({})
   const [selectedItem, setSelectedItem] = useState<MenuItemDetail | null>(null)
   const [itemLoading, setItemLoading] = useState(false)
+  const [openMenuGroup, setOpenMenuGroup] = useState<string | null>(null)
+  const [kitchenProgress, setKitchenProgress] = useState<{ tasksDone: number; tasksTotal: number; checklistDone: number; checklistTotal: number } | null>(null)
 
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
@@ -84,7 +86,33 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
 
   useEffect(() => {
     fetchPrepData()
+    fetchKitchenProgress()
   }, [currentWeek])
+
+  // Real completion, not the old local-only "mark as ready" toggle (which
+  // never persisted -- a refresh silently forgot every status). The actual
+  // fulfillment tracking already happens in Operations Hub, on the Kitchen
+  // batch/production tasks weekly_recipe_plan generates -- this just reads
+  // that same real state instead of keeping a second, fake copy of it.
+  const fetchKitchenProgress = async () => {
+    try {
+      const response = await axios.get(`${apiUrl}/api/admin/tasks/week/${currentWeek}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const allTasks = Object.values(response.data.data.days as Record<string, any[]>).flat()
+      const kitchenPlanTasks = allTasks.filter(
+        (t) => t.department === 'Kitchen' && typeof t.source_type === 'string' && t.source_type.startsWith('weekly_recipe_plan')
+      )
+      setKitchenProgress({
+        tasksDone: kitchenPlanTasks.filter((t) => t.status === 'completed').length,
+        tasksTotal: kitchenPlanTasks.length,
+        checklistDone: kitchenPlanTasks.reduce((sum, t) => sum + (parseInt(t.checklist_done, 10) || 0), 0),
+        checklistTotal: kitchenPlanTasks.reduce((sum, t) => sum + (parseInt(t.checklist_total, 10) || 0), 0),
+      })
+    } catch (error) {
+      console.error('Error fetching kitchen progress:', error)
+    }
+  }
 
   const fetchAllWeeks = async () => {
     try {
@@ -161,38 +189,46 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
           </button>
           <div>
             <h1 className="text-3xl font-extrabold text-[#4B2B1D]">Weekly Prep: {formatWeekLabel(prepData.week)}</h1>
-            <p className="mt-1 text-sm text-[#755B4C]">Complete meal prep planning and fulfillment tracking</p>
+            <p className="mt-1 text-sm text-[#755B4C]">What's actually been ordered this week, and what it takes to fulfill it</p>
           </div>
         </div>
 
-        {/* Week Navigation */}
-        {allWeeks.length > 0 && (
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                const idx = allWeeks.findIndex((w) => w.week === currentWeek)
-                if (idx < allWeeks.length - 1) setCurrentWeek(allWeeks[idx + 1].week)
-              }}
-              disabled={allWeeks.findIndex((w) => w.week === currentWeek) >= allWeeks.length - 1}
-              className="rounded-lg border border-[#2E527F] bg-white px-3 py-2 text-[#4B2B1D] font-medium hover:bg-[#F8F2E8] disabled:opacity-50"
-            >
-              ← Prev
-            </button>
-            <span className="text-sm font-bold text-[#755B4C]">
-              {allWeeks.findIndex((w) => w.week === currentWeek) + 1} of {allWeeks.length}
-            </span>
-            <button
-              onClick={() => {
-                const idx = allWeeks.findIndex((w) => w.week === currentWeek)
-                if (idx > 0) setCurrentWeek(allWeeks[idx - 1].week)
-              }}
-              disabled={allWeeks.findIndex((w) => w.week === currentWeek) <= 0}
-              className="rounded-lg border border-[#2E527F] bg-white px-3 py-2 text-[#4B2B1D] font-medium hover:bg-[#F8F2E8] disabled:opacity-50"
-            >
-              Next →
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => window.location.assign('/menu-planner')}
+            className="flex items-center gap-1.5 rounded-lg border border-[#B9A88F] bg-[#FBF6EE] px-3 py-2 text-sm font-bold text-[#2E527F] transition hover:border-[#3E6594] hover:bg-[#EDF2F7]"
+          >
+            <ExternalLink className="h-3.5 w-3.5" /> Menu Planner
+          </button>
+          {/* Week Navigation */}
+          {allWeeks.length > 0 && (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  const idx = allWeeks.findIndex((w) => w.week === currentWeek)
+                  if (idx < allWeeks.length - 1) setCurrentWeek(allWeeks[idx + 1].week)
+                }}
+                disabled={allWeeks.findIndex((w) => w.week === currentWeek) >= allWeeks.length - 1}
+                className="rounded-lg border border-[#2E527F] bg-white px-3 py-2 text-[#4B2B1D] font-medium hover:bg-[#F8F2E8] disabled:opacity-50"
+              >
+                ← Prev
+              </button>
+              <span className="text-sm font-bold text-[#755B4C]">
+                {allWeeks.findIndex((w) => w.week === currentWeek) + 1} of {allWeeks.length}
+              </span>
+              <button
+                onClick={() => {
+                  const idx = allWeeks.findIndex((w) => w.week === currentWeek)
+                  if (idx > 0) setCurrentWeek(allWeeks[idx - 1].week)
+                }}
+                disabled={allWeeks.findIndex((w) => w.week === currentWeek) <= 0}
+                className="rounded-lg border border-[#2E527F] bg-white px-3 py-2 text-[#4B2B1D] font-medium hover:bg-[#F8F2E8] disabled:opacity-50"
+              >
+                Next →
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {noOrdersThisWeek && (
@@ -216,16 +252,29 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
+        <button
+          onClick={() => window.location.assign(`/operational-optimization?week=${currentWeek}`)}
+          className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4 text-left transition hover:border-[#3E6594] hover:shadow-md"
+        >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-[#755B4C]">Ingredients Needed</p>
-              <p className="text-3xl font-extrabold text-[#2E527F]">{prepData.summary.total_ingredients}</p>
-              <p className="mt-1 text-[11px] text-[#2E527F]">from recipe-linked items only</p>
+              <p className="text-xs text-[#755B4C]">Kitchen Prep Progress</p>
+              {kitchenProgress && kitchenProgress.tasksTotal > 0 ? (
+                <>
+                  <p className="text-3xl font-extrabold text-[#2E527F]">
+                    {kitchenProgress.checklistDone}/{kitchenProgress.checklistTotal}
+                  </p>
+                  <p className="mt-1 text-[11px] text-[#2E527F] flex items-center gap-1">
+                    {kitchenProgress.tasksDone}/{kitchenProgress.tasksTotal} tasks done · Ops Hub <ExternalLink className="h-2.5 w-2.5" />
+                  </p>
+                </>
+              ) : (
+                <p className="mt-1 text-sm text-[#9A7E6F]">No Kitchen tasks generated yet</p>
+              )}
             </div>
-            <Package className="h-8 w-8 text-[#0EA5E9]" />
+            <ChefHat className="h-8 w-8 text-[#D97706]" />
           </div>
-        </div>
+        </button>
 
         <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
           <div className="flex items-center justify-between">
@@ -254,120 +303,122 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
         </div>
       </div>
 
-      {/* Menu Items Overview */}
+      {/* Menu This Week -- grouped the same way Menu Planner's This Week
+          section groups the recipe plan (Proteins/Carbs/Veggies/...), so a
+          chef sees the two views the same way whichever page they opened
+          Weekly Prep from. This is real ordered quantity, not forecasted
+          lb, so the numbers won't always match Menu Planner exactly -- that
+          gap (orders vs. forecast) is itself useful information. */}
       <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
         <h2 className="mb-4 text-lg font-extrabold text-[#4B2B1D]">Menu This Week</h2>
         {prepData.recipes.length === 0 ? (
           <p className="text-sm text-[#2E527F]">No menu items ordered this week.</p>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {prepData.recipes.map((item) => {
-              const dayColor =
-                item.day_of_week?.toLowerCase() === 'monday'
-                  ? 'bg-[#16A34A]'
-                  : item.day_of_week?.toLowerCase() === 'thursday'
-                  ? 'bg-[#D97706]'
-                  : 'bg-[#0EA5E9]'
+          <div className="space-y-5">
+            {(['monday', 'thursday', 'other'] as const).map((dayKey) => {
+              const dayColor = dayKey === 'monday' ? '#16A34A' : dayKey === 'thursday' ? '#D97706' : '#0EA5E9'
+              const dayLabel = dayKey === 'monday' ? 'Monday' : dayKey === 'thursday' ? 'Thursday' : 'Breakfast / Other'
+              const dayItems = prepData.recipes.filter((r) => {
+                const d = r.day_of_week?.toLowerCase()
+                return dayKey === 'other' ? d !== 'monday' && d !== 'thursday' : d === dayKey
+              })
+              if (dayItems.length === 0) return null
+
+              const groups = GROUP_ORDER.map((group) => {
+                const items = dayItems.filter((i) => (CATEGORY_GROUP[i.category || 'custom'] || 'Custom') === group)
+                return { group, items, qty: items.reduce((sum, i) => sum + (i.quantity || 0), 0) }
+              }).filter((g) => g.items.length > 0)
 
               return (
-                <button
-                  key={item.menu_id}
-                  onClick={() => fetchItemDetails(item.menu_id)}
-                  className="rounded-lg border border-[#E4D8C9] bg-white p-3 text-left transition hover:shadow-lg hover:border-[#3E6594]"
-                >
-                  <p className="font-semibold text-[#2E527F] text-sm">{item.name}</p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {item.day_of_week && (
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-bold text-white ${dayColor}`}>
-                        {item.day_of_week.charAt(0).toUpperCase() + item.day_of_week.slice(1)}
-                      </span>
-                    )}
-                    {item.category && (
-                      <span className="rounded bg-[#F3F4F6] px-2 py-1 text-xs font-bold text-[#4B2B1D]">
-                        {item.category}
-                      </span>
-                    )}
-                    <span className="rounded bg-[#EDF2F7] px-2 py-1 text-xs font-bold text-[#2E527F]">
-                      Qty: {item.quantity}
-                    </span>
+                <div key={dayKey}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: dayColor }}></div>
+                    <p className="text-sm font-bold" style={{ color: dayColor }}>{dayLabel}</p>
+                    <span className="text-[10px] font-bold text-[#9A7E6F]">{dayItems.length} item{dayItems.length === 1 ? '' : 's'}</span>
                   </div>
-                  <div className="mt-2">
-                    {item.recipe_linked ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#16834A]">
-                        <Link2 className="h-3 w-3" /> Recipe linked
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#2E527F]">
-                        <Link2Off className="h-3 w-3" /> No recipe linked
-                      </span>
-                    )}
+                  <div className="space-y-1.5">
+                    {groups.map(({ group, items, qty }) => {
+                      const groupKey = `${dayKey}:${group}`
+                      const isOpen = openMenuGroup === groupKey
+                      return (
+                        <div key={group} className="rounded-lg border border-[#E4D8C9] bg-white overflow-hidden">
+                          <button
+                            onClick={() => setOpenMenuGroup(isOpen ? null : groupKey)}
+                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+                          >
+                            <span className="text-xs font-bold text-[#4B2B1D]">{group}</span>
+                            <span className="flex items-center gap-2 flex-shrink-0 text-[10px] font-bold text-[#9A7E6F]">
+                              {items.length} recipe{items.length === 1 ? '' : 's'} · qty {qty}
+                              <span className="text-[#2E527F]">{isOpen ? '▲' : '▼'}</span>
+                            </span>
+                          </button>
+                          {isOpen && (
+                            <div className="border-t border-[#E4D8C9] divide-y divide-[#F0EAE0]">
+                              {items.map((item) => (
+                                <button
+                                  key={item.menu_id}
+                                  onClick={() => fetchItemDetails(item.menu_id)}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-left transition hover:bg-[#FBF7F0]"
+                                >
+                                  <p className="flex-1 truncate text-xs font-medium text-[#4B2B1D]">{item.name}</p>
+                                  <span title={item.recipe_linked ? 'Recipe linked' : 'No recipe linked'} className="flex-shrink-0">
+                                    {item.recipe_linked ? (
+                                      <Link2 className="h-3 w-3 text-[#16834A]" />
+                                    ) : (
+                                      <Link2Off className="h-3 w-3 text-[#9A7E6F]" />
+                                    )}
+                                  </span>
+                                  <p className="w-14 flex-shrink-0 text-right text-xs font-bold text-[#2E527F]">×{item.quantity}</p>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
-                </button>
+                </div>
               )
             })}
           </div>
         )}
       </div>
 
-      {/* Ingredients Needed */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-extrabold text-[#4B2B1D]">Ingredients Needed This Week</h2>
-
-        {prepData.ingredients.length === 0 ? (
-          <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6 text-sm text-[#2E527F]">
-            No recipe-linked menu items this week yet, so real ingredient needs can't be computed. Link a recipe to a
-            menu item in Menu Planner to see it here.
+      {/* Ingredients -- the full shortfall-vs-stock table now lives in Menu
+          Planner's Shopping List (grouped by store, with real cost totals
+          and editable store assignment), so this doesn't duplicate a
+          second, plainer copy of the same table. Just the headline numbers
+          plus a direct link to the real thing. */}
+      {prepData.ingredients.length === 0 ? (
+        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6 text-sm text-[#2E527F]">
+          No recipe-linked menu items this week yet, so real ingredient needs can't be computed. Link a recipe to a
+          menu item in Menu Planner to see it here.
+        </div>
+      ) : (
+        <button
+          onClick={() => window.location.assign('/menu-planner')}
+          className="w-full rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4 flex items-center justify-between gap-3 text-left transition hover:border-[#3E6594] hover:shadow-md"
+        >
+          <div>
+            <p className="text-sm font-bold text-[#4B2B1D]">
+              {prepData.ingredients.filter((i) => i.available_g < i.needed_g).length} of {prepData.ingredients.length} ingredients short vs. stock
+            </p>
+            <p className="text-xs text-[#755B4C] mt-0.5">Full shopping list, grouped by store with real cost totals, is in Menu Planner</p>
           </div>
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)]">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[#E4D8C9]">
-                  <th className="px-4 py-3 text-left font-extrabold text-[#4B2B1D]">Ingredient</th>
-                  <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">Category</th>
-                  <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">Needed</th>
-                  <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">In Stock</th>
-                  <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">Status</th>
-                  <th className="px-4 py-3 text-right font-extrabold text-[#4B2B1D]">Cost</th>
-                </tr>
-              </thead>
-              <tbody>
-                {prepData.ingredients.map((ing, idx) => {
-                  const enough = ing.available_g >= ing.needed_g
-                  return (
-                    <tr key={idx} className="border-b border-[#E4D8C9] hover:bg-[#F8F2E8] transition">
-                      <td className="px-4 py-3 font-medium text-[#4B2B1D]">{ing.name}</td>
-                      <td className="px-4 py-3 text-right text-[#755B4C]">{ing.category || '—'}</td>
-                      <td className="px-4 py-3 text-right text-[#755B4C]">{formatIngredientWeight(ing.needed_g, ing.category)}</td>
-                      <td className="px-4 py-3 text-right text-[#755B4C]">{formatIngredientWeight(ing.available_g, ing.category)}</td>
-                      <td className="px-4 py-3 text-right">
-                        {enough ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-[#EAF5EC] px-3 py-1 text-xs font-bold text-[#16834A]">
-                            <CheckCircle2 className="h-4 w-4" />
-                            Enough
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-[#FDEBEC] px-3 py-1 text-xs font-bold text-[#D62F3D]">
-                            <AlertCircle className="h-4 w-4" />
-                            Short {formatIngredientWeight(ing.needed_g - ing.available_g, ing.category)}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-[#2E527F]">
-                        {ing.cost_cents > 0 ? `$${(ing.cost_cents / 100).toFixed(2)}` : '—'}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+          <span className="flex items-center gap-1 text-sm font-bold text-[#2E527F] flex-shrink-0">
+            View Shopping List <ExternalLink className="h-3.5 w-3.5" />
+          </span>
+        </button>
+      )}
 
-      {/* Customer Orders & Fulfillment */}
+      {/* Customer Orders -- who's actually getting what this week, the one
+          thing here that isn't duplicated in Menu Planner or Operations
+          Hub. The old per-row "Pending/Ready" toggle never persisted
+          (reset on every refresh) and didn't correspond to anything real;
+          actual fulfillment status is the Kitchen Prep Progress card above,
+          reading real task/checklist completion instead. */}
       <div className="space-y-4">
-        <h2 className="text-lg font-extrabold text-[#4B2B1D]">Customer Orders & Fulfillment</h2>
+        <h2 className="text-lg font-extrabold text-[#4B2B1D]">Customer Orders</h2>
         <div className="overflow-x-auto rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)]">
           <table className="w-full text-sm">
             <thead>
@@ -377,7 +428,6 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
                 <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">Thursday</th>
                 <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">Breakfast</th>
                 <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">Total</th>
-                <th className="px-4 py-3 text-center font-extrabold text-[#4B2B1D]">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -400,18 +450,6 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center font-extrabold text-[#2E527F]">{order.total_meals}</td>
-                  <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => setFulfillment({ ...fulfillment, [order.id]: !fulfillment[order.id] })}
-                      className={`rounded-full px-3 py-1 text-xs font-bold transition ${
-                        fulfillment[order.id]
-                          ? 'bg-[#EAF5EC] text-[#16834A]'
-                          : 'border border-[#D8CDBE] bg-[rgba(251,247,240,0.9)] text-[#755B4C] hover:border-[#3E6594]'
-                      }`}
-                    >
-                      {fulfillment[order.id] ? '✓ Ready' : 'Pending'}
-                    </button>
-                  </td>
                 </tr>
               ))}
             </tbody>
