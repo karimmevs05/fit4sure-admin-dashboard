@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
-import { Pencil, Check, X, ExternalLink, Send } from 'lucide-react'
+import { Pencil, Check, X, ExternalLink, Send, UtensilsCrossed } from 'lucide-react'
 import RecipePlanSection, { rowKey } from '../components/RecipePlanSection'
 import type { Block, PlanRecipeRow } from '../components/RecipePlanSection'
 import { PlateCostSimulator } from '../components/PlateCostSimulator'
 import { formatIngredientWeight } from '../utils/unitConversion'
+import WeeklyPrepPage from './WeeklyPrep'
 
 const GRAMS_PER_POUND = 455
 
-type LastWeekMenu = { monday: string[]; thursday: string[] }
+type CurrentWeekMenu = { monday: string[]; thursday: string[] }
 
 type PrepIngredient = {
   inventoryId: number
@@ -30,7 +31,8 @@ type PrepAndFinancials = {
 
 export default function MenuPlannerPage() {
   const [weekStart, setWeekStart] = useState<{ sunday?: string; monday?: string; thursday?: string }>({})
-  const [lastWeekMenu, setLastWeekMenu] = useState<LastWeekMenu>({ monday: [], thursday: [] })
+  const [currentWeekMenu, setCurrentWeekMenu] = useState<CurrentWeekMenu>({ monday: [], thursday: [] })
+  const [showPrepPage, setShowPrepPage] = useState(false)
   const [prepFinancials, setPrepFinancials] = useState<PrepAndFinancials>({
     ingredients: [],
     financials: { monday: { costCents: 0, lb: 0, recipeCount: 0 }, thursday: { costCents: 0, lb: 0, recipeCount: 0 }, combined: { costCents: 0, lb: 0, recipeCount: 0 } },
@@ -52,6 +54,20 @@ export default function MenuPlannerPage() {
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
 
+  // ISO date (YYYY-MM-DD) for the Sunday that starts "this week" -- same
+  // Sunday-anchored boundary Orders.tsx uses for its own "View Weekly Prep"
+  // button, so Weekly Prep opens on the same week regardless of which page
+  // it's launched from.
+  const currentWeekStart = useMemo(() => {
+    const now = new Date()
+    const day = now.getDay() // 0 = Sunday
+    const sunday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day)
+    const y = sunday.getFullYear()
+    const m = String(sunday.getMonth() + 1).padStart(2, '0')
+    const d = String(sunday.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }, [])
+
   useEffect(() => {
     fetchAll()
     fetchPlan()
@@ -61,14 +77,14 @@ export default function MenuPlannerPage() {
     setLoading(true)
     const headers = { Authorization: `Bearer ${token}` }
     try {
-      const [lastWeekRes, nextWeekRes, prepFinancialsRes, publishStatusRes] = await Promise.all([
-        axios.get(`${apiUrl}/api/admin/menu-planner/previous-week`, { headers }),
+      const [currentWeekRes, nextWeekRes, prepFinancialsRes, publishStatusRes] = await Promise.all([
+        axios.get(`${apiUrl}/api/admin/menu-planner/current-week`, { headers }),
         axios.get(`${apiUrl}/api/admin/menu-planner/next-week`, { headers }),
         axios.get(`${apiUrl}/api/admin/menu-planner/prep-and-financials`, { headers }),
         axios.get(`${apiUrl}/api/admin/menu-planner/publish-status`, { headers }),
       ])
 
-      setLastWeekMenu(lastWeekRes.data.data || { monday: [], thursday: [] })
+      setCurrentWeekMenu(currentWeekRes.data.data || { monday: [], thursday: [] })
       setWeekStart(nextWeekRes.data.data || {})
       setPrepFinancials(
         prepFinancialsRes.data.data || {
@@ -256,6 +272,10 @@ export default function MenuPlannerPage() {
     }
   }
 
+  if (showPrepPage) {
+    return <WeeklyPrepPage week={currentWeekStart} onBack={() => setShowPrepPage(false)} />
+  }
+
   if (loading) {
     return (
       <main className="flex-1 space-y-6 p-8">
@@ -318,9 +338,19 @@ export default function MenuPlannerPage() {
       />
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Last Week's Menu (real data) */}
+        {/* This Week's Menu (real data -- the live weekly_recipe_plan for
+            the current calendar week, not a retrospective of past orders) */}
         <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
-          <h2 className="mb-4 text-lg font-extrabold text-[#4B2B1D]">Last Week's Menu</h2>
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <h2 className="text-lg font-extrabold text-[#4B2B1D]">This Week's Menu</h2>
+            <button
+              onClick={() => setShowPrepPage(true)}
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#16813D] px-3 text-xs font-bold text-white shadow-[0_6px_14px_rgba(22,129,61,0.18)] transition hover:bg-[#0d6a2d] active:scale-[0.98]"
+            >
+              <UtensilsCrossed className="h-3.5 w-3.5" />
+              View Weekly Prep
+            </button>
+          </div>
 
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-2">
@@ -328,10 +358,10 @@ export default function MenuPlannerPage() {
               <p className="text-sm font-bold text-[#16A34A]">Monday</p>
             </div>
             <div className="space-y-2">
-              {lastWeekMenu.monday.length === 0 ? (
+              {currentWeekMenu.monday.length === 0 ? (
                 <p className="text-xs text-[#755B4C] italic">No data</p>
               ) : (
-                lastWeekMenu.monday.map((meal, idx) => (
+                currentWeekMenu.monday.map((meal, idx) => (
                   <div key={idx} className="rounded-lg border border-[#E4D8C9] bg-white p-2">
                     <p className="text-xs font-medium text-[#4B2B1D]">{meal}</p>
                   </div>
@@ -346,10 +376,10 @@ export default function MenuPlannerPage() {
               <p className="text-sm font-bold text-[#D97706]">Thursday</p>
             </div>
             <div className="space-y-2">
-              {lastWeekMenu.thursday.length === 0 ? (
+              {currentWeekMenu.thursday.length === 0 ? (
                 <p className="text-xs text-[#755B4C] italic">No data</p>
               ) : (
-                lastWeekMenu.thursday.map((meal, idx) => (
+                currentWeekMenu.thursday.map((meal, idx) => (
                   <div key={idx} className="rounded-lg border border-[#E4D8C9] bg-white p-2">
                     <p className="text-xs font-medium text-[#4B2B1D]">{meal}</p>
                   </div>
