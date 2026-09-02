@@ -12,10 +12,19 @@ const GRAMS_PER_POUND = 455
 type MenuItem = { id: number; name: string; category: string; recipeId: number | null; expectedVolume: number }
 type CurrentWeekMenu = { monday: MenuItem[]; thursday: MenuItem[] }
 
-// Same shorthand Recipes.tsx uses for these two categories elsewhere in the
-// app -- kept consistent rather than inventing a second set of labels.
-const categoryLabel = (category: string) =>
-  category === 'carbohydrates' ? 'carb' : category === 'vegetables' ? 'veg' : category
+// Coarser than the raw recipe category (beef/chicken/turkey all read as
+// "Proteins" here) -- This Week's Menu groups by this bucket so a 14-recipe
+// week collapses to a handful of rows instead of one per recipe.
+const CATEGORY_GROUP: Record<string, string> = {
+  beef: 'Proteins', chicken: 'Proteins', turkey: 'Proteins',
+  carbohydrates: 'Carbs',
+  vegetables: 'Veggies',
+  sauces: 'Sauces',
+  breakfast: 'Breakfast',
+  beverage: 'Beverages',
+  custom: 'Custom',
+}
+const GROUP_ORDER = ['Proteins', 'Carbs', 'Veggies', 'Sauces', 'Breakfast', 'Beverages', 'Custom']
 
 type PrepIngredient = {
   inventoryId: number
@@ -42,6 +51,7 @@ export default function MenuPlannerPage() {
   const [editingPlanItemId, setEditingPlanItemId] = useState<number | null>(null)
   const [editVolumeValue, setEditVolumeValue] = useState('')
   const [savingVolume, setSavingVolume] = useState(false)
+  const [openMenuGroup, setOpenMenuGroup] = useState<string | null>(null)
   const [prepFinancials, setPrepFinancials] = useState<PrepAndFinancials>({
     ingredients: [],
     financials: { monday: { costCents: 0, lb: 0, recipeCount: 0 }, thursday: { costCents: 0, lb: 0, recipeCount: 0 }, combined: { costCents: 0, lb: 0, recipeCount: 0 } },
@@ -380,11 +390,12 @@ export default function MenuPlannerPage() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* This Week's Menu (real data -- the live weekly_recipe_plan for
             the current calendar week, not a retrospective of past orders).
-            Chips instead of one full-width box per recipe -- a 14-recipe
-            week used to be a 14-row wall that dwarfed Shopping List and
-            Financials next to it; color comes from the same category
-            palette Recipes.tsx uses, so a glance shows the protein/carb/
-            veg mix without reading every name. */}
+            Grouped by category bucket (Proteins/Carbs/Veggies/Sauces/
+            Breakfast) into one collapsible row each -- a 14-recipe week
+            used to be a 14-row wall that dwarfed Shopping List and
+            Financials next to it. Same collapsible-row pattern Shopping
+            List uses for stores, expand a group to see (and edit) the
+            individual recipes in it. */}
         <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
           <div className="mb-4 flex items-center justify-between gap-2">
             <h2 className="text-lg font-extrabold text-[#4B2B1D]">This Week's Menu</h2>
@@ -403,6 +414,11 @@ export default function MenuPlannerPage() {
               { label: 'Thursday', color: '#D97706', items: currentWeekMenu.thursday },
             ] as const).map((day) => {
               const totalLb = day.items.reduce((sum, i) => sum + (i.expectedVolume || 0), 0)
+              const groups = GROUP_ORDER.map((group) => {
+                const items = day.items.filter((i) => (CATEGORY_GROUP[i.category] || 'Custom') === group)
+                return { group, items, lb: items.reduce((sum, i) => sum + (i.expectedVolume || 0), 0) }
+              }).filter((g) => g.items.length > 0)
+
               return (
                 <div key={day.label}>
                   <div className="flex items-center gap-2 mb-1.5">
@@ -412,54 +428,75 @@ export default function MenuPlannerPage() {
                       {day.items.length} item{day.items.length === 1 ? '' : 's'}{totalLb > 0 ? ` · ${totalLb} lb total` : ''}
                     </span>
                   </div>
-                  {day.items.length === 0 ? (
+                  {groups.length === 0 ? (
                     <p className="text-xs text-[#755B4C] italic">No data</p>
                   ) : (
-                    <div className="divide-y divide-[#F0EAE0]">
-                      {day.items.map((item) => (
-                        <div key={item.id} className="flex items-center gap-2 py-1.5">
-                          <p className="flex-1 truncate text-xs font-medium text-[#4B2B1D]">{item.name}</p>
-                          <p className="w-12 flex-shrink-0 text-[10px] text-[#9A7E6F]">{categoryLabel(item.category)}</p>
-                          {editingPlanItemId === item.id ? (
-                            <span className="flex flex-shrink-0 items-center gap-1">
-                              <input
-                                autoFocus
-                                type="number"
-                                min={0}
-                                step="0.5"
-                                value={editVolumeValue}
-                                onChange={(e) => setEditVolumeValue(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && saveExpectedVolume(item)}
-                                className="h-6 w-14 rounded border border-[#2E527F] bg-white px-1 text-right text-xs text-[#4B2B1D] outline-none"
-                              />
-                              <button
-                                onClick={() => saveExpectedVolume(item)}
-                                disabled={savingVolume}
-                                className="text-[#16A34A] hover:text-[#15873F] disabled:opacity-40"
-                                aria-label={`Save quantity for ${item.name}`}
-                              >
-                                <Check className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                onClick={() => setEditingPlanItemId(null)}
-                                className="text-[#9A7E6F] hover:text-[#D62F3D]"
-                                aria-label="Cancel"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </span>
-                          ) : (
+                    <div className="space-y-1.5">
+                      {groups.map(({ group, items, lb }) => {
+                        const groupKey = `${day.label}:${group}`
+                        const isOpen = openMenuGroup === groupKey
+                        return (
+                          <div key={group} className="rounded-lg border border-[#E4D8C9] bg-white overflow-hidden">
                             <button
-                              onClick={() => startEditVolume(item)}
-                              className="group flex flex-shrink-0 items-center gap-1"
-                              title="Edit quantity"
+                              onClick={() => setOpenMenuGroup(isOpen ? null : groupKey)}
+                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
                             >
-                              <p className="w-14 text-right text-xs font-bold text-[#2E527F]">{item.expectedVolume} lb</p>
-                              <Pencil className="h-3 w-3 text-[#C9BBA8] opacity-0 transition group-hover:opacity-100" />
+                              <span className="text-xs font-bold text-[#4B2B1D]">{group}</span>
+                              <span className="flex items-center gap-2 flex-shrink-0 text-[10px] font-bold text-[#9A7E6F]">
+                                {items.length} recipe{items.length === 1 ? '' : 's'} · {lb} lb
+                                <span className="text-[#2E527F]">{isOpen ? '▲' : '▼'}</span>
+                              </span>
                             </button>
-                          )}
-                        </div>
-                      ))}
+                            {isOpen && (
+                              <div className="border-t border-[#E4D8C9] divide-y divide-[#F0EAE0]">
+                                {items.map((item) => (
+                                  <div key={item.id} className="flex items-center gap-2 px-3 py-2">
+                                    <p className="flex-1 truncate text-xs font-medium text-[#4B2B1D]">{item.name}</p>
+                                    {editingPlanItemId === item.id ? (
+                                      <span className="flex flex-shrink-0 items-center gap-1">
+                                        <input
+                                          autoFocus
+                                          type="number"
+                                          min={0}
+                                          step="0.5"
+                                          value={editVolumeValue}
+                                          onChange={(e) => setEditVolumeValue(e.target.value)}
+                                          onKeyDown={(e) => e.key === 'Enter' && saveExpectedVolume(item)}
+                                          className="h-6 w-14 rounded border border-[#2E527F] bg-white px-1 text-right text-xs text-[#4B2B1D] outline-none"
+                                        />
+                                        <button
+                                          onClick={() => saveExpectedVolume(item)}
+                                          disabled={savingVolume}
+                                          className="text-[#16A34A] hover:text-[#15873F] disabled:opacity-40"
+                                          aria-label={`Save quantity for ${item.name}`}
+                                        >
+                                          <Check className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={() => setEditingPlanItemId(null)}
+                                          className="text-[#9A7E6F] hover:text-[#D62F3D]"
+                                          aria-label="Cancel"
+                                        >
+                                          <X className="h-3.5 w-3.5" />
+                                        </button>
+                                      </span>
+                                    ) : (
+                                      <button
+                                        onClick={() => startEditVolume(item)}
+                                        className="group flex flex-shrink-0 items-center gap-1"
+                                        title="Edit quantity"
+                                      >
+                                        <p className="w-14 text-right text-xs font-bold text-[#2E527F]">{item.expectedVolume} lb</p>
+                                        <Pencil className="h-3 w-3 text-[#C9BBA8] opacity-0 transition group-hover:opacity-100" />
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
