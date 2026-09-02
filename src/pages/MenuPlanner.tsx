@@ -9,8 +9,13 @@ import WeeklyPrepPage from './WeeklyPrep'
 
 const GRAMS_PER_POUND = 455
 
-type MenuItem = { name: string; category: string; recipeId: number | null }
+type MenuItem = { id: number; name: string; category: string; recipeId: number | null; expectedVolume: number }
 type CurrentWeekMenu = { monday: MenuItem[]; thursday: MenuItem[] }
+
+// Same shorthand Recipes.tsx uses for these two categories elsewhere in the
+// app -- kept consistent rather than inventing a second set of labels.
+const categoryLabel = (category: string) =>
+  category === 'carbohydrates' ? 'carb' : category === 'vegetables' ? 'veg' : category
 
 type PrepIngredient = {
   inventoryId: number
@@ -34,6 +39,9 @@ export default function MenuPlannerPage() {
   const [weekStart, setWeekStart] = useState<{ sunday?: string; monday?: string; thursday?: string }>({})
   const [currentWeekMenu, setCurrentWeekMenu] = useState<CurrentWeekMenu>({ monday: [], thursday: [] })
   const [showPrepPage, setShowPrepPage] = useState(false)
+  const [editingPlanItemId, setEditingPlanItemId] = useState<number | null>(null)
+  const [editVolumeValue, setEditVolumeValue] = useState('')
+  const [savingVolume, setSavingVolume] = useState(false)
   const [prepFinancials, setPrepFinancials] = useState<PrepAndFinancials>({
     ingredients: [],
     financials: { monday: { costCents: 0, lb: 0, recipeCount: 0 }, thursday: { costCents: 0, lb: 0, recipeCount: 0 }, combined: { costCents: 0, lb: 0, recipeCount: 0 } },
@@ -98,6 +106,37 @@ export default function MenuPlannerPage() {
       console.error('Error fetching menu planner data:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const startEditVolume = (item: MenuItem) => {
+    setEditingPlanItemId(item.id)
+    setEditVolumeValue(String(item.expectedVolume))
+  }
+
+  // Corrects a single row's forecasted lb after the fact -- see the
+  // PATCH /weekly-plan/:id comment on the backend for why this
+  // deliberately doesn't re-run the prep/procurement sync a real block
+  // save does (this week may already have checklist progress on it).
+  const saveExpectedVolume = async (item: MenuItem) => {
+    const volume = Number(editVolumeValue)
+    if (!Number.isFinite(volume) || volume < 0) return
+    setSavingVolume(true)
+    try {
+      await axios.patch(
+        `${apiUrl}/api/admin/menu-planner/weekly-plan/${item.id}`,
+        { expected_volume: volume },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      setCurrentWeekMenu((prev) => ({
+        monday: prev.monday.map((i) => (i.id === item.id ? { ...i, expectedVolume: volume } : i)),
+        thursday: prev.thursday.map((i) => (i.id === item.id ? { ...i, expectedVolume: volume } : i)),
+      }))
+      setEditingPlanItemId(null)
+    } catch (error) {
+      console.error('Error updating expected volume:', error)
+    } finally {
+      setSavingVolume(false)
     }
   }
 
@@ -362,29 +401,70 @@ export default function MenuPlannerPage() {
             {([
               { label: 'Monday', color: '#16A34A', items: currentWeekMenu.monday },
               { label: 'Thursday', color: '#D97706', items: currentWeekMenu.thursday },
-            ] as const).map((day) => (
-              <div key={day.label}>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: day.color }}></div>
-                  <p className="text-sm font-bold" style={{ color: day.color }}>{day.label}</p>
-                  <span className="text-[10px] font-bold text-[#9A7E6F]">{day.items.length} item{day.items.length === 1 ? '' : 's'}</span>
-                </div>
-                {day.items.length === 0 ? (
-                  <p className="text-xs text-[#755B4C] italic">No data</p>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {day.items.map((item, idx) => (
-                      <span
-                        key={idx}
-                        className="inline-flex items-center rounded-full border border-[#E4D8C9] bg-white px-2.5 py-1 text-xs font-medium text-[#4B2B1D]"
-                      >
-                        {item.name}
-                      </span>
-                    ))}
+            ] as const).map((day) => {
+              const totalLb = day.items.reduce((sum, i) => sum + (i.expectedVolume || 0), 0)
+              return (
+                <div key={day.label}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: day.color }}></div>
+                    <p className="text-sm font-bold" style={{ color: day.color }}>{day.label}</p>
+                    <span className="text-[10px] font-bold text-[#9A7E6F]">
+                      {day.items.length} item{day.items.length === 1 ? '' : 's'}{totalLb > 0 ? ` · ${totalLb} lb total` : ''}
+                    </span>
                   </div>
-                )}
-              </div>
-            ))}
+                  {day.items.length === 0 ? (
+                    <p className="text-xs text-[#755B4C] italic">No data</p>
+                  ) : (
+                    <div className="divide-y divide-[#F0EAE0]">
+                      {day.items.map((item) => (
+                        <div key={item.id} className="flex items-center gap-2 py-1.5">
+                          <p className="flex-1 truncate text-xs font-medium text-[#4B2B1D]">{item.name}</p>
+                          <p className="w-12 flex-shrink-0 text-[10px] text-[#9A7E6F]">{categoryLabel(item.category)}</p>
+                          {editingPlanItemId === item.id ? (
+                            <span className="flex flex-shrink-0 items-center gap-1">
+                              <input
+                                autoFocus
+                                type="number"
+                                min={0}
+                                step="0.5"
+                                value={editVolumeValue}
+                                onChange={(e) => setEditVolumeValue(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && saveExpectedVolume(item)}
+                                className="h-6 w-14 rounded border border-[#2E527F] bg-white px-1 text-right text-xs text-[#4B2B1D] outline-none"
+                              />
+                              <button
+                                onClick={() => saveExpectedVolume(item)}
+                                disabled={savingVolume}
+                                className="text-[#16A34A] hover:text-[#15873F] disabled:opacity-40"
+                                aria-label={`Save quantity for ${item.name}`}
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setEditingPlanItemId(null)}
+                                className="text-[#9A7E6F] hover:text-[#D62F3D]"
+                                aria-label="Cancel"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => startEditVolume(item)}
+                              className="group flex flex-shrink-0 items-center gap-1"
+                              title="Edit quantity"
+                            >
+                              <p className="w-14 text-right text-xs font-bold text-[#2E527F]">{item.expectedVolume} lb</p>
+                              <Pencil className="h-3 w-3 text-[#C9BBA8] opacity-0 transition group-hover:opacity-100" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
 
