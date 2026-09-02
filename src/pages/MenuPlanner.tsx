@@ -9,8 +9,10 @@ import WeeklyPrepPage from './WeeklyPrep'
 
 const GRAMS_PER_POUND = 455
 
-type MenuItem = { id: number; name: string; category: string; recipeId: number | null; expectedVolume: number }
+type MenuItem = { id: number; name: string; category: string; recipeId: number | null; expectedVolume: number; prepMinutes: number | null }
 type CurrentWeekMenu = { monday: MenuItem[]; thursday: MenuItem[] }
+
+const formatMinutes = (mins: number) => (mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`)
 
 // Coarser than the raw recipe category (beef/chicken/turkey all read as
 // "Proteins" here) -- This Week's Menu groups by this bucket so a 14-recipe
@@ -408,31 +410,52 @@ export default function MenuPlannerPage() {
             </button>
           </div>
 
+          {/* One headline number for "what does this selection actually
+              cost us in labor" -- the whole point of this section existing
+              before Submit Menu is to know that before it's live, not
+              after. Scaled by forecasted lb, see the backend comment on
+              GET /current-week for how. */}
+          {(() => {
+            const weekPrepMinutes = [...currentWeekMenu.monday, ...currentWeekMenu.thursday].reduce((sum, i) => sum + (i.prepMinutes || 0), 0)
+            return weekPrepMinutes > 0 ? (
+              <div className="mb-4 rounded-xl border border-[#3E6594] bg-[#EAF0F7] px-4 py-3 flex items-center justify-between">
+                <p className="text-xs font-bold text-[#2E527F]">Est. prep time, this selection</p>
+                <p className="text-lg font-extrabold text-[#2E527F]">{formatMinutes(weekPrepMinutes)}</p>
+              </div>
+            ) : null
+          })()}
+
           <div className="max-h-[420px] overflow-y-auto space-y-5 pr-1">
             {([
               { label: 'Monday', color: '#16A34A', items: currentWeekMenu.monday },
               { label: 'Thursday', color: '#D97706', items: currentWeekMenu.thursday },
             ] as const).map((day) => {
               const totalLb = day.items.reduce((sum, i) => sum + (i.expectedVolume || 0), 0)
+              const totalPrepMinutes = day.items.reduce((sum, i) => sum + (i.prepMinutes || 0), 0)
               const groups = GROUP_ORDER.map((group) => {
                 const items = day.items.filter((i) => (CATEGORY_GROUP[i.category] || 'Custom') === group)
-                return { group, items, lb: items.reduce((sum, i) => sum + (i.expectedVolume || 0), 0) }
+                return {
+                  group,
+                  items,
+                  lb: items.reduce((sum, i) => sum + (i.expectedVolume || 0), 0),
+                  prepMinutes: items.reduce((sum, i) => sum + (i.prepMinutes || 0), 0),
+                }
               }).filter((g) => g.items.length > 0)
 
               return (
                 <div key={day.label}>
-                  <div className="flex items-center gap-2 mb-1.5">
+                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                     <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: day.color }}></div>
                     <p className="text-sm font-bold" style={{ color: day.color }}>{day.label}</p>
                     <span className="text-[10px] font-bold text-[#9A7E6F]">
-                      {day.items.length} item{day.items.length === 1 ? '' : 's'}{totalLb > 0 ? ` · ${totalLb} lb total` : ''}
+                      {day.items.length} item{day.items.length === 1 ? '' : 's'}{totalLb > 0 ? ` · ${totalLb} lb total` : ''}{totalPrepMinutes > 0 ? ` · ~${formatMinutes(totalPrepMinutes)} prep` : ''}
                     </span>
                   </div>
                   {groups.length === 0 ? (
                     <p className="text-xs text-[#755B4C] italic">No data</p>
                   ) : (
                     <div className="space-y-1.5">
-                      {groups.map(({ group, items, lb }) => {
+                      {groups.map(({ group, items, lb, prepMinutes }) => {
                         const groupKey = `${day.label}:${group}`
                         const isOpen = openMenuGroup === groupKey
                         return (
@@ -443,7 +466,7 @@ export default function MenuPlannerPage() {
                             >
                               <span className="text-xs font-bold text-[#4B2B1D]">{group}</span>
                               <span className="flex items-center gap-2 flex-shrink-0 text-[10px] font-bold text-[#9A7E6F]">
-                                {items.length} recipe{items.length === 1 ? '' : 's'} · {lb} lb
+                                {items.length} recipe{items.length === 1 ? '' : 's'} · {lb} lb{prepMinutes > 0 ? ` · ~${formatMinutes(prepMinutes)}` : ''}
                                 <span className="text-[#2E527F]">{isOpen ? '▲' : '▼'}</span>
                               </span>
                             </button>
@@ -451,7 +474,12 @@ export default function MenuPlannerPage() {
                               <div className="border-t border-[#E4D8C9] divide-y divide-[#F0EAE0]">
                                 {items.map((item) => (
                                   <div key={item.id} className="flex items-center gap-2 px-3 py-2">
-                                    <p className="flex-1 truncate text-xs font-medium text-[#4B2B1D]">{item.name}</p>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="truncate text-xs font-medium text-[#4B2B1D]">{item.name}</p>
+                                      {item.prepMinutes != null && item.prepMinutes > 0 && (
+                                        <p className="text-[9px] text-[#9A7E6F]">~{formatMinutes(item.prepMinutes)} prep</p>
+                                      )}
+                                    </div>
                                     {editingPlanItemId === item.id ? (
                                       <span className="flex flex-shrink-0 items-center gap-1">
                                         <input
