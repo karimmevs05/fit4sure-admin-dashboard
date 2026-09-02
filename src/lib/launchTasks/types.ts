@@ -64,9 +64,11 @@ export type ActivityLogEntry = {
   task_id: number | null
   task_name: string | null
   actor: string
-  type: 'note' | 'expense' | 'attachment' | 'complete' | 'decision_flag' | 'status_change'
+  type: 'note' | 'expense' | 'attachment' | 'complete' | 'decision_flag' | 'status_change' | 'created' | 'edit' | 'undo'
   text: string
   created_at: string
+  undone_at: string | null
+  can_undo: boolean
 }
 
 export type DayNote = {

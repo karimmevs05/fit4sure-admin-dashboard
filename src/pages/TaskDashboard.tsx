@@ -70,6 +70,27 @@ export default function TaskDashboardPage() {
 
   const refreshActivity = () => api.fetchActivityLog(20).then(setActivity)
 
+  const [undoingId, setUndoingId] = useState<number | null>(null)
+  const [undoError, setUndoError] = useState<string | null>(null)
+
+  const handleUndo = async (entryId: number, taskId: number | null) => {
+    setUndoingId(entryId)
+    setUndoError(null)
+    try {
+      const { task, task_deleted } = await api.undoActivity(entryId)
+      if (task_deleted && taskId != null) {
+        setTasks((prev) => prev.filter((t) => t.id !== taskId))
+      } else if (task) {
+        setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)))
+      }
+      await refreshActivity()
+    } catch (err: any) {
+      setUndoError(err.response?.data?.error || 'Failed to undo')
+    } finally {
+      setUndoingId(null)
+    }
+  }
+
   const handleChanged = (updated: Task) => {
     setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
     refreshActivity()
@@ -239,10 +260,25 @@ export default function TaskDashboardPage() {
             <div className="text-[11px] font-semibold uppercase tracking-wide mb-[6px] cursor-pointer flex items-center gap-[6px]" style={{ color: COLORS.textMuted }} onClick={() => setActivityOpen((o) => !o)}>
               <span className="text-[9px] inline-block" style={{ transform: activityOpen ? 'rotate(90deg)' : undefined }}>▶</span> Recent activity <span style={{ color: COLORS.textMuted, fontWeight: 400, textTransform: 'none' }}>({activity.length})</span>
             </div>
+            {activityOpen && undoError && (
+              <div className="text-[12px] py-[4px]" style={{ color: '#B3261E' }}>{undoError}</div>
+            )}
             {activityOpen && activity.map((a) => (
               <div key={a.id} className="flex gap-[10px] text-[13px] py-[7px] border-t first:border-t-0 items-baseline" style={{ borderColor: COLORS.divider }}>
                 <span className="text-[12px] w-4 flex-shrink-0">{activityIcon(a.type)}</span>
                 <span className="flex-1" style={{ color: COLORS.textSecondary }}><b>{a.actor}</b> {stripActor(a.text, a.actor)}</span>
+                {a.undone_at ? (
+                  <span className="text-[11px] italic whitespace-nowrap" style={{ color: COLORS.textMuted }}>undone</span>
+                ) : a.can_undo ? (
+                  <button
+                    onClick={() => handleUndo(a.id, a.task_id)}
+                    disabled={undoingId === a.id}
+                    className="text-[11px] font-semibold whitespace-nowrap disabled:opacity-50"
+                    style={{ color: COLORS.textMuted }}
+                  >
+                    {undoingId === a.id ? 'undoing...' : 'undo'}
+                  </button>
+                ) : null}
                 <span className="text-[11px] whitespace-nowrap" style={{ color: COLORS.textMuted }}>{new Date(a.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).toLowerCase()}</span>
               </div>
             ))}
@@ -287,6 +323,9 @@ function activityIcon(type: ActivityLogEntry['type']) {
     case 'attachment': return '📎'
     case 'complete': return '✓'
     case 'decision_flag': return '◆'
+    case 'created': return '+'
+    case 'edit': return '✎'
+    case 'undo': return '↩'
     default: return '•'
   }
 }

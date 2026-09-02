@@ -113,6 +113,16 @@ export async function fetchActivityLog(limit = 20): Promise<ActivityLogEntry[]> 
   return res.data.data
 }
 
+// Reverses one activity-log entry -- only entries with can_undo actually
+// carry the metadata needed to do this correctly (see logActivity/
+// computeCanUndo in launchTasks.js), so this should only ever be called
+// from a button gated on that flag. task_deleted is true when the undone
+// entry was a task creation (the task itself is gone, not just changed).
+export async function undoActivity(id: number): Promise<{ task: Task | null; task_deleted: boolean }> {
+  const res = await axios.post(`${BASE()}/activity-log/${id}/undo`, {}, authConfig())
+  return { task: res.data.data, task_deleted: !!res.data.task_deleted }
+}
+
 export async function fetchDayNote(date: string): Promise<DayNote> {
   const res = await axios.get(`${apiUrl()}/api/admin/launch-day-notes/${date}`, authConfig())
   return res.data.data
