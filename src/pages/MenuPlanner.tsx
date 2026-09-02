@@ -12,8 +12,19 @@ const GRAMS_PER_POUND = 455
 
 type MenuItem = { id: number; name: string; category: string; recipeId: number | null; expectedVolume: number; prepMinutes: number | null }
 type CurrentWeekMenu = { monday: MenuItem[]; thursday: MenuItem[] }
+type RecipeCompletion = { done: number; total: number }
 
 const formatMinutes = (mins: number) => (mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`)
+
+// Green once every checklist item is done, amber mid-way, plain gray before
+// the recipe's prep day has even arrived (total === 0 -- nothing to be
+// behind on yet, so it shouldn't read as a problem the way 0% of a nonzero
+// total would).
+const completionColor = (done: number, total: number) => {
+  if (total === 0) return '#9A7E6F'
+  if (done >= total) return '#16A34A'
+  return '#D97706'
+}
 
 type PrepIngredient = {
   inventoryId: number
@@ -41,6 +52,7 @@ export default function MenuPlannerPage() {
   const [editVolumeValue, setEditVolumeValue] = useState('')
   const [savingVolume, setSavingVolume] = useState(false)
   const [openMenuGroup, setOpenMenuGroup] = useState<string | null>(null)
+  const [recipeCompletion, setRecipeCompletion] = useState<Record<string, RecipeCompletion>>({})
   const [prepFinancials, setPrepFinancials] = useState<PrepAndFinancials>({
     ingredients: [],
     financials: { monday: { costCents: 0, lb: 0, recipeCount: 0 }, thursday: { costCents: 0, lb: 0, recipeCount: 0 }, combined: { costCents: 0, lb: 0, recipeCount: 0 } },
@@ -105,6 +117,28 @@ export default function MenuPlannerPage() {
       console.error('Error fetching menu planner data:', error)
     } finally {
       setLoading(false)
+    }
+    fetchRecipeCompletion()
+  }
+
+  // Real completion, from the exact same Kitchen batch/production tasks
+  // weekly_recipe_plan generates -- not a separate estimate. Matched back
+  // onto This Week's Menu by recipe name (task_checklist_items.group_label
+  // is the recipe name, same join adminTasks.js's recipe-status endpoint
+  // already does), so "what we committed to" and "how much is actually
+  // done" sit in the same row instead of two different pages.
+  const fetchRecipeCompletion = async () => {
+    try {
+      const res = await axios.get(`${apiUrl}/api/admin/tasks/week/${currentWeekStart}/recipe-status`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const byName: Record<string, RecipeCompletion> = {}
+      for (const r of res.data.data?.recipes || []) {
+        byName[r.name] = { done: r.done, total: r.total }
+      }
+      setRecipeCompletion(byName)
+    } catch (error) {
+      console.error('Error fetching recipe completion:', error)
     }
   }
 
@@ -397,19 +431,40 @@ export default function MenuPlannerPage() {
             </button>
           </div>
 
-          {/* One headline number for "what does this selection actually
-              cost us in labor" -- the whole point of this section existing
-              before Submit Menu is to know that before it's live, not
-              after. Scaled by forecasted lb, see the backend comment on
-              GET /current-week for how. */}
+          {/* Two headline numbers: what this selection commits us to in
+              labor (forecasted, scaled by lb -- see GET /current-week), and
+              how much of that committed work is actually done so far
+              (real, from the same Kitchen tasks Operations Hub tracks).
+              The whole point of this section existing before Submit Menu
+              is knowing both before it's live, not after. */}
           {(() => {
-            const weekPrepMinutes = [...currentWeekMenu.monday, ...currentWeekMenu.thursday].reduce((sum, i) => sum + (i.prepMinutes || 0), 0)
-            return weekPrepMinutes > 0 ? (
-              <div className="mb-4 rounded-xl border border-[#3E6594] bg-[#EAF0F7] px-4 py-3 flex items-center justify-between">
-                <p className="text-xs font-bold text-[#2E527F]">Est. prep time, this selection</p>
-                <p className="text-lg font-extrabold text-[#2E527F]">{formatMinutes(weekPrepMinutes)}</p>
+            const allItems = [...currentWeekMenu.monday, ...currentWeekMenu.thursday]
+            const weekPrepMinutes = allItems.reduce((sum, i) => sum + (i.prepMinutes || 0), 0)
+            const withCompletion = allItems.map((i) => recipeCompletion[i.name]).filter((c): c is RecipeCompletion => !!c && c.total > 0)
+            const doneTotal = withCompletion.reduce((sum, c) => sum + c.done, 0)
+            const itemsTotal = withCompletion.reduce((sum, c) => sum + c.total, 0)
+            if (weekPrepMinutes === 0 && itemsTotal === 0) return null
+            return (
+              <div className="mb-4 grid grid-cols-2 gap-3">
+                {weekPrepMinutes > 0 && (
+                  <div className="rounded-xl border border-[#3E6594] bg-[#EAF0F7] px-4 py-3">
+                    <p className="text-xs font-bold text-[#2E527F]">Est. prep time, this selection</p>
+                    <p className="text-lg font-extrabold text-[#2E527F]">{formatMinutes(weekPrepMinutes)}</p>
+                  </div>
+                )}
+                {itemsTotal > 0 && (
+                  <div className="rounded-xl border px-4 py-3" style={{ borderColor: completionColor(doneTotal, itemsTotal), backgroundColor: doneTotal >= itemsTotal ? '#EAF5EC' : '#FFF7E9' }}>
+                    <p className="text-xs font-bold" style={{ color: completionColor(doneTotal, itemsTotal) }}>Prep completed so far</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-lg font-extrabold" style={{ color: completionColor(doneTotal, itemsTotal) }}>
+                        {doneTotal}/{itemsTotal}
+                      </p>
+                      <p className="text-xs font-bold text-[#755B4C]">{Math.round((doneTotal / itemsTotal) * 100)}%</p>
+                    </div>
+                  </div>
+                )}
               </div>
-            ) : null
+            )
           })()}
 
           <div className="max-h-[420px] overflow-y-auto space-y-5 pr-1">
@@ -419,13 +474,30 @@ export default function MenuPlannerPage() {
             ] as const).map((day) => {
               const totalLb = day.items.reduce((sum, i) => sum + (i.expectedVolume || 0), 0)
               const totalPrepMinutes = day.items.reduce((sum, i) => sum + (i.prepMinutes || 0), 0)
+              const dayCompletion = day.items.reduce(
+                (acc, i) => {
+                  const c = recipeCompletion[i.name]
+                  if (c && c.total > 0) { acc.done += c.done; acc.total += c.total }
+                  return acc
+                },
+                { done: 0, total: 0 }
+              )
               const groups = GROUP_ORDER.map((group) => {
                 const items = day.items.filter((i) => (CATEGORY_GROUP[i.category] || 'Custom') === group)
+                const groupCompletion = items.reduce(
+                  (acc, i) => {
+                    const c = recipeCompletion[i.name]
+                    if (c && c.total > 0) { acc.done += c.done; acc.total += c.total }
+                    return acc
+                  },
+                  { done: 0, total: 0 }
+                )
                 return {
                   group,
                   items,
                   lb: items.reduce((sum, i) => sum + (i.expectedVolume || 0), 0),
                   prepMinutes: items.reduce((sum, i) => sum + (i.prepMinutes || 0), 0),
+                  completion: groupCompletion,
                 }
               }).filter((g) => g.items.length > 0)
 
@@ -437,12 +509,20 @@ export default function MenuPlannerPage() {
                     <span className="text-[10px] font-bold text-[#9A7E6F]">
                       {day.items.length} item{day.items.length === 1 ? '' : 's'}{totalLb > 0 ? ` · ${totalLb} lb total` : ''}{totalPrepMinutes > 0 ? ` · ~${formatMinutes(totalPrepMinutes)} prep` : ''}
                     </span>
+                    {dayCompletion.total > 0 && (
+                      <span
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                        style={{ color: completionColor(dayCompletion.done, dayCompletion.total), backgroundColor: dayCompletion.done >= dayCompletion.total ? '#EAF5EC' : '#FFF7E9' }}
+                      >
+                        {dayCompletion.done}/{dayCompletion.total} prepped
+                      </span>
+                    )}
                   </div>
                   {groups.length === 0 ? (
                     <p className="text-xs text-[#755B4C] italic">No data</p>
                   ) : (
                     <div className="space-y-1.5">
-                      {groups.map(({ group, items, lb, prepMinutes }) => {
+                      {groups.map(({ group, items, lb, prepMinutes, completion }) => {
                         const groupKey = `${day.label}:${group}`
                         const isOpen = openMenuGroup === groupKey
                         return (
@@ -454,17 +534,34 @@ export default function MenuPlannerPage() {
                               <span className="text-xs font-bold text-[#4B2B1D]">{group}</span>
                               <span className="flex items-center gap-2 flex-shrink-0 text-[10px] font-bold text-[#9A7E6F]">
                                 {items.length} recipe{items.length === 1 ? '' : 's'} · {lb} lb{prepMinutes > 0 ? ` · ~${formatMinutes(prepMinutes)}` : ''}
+                                {completion.total > 0 && (
+                                  <span style={{ color: completionColor(completion.done, completion.total) }}>
+                                    · {completion.done}/{completion.total} prepped
+                                  </span>
+                                )}
                                 <span className="text-[#2E527F]">{isOpen ? '▲' : '▼'}</span>
                               </span>
                             </button>
                             {isOpen && (
                               <div className="border-t border-[#E4D8C9] divide-y divide-[#F0EAE0]">
-                                {items.map((item) => (
+                                {items.map((item) => {
+                                  const c = recipeCompletion[item.name]
+                                  return (
                                   <div key={item.id} className="flex items-center gap-2 px-3 py-2">
                                     <div className="flex-1 min-w-0">
                                       <p className="truncate text-xs font-medium text-[#4B2B1D]">{item.name}</p>
-                                      {item.prepMinutes != null && item.prepMinutes > 0 && (
-                                        <p className="text-[9px] text-[#9A7E6F]">~{formatMinutes(item.prepMinutes)} prep</p>
+                                      <p className="text-[9px] text-[#9A7E6F] flex items-center gap-1.5">
+                                        {item.prepMinutes != null && item.prepMinutes > 0 && <span>~{formatMinutes(item.prepMinutes)} prep</span>}
+                                        {c && c.total > 0 && (
+                                          <span className="font-bold" style={{ color: completionColor(c.done, c.total) }}>
+                                            {c.done}/{c.total} checklist items done
+                                          </span>
+                                        )}
+                                      </p>
+                                      {c && c.total > 0 && (
+                                        <span className="mt-1 block h-1 w-24 rounded-full bg-[#F0EAE0] overflow-hidden">
+                                          <span className="block h-full rounded-full" style={{ width: `${Math.round((c.done / c.total) * 100)}%`, backgroundColor: completionColor(c.done, c.total) }} />
+                                        </span>
                                       )}
                                     </div>
                                     {editingPlanItemId === item.id ? (
@@ -506,7 +603,8 @@ export default function MenuPlannerPage() {
                                       </button>
                                     )}
                                   </div>
-                                ))}
+                                  )
+                                })}
                               </div>
                             )}
                           </div>
