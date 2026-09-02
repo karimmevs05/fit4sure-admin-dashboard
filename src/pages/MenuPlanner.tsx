@@ -9,7 +9,8 @@ import WeeklyPrepPage from './WeeklyPrep'
 
 const GRAMS_PER_POUND = 455
 
-type CurrentWeekMenu = { monday: string[]; thursday: string[] }
+type MenuItem = { name: string; category: string; recipeId: number | null }
+type CurrentWeekMenu = { monday: MenuItem[]; thursday: MenuItem[] }
 
 type PrepIngredient = {
   inventoryId: number
@@ -339,7 +340,12 @@ export default function MenuPlannerPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* This Week's Menu (real data -- the live weekly_recipe_plan for
-            the current calendar week, not a retrospective of past orders) */}
+            the current calendar week, not a retrospective of past orders).
+            Chips instead of one full-width box per recipe -- a 14-recipe
+            week used to be a 14-row wall that dwarfed Shopping List and
+            Financials next to it; color comes from the same category
+            palette Recipes.tsx uses, so a glance shows the protein/carb/
+            veg mix without reading every name. */}
         <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
           <div className="mb-4 flex items-center justify-between gap-2">
             <h2 className="text-lg font-extrabold text-[#4B2B1D]">This Week's Menu</h2>
@@ -352,40 +358,33 @@ export default function MenuPlannerPage() {
             </button>
           </div>
 
-          <div className="mb-6">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="h-4 w-4 rounded-full bg-[#16A34A]"></div>
-              <p className="text-sm font-bold text-[#16A34A]">Monday</p>
-            </div>
-            <div className="space-y-2">
-              {currentWeekMenu.monday.length === 0 ? (
-                <p className="text-xs text-[#755B4C] italic">No data</p>
-              ) : (
-                currentWeekMenu.monday.map((meal, idx) => (
-                  <div key={idx} className="rounded-lg border border-[#E4D8C9] bg-white p-2">
-                    <p className="text-xs font-medium text-[#4B2B1D]">{meal}</p>
+          <div className="max-h-[420px] overflow-y-auto space-y-5 pr-1">
+            {([
+              { label: 'Monday', color: '#16A34A', items: currentWeekMenu.monday },
+              { label: 'Thursday', color: '#D97706', items: currentWeekMenu.thursday },
+            ] as const).map((day) => (
+              <div key={day.label}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: day.color }}></div>
+                  <p className="text-sm font-bold" style={{ color: day.color }}>{day.label}</p>
+                  <span className="text-[10px] font-bold text-[#9A7E6F]">{day.items.length} item{day.items.length === 1 ? '' : 's'}</span>
+                </div>
+                {day.items.length === 0 ? (
+                  <p className="text-xs text-[#755B4C] italic">No data</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {day.items.map((item, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center rounded-full border border-[#E4D8C9] bg-white px-2.5 py-1 text-xs font-medium text-[#4B2B1D]"
+                      >
+                        {item.name}
+                      </span>
+                    ))}
                   </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <div className="h-4 w-4 rounded-full bg-[#D97706]"></div>
-              <p className="text-sm font-bold text-[#D97706]">Thursday</p>
-            </div>
-            <div className="space-y-2">
-              {currentWeekMenu.thursday.length === 0 ? (
-                <p className="text-xs text-[#755B4C] italic">No data</p>
-              ) : (
-                currentWeekMenu.thursday.map((meal, idx) => (
-                  <div key={idx} className="rounded-lg border border-[#E4D8C9] bg-white p-2">
-                    <p className="text-xs font-medium text-[#4B2B1D]">{meal}</p>
-                  </div>
-                ))
-              )}
-            </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
 
@@ -526,6 +525,11 @@ function ShoppingListColumn({ ingredients, onStoreUpdated }: { ingredients: Prep
   const formatNeeded = (ing: PrepIngredient, g: number) =>
     ing.category?.toLowerCase() === 'protein' ? formatIngredientWeight(g, ing.category) : `${formatLb(g)} lb`
 
+  // Real $/lb from inventory -- null (not 0) when the price isn't on file,
+  // so a store total can honestly say "some prices unknown" instead of
+  // silently undercounting those items as free.
+  const estCostCents = (ing: PrepIngredient) => (ing.unitPriceCents ? (ing.unitPriceCents / 453.592) * ing.shortfallG : null)
+
   const knownStores = useMemo(
     () => Array.from(new Set(ingredients.map((i) => i.store).filter((s): s is string => !!s))).sort(),
     [ingredients]
@@ -562,14 +566,34 @@ function ShoppingListColumn({ ingredients, onStoreUpdated }: { ingredients: Prep
       map.get(key)!.push(ing)
     }
     return Array.from(map.entries())
-      .map(([store, items]) => ({ store, items: items.sort((a, b) => b.shortfallG - a.shortfallG) }))
+      .map(([store, items]) => {
+        const sorted = items.sort((a, b) => b.shortfallG - a.shortfallG)
+        const costs = sorted.map(estCostCents)
+        return {
+          store,
+          items: sorted,
+          costCents: costs.reduce((sum: number, c) => sum + (c || 0), 0),
+          hasUnknownCost: costs.some((c) => c == null),
+        }
+      })
       .sort((a, b) => b.items.length - a.items.length)
   }, [ingredients])
+
+  const grandTotalCents = byStore.reduce((sum, s) => sum + s.costCents, 0)
+  const anyUnknownCost = byStore.some((s) => s.hasUnknownCost)
 
   return (
     <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
       <h2 className="mb-1 text-lg font-extrabold text-[#4B2B1D]">Shopping List</h2>
-      <p className="mb-4 text-xs text-[#755B4C]">What's short vs. current stock, grouped by where you last bought it</p>
+      <div className="mb-4 flex items-start justify-between gap-2">
+        <p className="text-xs text-[#755B4C]">What's short vs. current stock, grouped by where you last bought it</p>
+        {byStore.length > 0 && (
+          <div className="flex-shrink-0 text-right">
+            <p className="text-lg font-extrabold text-[#2E527F] leading-none">${(grandTotalCents / 100).toFixed(2)}</p>
+            <p className="text-[9px] text-[#9A7E6F]">est. total{anyUnknownCost ? ' · some unpriced' : ''}</p>
+          </div>
+        )}
+      </div>
       <datalist id="shopping-list-known-stores">
         {knownStores.map((s) => (
           <option key={s} value={s} />
@@ -580,7 +604,7 @@ function ShoppingListColumn({ ingredients, onStoreUpdated }: { ingredients: Prep
         <p className="text-xs text-[#755B4C] italic">Nothing to buy — current stock covers this week's plan</p>
       ) : (
         <div className="max-h-[420px] overflow-y-auto space-y-2">
-          {byStore.map(({ store, items }) => {
+          {byStore.map(({ store, items, costCents, hasUnknownCost }) => {
             const isOpen = openStore === store
             return (
               <div key={store} className="rounded-lg border border-[#E4D8C9] bg-white overflow-hidden">
@@ -590,6 +614,9 @@ function ShoppingListColumn({ ingredients, onStoreUpdated }: { ingredients: Prep
                 >
                   <span className="text-sm font-bold text-[#4B2B1D]">{store}</span>
                   <span className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-xs font-bold text-[#16A34A]">
+                      {costCents > 0 ? `~$${(costCents / 100).toFixed(2)}` : ''}{hasUnknownCost ? '+' : ''}
+                    </span>
                     <span className="rounded-full bg-[#F1EAE0] px-2 py-0.5 text-[10px] font-bold text-[#755B4C]">
                       {items.length} item{items.length === 1 ? '' : 's'}
                     </span>
@@ -636,7 +663,12 @@ function ShoppingListColumn({ ingredients, onStoreUpdated }: { ingredients: Prep
                           >
                             <Pencil className="h-3 w-3" />
                           </button>
-                          <p className="text-xs font-bold text-[#D62F3D] flex-shrink-0">{formatNeeded(ing, ing.shortfallG)}</p>
+                          <span className="flex-shrink-0 text-right">
+                            <p className="text-xs font-bold text-[#D62F3D]">{formatNeeded(ing, ing.shortfallG)}</p>
+                            {estCostCents(ing) != null && (
+                              <p className="text-[9px] text-[#9A7E6F]">~${((estCostCents(ing) as number) / 100).toFixed(2)}</p>
+                            )}
+                          </span>
                         </div>
                       )
                     )}
@@ -658,6 +690,12 @@ function FinancialsColumn({ financials }: { financials: PrepAndFinancials['finan
     { label: 'Block 1 (Mon–Wed)', color: '#16A34A', data: financials.monday },
     { label: 'Block 2 (Thu–Sun)', color: '#D97706', data: financials.thursday },
   ]
+  const combinedCents = financials.combined.costCents
+  // Share of combined cost, for the split bar below -- guards the
+  // div-by-zero case (nothing planned yet) by just showing an even split
+  // rather than NaN-ing the bar width.
+  const monPct = combinedCents > 0 ? (financials.monday.costCents / combinedCents) * 100 : 50
+  const costPerLb = (data: BlockFinancials) => (data.lb > 0 ? data.costCents / data.lb / 100 : null)
 
   return (
     <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
@@ -665,24 +703,45 @@ function FinancialsColumn({ financials }: { financials: PrepAndFinancials['finan
       <p className="mb-4 text-xs text-[#755B4C]">Forecasted ingredient cost, from this week's recipe plan</p>
 
       <div className="space-y-3">
-        {rows.map((row) => (
-          <div key={row.label} className="rounded-lg border border-[#E4D8C9] bg-white px-3 py-2.5">
-            <div className="flex items-center gap-2 mb-1">
-              <div className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: row.color }}></div>
-              <p className="text-xs font-bold text-[#4B2B1D]">{row.label}</p>
+        {rows.map((row) => {
+          const perLb = costPerLb(row.data)
+          return (
+            <div key={row.label} className="rounded-lg border border-[#E4D8C9] bg-white px-3 py-2.5">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: row.color }}></div>
+                <p className="text-xs font-bold text-[#4B2B1D]">{row.label}</p>
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-xl font-extrabold" style={{ color: row.color }}>${(row.data.costCents / 100).toFixed(2)}</p>
+                <div className="text-right">
+                  <p className="text-xs text-[#2E527F]">{row.data.recipeCount} recipe{row.data.recipeCount === 1 ? '' : 's'} · {row.data.lb} lb</p>
+                  {perLb != null && <p className="text-[10px] text-[#9A7E6F]">${perLb.toFixed(2)}/lb</p>}
+                </div>
+              </div>
             </div>
-            <div className="flex items-center justify-between">
-              <p className="text-xl font-extrabold" style={{ color: row.color }}>${(row.data.costCents / 100).toFixed(2)}</p>
-              <p className="text-xs text-[#2E527F]">{row.data.recipeCount} recipe{row.data.recipeCount === 1 ? '' : 's'} · {row.data.lb} lb</p>
+          )
+        })}
+
+        {combinedCents > 0 && (
+          <div>
+            <div className="h-2 w-full rounded-full overflow-hidden flex bg-[#F1EAE0]">
+              <div className="h-full" style={{ width: `${monPct}%`, backgroundColor: '#16A34A' }}></div>
+              <div className="h-full" style={{ width: `${100 - monPct}%`, backgroundColor: '#D97706' }}></div>
             </div>
+            <p className="mt-1 text-[9px] text-[#9A7E6F]">{Math.round(monPct)}% Block 1 · {Math.round(100 - monPct)}% Block 2</p>
           </div>
-        ))}
+        )}
 
         <div className="rounded-lg bg-[#4B2B1D] px-3 py-2.5">
           <p className="text-xs font-bold text-[#E9DFD0] mb-1">Combined</p>
           <div className="flex items-center justify-between">
             <p className="text-xl font-extrabold text-white">${(financials.combined.costCents / 100).toFixed(2)}</p>
-            <p className="text-xs text-[#2E527F]">{financials.combined.recipeCount} recipes · {financials.combined.lb} lb</p>
+            <div className="text-right">
+              <p className="text-xs text-[#2E527F]">{financials.combined.recipeCount} recipes · {financials.combined.lb} lb</p>
+              {costPerLb(financials.combined) != null && (
+                <p className="text-[10px] text-[#9A6D34]">${(costPerLb(financials.combined) as number).toFixed(2)}/lb</p>
+              )}
+            </div>
           </div>
         </div>
       </div>
