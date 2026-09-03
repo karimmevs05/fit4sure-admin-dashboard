@@ -602,6 +602,14 @@ function IngredientsTable({
   )
 }
 
+// Same precise g/lb conversion used everywhere else this codebase turns a
+// $/lb inventory price into a real cost (Recipes.tsx, MenuPlanner.tsx) --
+// kept consistent so a price entered here via "total for a quantity" means
+// exactly the same $/lb downstream as one typed in directly.
+const GRAMS_PER_POUND = 453.592
+const PURCHASE_UNIT_TO_GRAMS: Record<string, number> = { lb: GRAMS_PER_POUND, oz: 28.3495, kg: 1000, g: 1 }
+const PURCHASE_UNIT_LABEL: Record<string, string> = { lb: 'lb', oz: 'oz', kg: 'kg', g: 'g' }
+
 function AddIngredientDrawer({
   open,
   editingItem,
@@ -629,6 +637,25 @@ function AddIngredientDrawer({
 
   const [formData, setFormData] = useState(blankForm)
 
+  // Alternate way to price an ingredient: what you actually paid for
+  // whatever quantity you bought (e.g. "$25.99 for a 10 lb case"), instead
+  // of requiring the $/lb math to be done by hand first. Still resolves to
+  // the same unit_price_cents ($/lb) the rest of the app expects -- this is
+  // just a friendlier way to arrive at that number.
+  const [priceMode, setPriceMode] = useState<'per_lb' | 'total_for_quantity'>('per_lb')
+  const [totalPaid, setTotalPaid] = useState('')
+  const [purchaseQuantity, setPurchaseQuantity] = useState('')
+  const [purchaseUnit, setPurchaseUnit] = useState<'lb' | 'oz' | 'kg' | 'g'>('lb')
+
+  const computedPricePerLb = useMemo(() => {
+    const paid = parseFloat(totalPaid)
+    const qty = parseFloat(purchaseQuantity)
+    if (!paid || !qty) return null
+    const grams = qty * PURCHASE_UNIT_TO_GRAMS[purchaseUnit]
+    if (grams <= 0) return null
+    return (paid / grams) * GRAMS_PER_POUND
+  }, [totalPaid, purchaseQuantity, purchaseUnit])
+
   // Pre-fill the form when opening for an existing item; reset to blank for a new one
   useEffect(() => {
     if (editingItem) {
@@ -651,6 +678,14 @@ function AddIngredientDrawer({
     } else if (open) {
       setFormData(blankForm)
     }
+    // Editing always starts from the plain $/lb the item already has on
+    // file -- there's no record of what quantity it was originally bought
+    // in, so "total for a quantity" mode always starts fresh, not
+    // reverse-derived from the stored price.
+    setPriceMode('per_lb')
+    setTotalPaid('')
+    setPurchaseQuantity('')
+    setPurchaseUnit('lb')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingItem, open])
 
@@ -664,14 +699,15 @@ function AddIngredientDrawer({
     setLoading(true)
 
     try {
+      const resolvedPricePerLb =
+        priceMode === 'total_for_quantity' ? computedPricePerLb : parseFloat(formData.price_per_pound) || null
+
       const payload = {
         name: formData.name,
         category: formData.category,
         store: formData.store || null,
         grade: formData.grade || null,
-        unit_price_cents: formData.price_per_pound
-          ? Math.round(parseFloat(formData.price_per_pound) * 100)
-          : undefined,
+        unit_price_cents: resolvedPricePerLb ? Math.round(resolvedPricePerLb * 100) : undefined,
         serving_size_g: parseFloat(formData.serving_size_g) || 0,
         current_stock_g: formData.current_stock_g ? parseFloat(formData.current_stock_g) : 0,
         protein_per_100g: formData.protein_per_100g,
@@ -690,6 +726,9 @@ function AddIngredientDrawer({
         })
       }
       setFormData(blankForm)
+      setPriceMode('per_lb')
+      setTotalPaid('')
+      setPurchaseQuantity('')
       onClose()
     } catch (err: any) {
       console.error('Error:', err)
@@ -793,19 +832,76 @@ function AddIngredientDrawer({
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-[#4B2B1D] mb-2">
-              Price per Pound ($)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={formData.price_per_pound}
-              onChange={(e) =>
-                setFormData({ ...formData, price_per_pound: e.target.value })
-              }
-              placeholder="5.98"
-              className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#2E527F] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
-            />
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-bold text-[#4B2B1D]">Price</label>
+              <div className="flex rounded-lg border border-[#B9A88F] overflow-hidden text-[11px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setPriceMode('per_lb')}
+                  className={`px-2.5 py-1 transition ${priceMode === 'per_lb' ? 'bg-[#2E527F] text-white' : 'bg-[#FBF6EE] text-[#4B2B1D] hover:bg-white'}`}
+                >
+                  $/lb
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPriceMode('total_for_quantity')}
+                  className={`px-2.5 py-1 transition border-l border-[#B9A88F] ${priceMode === 'total_for_quantity' ? 'bg-[#2E527F] text-white' : 'bg-[#FBF6EE] text-[#4B2B1D] hover:bg-white'}`}
+                >
+                  Total for a quantity
+                </button>
+              </div>
+            </div>
+
+            {priceMode === 'per_lb' ? (
+              <input
+                type="number"
+                step="0.01"
+                value={formData.price_per_pound}
+                onChange={(e) =>
+                  setFormData({ ...formData, price_per_pound: e.target.value })
+                }
+                placeholder="5.98"
+                className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#2E527F] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+              />
+            ) : (
+              <div>
+                <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#755B4C]">$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={totalPaid}
+                      onChange={(e) => setTotalPaid(e.target.value)}
+                      placeholder="25.99"
+                      className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] pl-6 pr-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#2E527F] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+                    />
+                  </div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={purchaseQuantity}
+                    onChange={(e) => setPurchaseQuantity(e.target.value)}
+                    placeholder="10"
+                    className="h-11 w-full rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-3 text-sm font-medium text-[#4B2B1D] outline-none placeholder:text-[#2E527F] focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
+                  />
+                  <select
+                    value={purchaseUnit}
+                    onChange={(e) => setPurchaseUnit(e.target.value as typeof purchaseUnit)}
+                    className="h-11 rounded-xl border border-[#B9A88F] bg-[#FBF6EE] px-2 text-sm font-medium text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                  >
+                    {(['lb', 'oz', 'kg', 'g'] as const).map((u) => (
+                      <option key={u} value={u}>{PURCHASE_UNIT_LABEL[u]}</option>
+                    ))}
+                  </select>
+                </div>
+                <p className="mt-1.5 text-xs text-[#755B4C]">
+                  {computedPricePerLb != null
+                    ? <>= <span className="font-bold text-[#2E527F]">${computedPricePerLb.toFixed(2)}/lb</span></>
+                    : 'Enter what you paid and how much you bought'}
+                </p>
+              </div>
+            )}
           </div>
 
           <div>
