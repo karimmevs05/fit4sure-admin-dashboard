@@ -5,7 +5,7 @@ import {
   Search, Plus, Mail, Phone, Edit, Trash2, X, Clock, Zap,
   Download, LayoutGrid, AlignJustify, AlertTriangle, ChevronLeft, ChevronRight, ChevronDown,
   Building2, UserPlus, Square, Send, List,
-  FileText, Image as ImageIcon, Video, Link as LinkIcon, Copy, Eye,
+  FileText, Image as ImageIcon, Video, Link as LinkIcon, Copy, Eye, MapPin, Star,
 } from 'lucide-react'
 import { CustomerActivityPanel } from '../components/CustomerActivityPanel'
 import { AutomationBuilder } from '../components/AutomationBuilder'
@@ -17,6 +17,7 @@ type Customer = {
   phone?: string
   address?: string
   apt_gate_code?: string
+  address_count?: number
   payment_mode?: string
   household_size?: number
   occupation?: string
@@ -508,6 +509,281 @@ function WinProbabilityBadge({ customer, size = 44, compact = false }: { custome
       {open && (
         <div className={`mt-2 rounded-lg bg-[#FBF7F0] border border-[#E4D8C9] p-3 ${compact ? 'w-full' : 'w-64'}`}>
           <WinProbabilityBreakdown customer={customer} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+type CustomerAddress = {
+  id: number
+  customer_id: number
+  label: string | null
+  address: string
+  apt_gate_code: string | null
+  is_primary: boolean
+  created_at: string
+}
+
+// Full CRUD for a customer's delivery addresses -- add/edit/delete/set
+// primary. The primary one is always mirrored back onto customer.address/
+// apt_gate_code by the backend (see adminCustomers.js), so onPrimaryChanged
+// updates the list/board rows immediately without a full refetch.
+function CustomerAddressManager({
+  customer,
+  apiUrl,
+  token,
+  onPrimaryChanged,
+}: {
+  customer: Customer
+  apiUrl: string
+  token: string | null
+  onPrimaryChanged: (patch: Partial<Customer>) => void
+}) {
+  const [addresses, setAddresses] = useState<CustomerAddress[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [form, setForm] = useState({ label: '', address: '', apt_gate_code: '', is_primary: false })
+  const [saving, setSaving] = useState(false)
+
+  const authHeaders = { headers: { Authorization: `Bearer ${token}` } }
+
+  const fetchAddresses = async () => {
+    try {
+      const res = await axios.get(`${apiUrl}/api/admin/customers/${customer.id}/addresses`, authHeaders)
+      setAddresses(res.data.data || [])
+    } catch (error) {
+      console.error('Error fetching addresses:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchAddresses()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customer.id])
+
+  const applyPrimaryPatch = (list: CustomerAddress[]) => {
+    const primary = list.find((a) => a.is_primary)
+    onPrimaryChanged({ address: primary?.address, apt_gate_code: primary?.apt_gate_code || undefined, address_count: list.length })
+  }
+
+  const resetForm = () => {
+    setForm({ label: '', address: '', apt_gate_code: '', is_primary: false })
+    setShowAddForm(false)
+    setEditingId(null)
+  }
+
+  const startEdit = (a: CustomerAddress) => {
+    setEditingId(a.id)
+    setShowAddForm(false)
+    setForm({ label: a.label || '', address: a.address, apt_gate_code: a.apt_gate_code || '', is_primary: a.is_primary })
+  }
+
+  const saveNew = async () => {
+    if (!form.address.trim()) return
+    setSaving(true)
+    try {
+      await axios.post(
+        `${apiUrl}/api/admin/customers/${customer.id}/addresses`,
+        { label: form.label.trim() || null, address: form.address.trim(), apt_gate_code: form.apt_gate_code.trim() || null, is_primary: form.is_primary },
+        authHeaders
+      )
+      const res = await axios.get(`${apiUrl}/api/admin/customers/${customer.id}/addresses`, authHeaders)
+      setAddresses(res.data.data || [])
+      applyPrimaryPatch(res.data.data || [])
+      resetForm()
+    } catch (error) {
+      console.error('Error adding address:', error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveEdit = async (id: number) => {
+    if (!form.address.trim()) return
+    setSaving(true)
+    try {
+      await axios.put(
+        `${apiUrl}/api/admin/customers/${customer.id}/addresses/${id}`,
+        { label: form.label.trim() || null, address: form.address.trim(), apt_gate_code: form.apt_gate_code.trim() || null, is_primary: form.is_primary },
+        authHeaders
+      )
+      const res = await axios.get(`${apiUrl}/api/admin/customers/${customer.id}/addresses`, authHeaders)
+      setAddresses(res.data.data || [])
+      applyPrimaryPatch(res.data.data || [])
+      resetForm()
+    } catch (error) {
+      console.error('Error updating address:', error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const setPrimary = async (id: number) => {
+    try {
+      await axios.put(`${apiUrl}/api/admin/customers/${customer.id}/addresses/${id}`, { is_primary: true }, authHeaders)
+      const res = await axios.get(`${apiUrl}/api/admin/customers/${customer.id}/addresses`, authHeaders)
+      setAddresses(res.data.data || [])
+      applyPrimaryPatch(res.data.data || [])
+    } catch (error) {
+      console.error('Error setting primary address:', error)
+    }
+  }
+
+  const deleteAddress = async (id: number) => {
+    if (!confirm('Remove this address?')) return
+    try {
+      await axios.delete(`${apiUrl}/api/admin/customers/${customer.id}/addresses/${id}`, authHeaders)
+      const res = await axios.get(`${apiUrl}/api/admin/customers/${customer.id}/addresses`, authHeaders)
+      setAddresses(res.data.data || [])
+      applyPrimaryPatch(res.data.data || [])
+    } catch (error) {
+      console.error('Error deleting address:', error)
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-extrabold text-[#4B2B1D]">🏠 Delivery Addresses</h3>
+        {!showAddForm && (
+          <button
+            onClick={() => { setShowAddForm(true); setEditingId(null); setForm({ label: '', address: '', apt_gate_code: '', is_primary: addresses.length === 0 }) }}
+            className="flex items-center gap-1.5 rounded-lg bg-[#2E527F] text-white px-3 py-1.5 text-xs font-bold hover:bg-[#24466E] transition"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add Address
+          </button>
+        )}
+      </div>
+
+      {loading ? (
+        <p className="text-xs text-[#755B4C]">Loading addresses...</p>
+      ) : (
+        <div className="space-y-2">
+          {addresses.length === 0 && !showAddForm && (
+            <p className="text-xs text-[#755B4C] italic">No delivery address on file yet.</p>
+          )}
+          {addresses.map((a) =>
+            editingId === a.id ? (
+              <div key={a.id} className="rounded-lg border border-[#3E6594] bg-white p-3 space-y-2">
+                <input
+                  type="text"
+                  value={form.label}
+                  onChange={(e) => setForm((p) => ({ ...p, label: e.target.value }))}
+                  placeholder="Label (e.g. Home, Office)"
+                  className="w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2.5 py-1.5 text-sm text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                />
+                <input
+                  type="text"
+                  value={form.address}
+                  onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))}
+                  placeholder="Street address"
+                  className="w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2.5 py-1.5 text-sm text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                />
+                <input
+                  type="text"
+                  value={form.apt_gate_code}
+                  onChange={(e) => setForm((p) => ({ ...p, apt_gate_code: e.target.value }))}
+                  placeholder="Apt / Gate code (optional)"
+                  className="w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2.5 py-1.5 text-sm text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                />
+                <label className="flex items-center gap-2 text-xs text-[#4B2B1D]">
+                  <input type="checkbox" checked={form.is_primary} onChange={(e) => setForm((p) => ({ ...p, is_primary: e.target.checked }))} />
+                  Primary delivery address
+                </label>
+                <div className="flex justify-end gap-2">
+                  <button onClick={resetForm} className="rounded-lg px-3 py-1.5 text-xs font-bold text-[#755B4C] hover:bg-[#F5F0E8] transition">Cancel</button>
+                  <button
+                    onClick={() => saveEdit(a.id)}
+                    disabled={saving || !form.address.trim()}
+                    className="rounded-lg bg-[#2E527F] text-white px-3 py-1.5 text-xs font-bold hover:bg-[#24466E] disabled:opacity-40 transition"
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div key={a.id} className="rounded-lg border border-[#E4D8C9] bg-white p-3 flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {a.label && <span className="text-xs font-bold text-[#4B2B1D]">{a.label}</span>}
+                    {a.is_primary && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#EAF5EC] text-[#16834A]">
+                        <Star className="h-2.5 w-2.5 fill-current" /> Primary
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-[#4B2B1D] mt-0.5">{a.address}</p>
+                  {a.apt_gate_code && <p className="text-xs text-[#755B4C] mt-0.5">{a.apt_gate_code}</p>}
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {!a.is_primary && (
+                    <button
+                      onClick={() => setPrimary(a.id)}
+                      title="Set as primary"
+                      className="p-1.5 rounded-lg text-[#755B4C] hover:bg-[#F5F0E8] hover:text-[#2E527F] transition"
+                    >
+                      <Star className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <button onClick={() => startEdit(a)} title="Edit" className="p-1.5 rounded-lg text-[#2E527F] hover:bg-[#EDF2F7] transition">
+                    <Edit className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => deleteAddress(a.id)} title="Delete" className="p-1.5 rounded-lg text-[#D62F3D] hover:bg-[#FDEBEC] transition">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            )
+          )}
+
+          {showAddForm && (
+            <div className="rounded-lg border border-[#3E6594] bg-white p-3 space-y-2">
+              <input
+                type="text"
+                value={form.label}
+                onChange={(e) => setForm((p) => ({ ...p, label: e.target.value }))}
+                placeholder="Label (e.g. Home, Office)"
+                className="w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2.5 py-1.5 text-sm text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+              />
+              <input
+                type="text"
+                value={form.address}
+                onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))}
+                placeholder="Street address"
+                className="w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2.5 py-1.5 text-sm text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+              />
+              <input
+                type="text"
+                value={form.apt_gate_code}
+                onChange={(e) => setForm((p) => ({ ...p, apt_gate_code: e.target.value }))}
+                placeholder="Apt / Gate code (optional)"
+                className="w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2.5 py-1.5 text-sm text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+              />
+              <label className="flex items-center gap-2 text-xs text-[#4B2B1D]">
+                <input
+                  type="checkbox"
+                  checked={form.is_primary}
+                  disabled={addresses.length === 0}
+                  onChange={(e) => setForm((p) => ({ ...p, is_primary: e.target.checked }))}
+                />
+                Primary delivery address{addresses.length === 0 ? ' (first address is always primary)' : ''}
+              </label>
+              <div className="flex justify-end gap-2">
+                <button onClick={resetForm} className="rounded-lg px-3 py-1.5 text-xs font-bold text-[#755B4C] hover:bg-[#F5F0E8] transition">Cancel</button>
+                <button
+                  onClick={saveNew}
+                  disabled={saving || !form.address.trim()}
+                  className="rounded-lg bg-[#2E527F] text-white px-3 py-1.5 text-xs font-bold hover:bg-[#24466E] disabled:opacity-40 transition"
+                >
+                  {saving ? 'Saving...' : 'Add Address'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1943,6 +2219,17 @@ export default function CustomersPage() {
                             <span className="text-xs">{customer.phone}</span>
                           </div>
                         )}
+                        {customer.address && (
+                          <div className="flex items-start gap-2 text-[#755B4C]">
+                            <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
+                            <span className="text-xs">
+                              {customer.address}
+                              {(customer.address_count || 0) > 1 && (
+                                <span className="ml-1 font-bold text-[#2E527F]">+{(customer.address_count || 1) - 1} more</span>
+                              )}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       <div className="rounded-lg bg-white p-2 text-center">
@@ -2097,6 +2384,17 @@ export default function CustomersPage() {
                         <div className="flex items-center gap-2 text-[#755B4C]">
                           <Phone className="h-4 w-4" />
                           <span>{customer.phone}</span>
+                        </div>
+                      )}
+                      {customer.address && (
+                        <div className="flex items-start gap-2 text-[#755B4C]">
+                          <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
+                          <span className="text-xs">
+                            {customer.address}
+                            {(customer.address_count || 0) > 1 && (
+                              <span className="ml-1 font-bold text-[#2E527F]">+{(customer.address_count || 1) - 1} more</span>
+                            )}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -3406,23 +3704,15 @@ export default function CustomersPage() {
                 </div>
               </div>
 
-              <div>
-                <h3 className="text-lg font-extrabold text-[#4B2B1D] mb-4">🏠 Address</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  {selectedCustomer.address && (
-                    <div className="rounded-lg bg-white p-4">
-                      <p className="text-xs font-bold text-[#755B4C]">Street Address</p>
-                      <p className="text-sm font-medium text-[#4B2B1D] mt-1">{selectedCustomer.address}</p>
-                    </div>
-                  )}
-                  {selectedCustomer.apt_gate_code && (
-                    <div className="rounded-lg bg-white p-4">
-                      <p className="text-xs font-bold text-[#755B4C]">Apt / Gate Code</p>
-                      <p className="text-sm font-medium text-[#4B2B1D] mt-1">{selectedCustomer.apt_gate_code}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <CustomerAddressManager
+                customer={selectedCustomer}
+                apiUrl={apiUrl}
+                token={token}
+                onPrimaryChanged={(patch) => {
+                  setSelectedCustomer((prev) => (prev ? { ...prev, ...patch } : prev))
+                  setCustomers((prev) => prev.map((c) => (c.id === selectedCustomer.id ? { ...c, ...patch } : c)))
+                }}
+              />
 
               <div>
                 <h3 className="text-lg font-extrabold text-[#4B2B1D] mb-4">👤 Personal Information</h3>
