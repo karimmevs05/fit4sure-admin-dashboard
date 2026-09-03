@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import axios from "axios";
-import { IngredientPicker, PickedIngredient } from "../components/IngredientPicker";
+import { IngredientPicker, PickedIngredient, guessIsLiquid } from "../components/IngredientPicker";
 import { RecipeImportPanel } from "../components/RecipeImportPanel";
 import { RecipeStepsEditor, RecipeStep, isCookStep } from "../components/RecipeStepsEditor";
 import { formatIngredientWeight } from "../utils/unitConversion";
@@ -11,6 +11,7 @@ import {
   ChevronDown,
   Clock3,
   Filter,
+  GripVertical,
   ImagePlus,
   Pencil,
   Plus,
@@ -728,12 +729,20 @@ function AddRecipeDrawer({
       .catch(() => {});
   }, []);
 
-  const addIngredient = (picked: PickedIngredient, prep_section: "dry" | "wet") => {
-    setIngredients((prev) => [...prev, { id: Date.now().toString(), ...picked, prep_section, cooking_method_id: null }]);
+  const addIngredient = (picked: PickedIngredient, prep_section?: "dry" | "wet") => {
+    setIngredients((prev) => [
+      ...prev,
+      { id: Date.now().toString(), ...picked, prep_section: prep_section || (guessIsLiquid(picked.name) ? "wet" : "dry"), cooking_method_id: null },
+    ]);
   };
   const updateIngredientCookingMethod = (id: string, cooking_method_id: number | null) => {
     setIngredients((prev) => prev.map((ing) => (ing.id === id ? { ...ing, cooking_method_id } : ing)));
   };
+  const setIngredientSection = (id: string, prep_section: "dry" | "wet") => {
+    setIngredients((prev) => prev.map((ing) => (ing.id === id ? { ...ing, prep_section } : ing)));
+  };
+  const [draggingIngredientId, setDraggingIngredientId] = useState<string | null>(null);
+  const [dragOverIngredientSection, setDragOverIngredientSection] = useState<"dry" | "wet" | null>(null);
   const [steps, setSteps] = useState<RecipeStep[]>([]);
 
   // Regular Servings isn't hand-entered either -- it's how many actual
@@ -886,7 +895,7 @@ function AddRecipeDrawer({
       )}
 
       <aside
-        className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-[380px] flex-col border-l border-[#D8CDBE] bg-[#F8F2E8] shadow-[-18px_0_50px_rgba(75,43,29,0.12)] transition-transform duration-300 ${
+        className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-[48vw] min-w-[560px] flex-col border-l border-[#D8CDBE] bg-[#F8F2E8] shadow-[-18px_0_50px_rgba(75,43,29,0.12)] transition-transform duration-300 ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -990,83 +999,88 @@ function AddRecipeDrawer({
               </Field>
             </div>
 
-            <div className="flex flex-col gap-3">
-              <Field label="Dry Ingredients">
-                <div className="space-y-2 border border-[#B9A88F] rounded-xl p-3 bg-[#FBF6EE]">
-                  <div className="pb-3 border-b border-[#D8CDBE]">
-                    <IngredientPicker onAdd={(picked: PickedIngredient) => addIngredient(picked, "dry")} />
-                  </div>
-                  {ingredients.filter((ing) => ing.prep_section === "dry").length > 0 && (
-                    <div className="space-y-1 max-h-48 overflow-y-auto">
-                      {ingredients.filter((ing) => ing.prep_section === "dry").map((ing) => {
-                        const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
-                        return (
-                          <div key={ing.id} className="flex justify-between items-center bg-[rgba(251,247,240,0.9)] p-2 rounded-lg border border-[#E4D8C9]">
-                            <div className="flex-1">
-                              <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
-                              <p className="text-[10px] text-[#755B4C]">
-                                {formatIngredientWeight(ing.quantity_g, ing.category)}{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
-                              </p>
-                              <CookingMethodSelect
-                                value={ing.cooking_method_id}
-                                rawG={ing.quantity_g}
-                                cookingMethods={cookingMethods}
-                                onChange={(id) => updateIngredientCookingMethod(ing.id, id)}
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeIngredient(ing.id)}
-                              className="ml-2 text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+            <Field label="Ingredients">
+              <div className="border border-[#B9A88F] rounded-xl p-3 bg-[#FBF6EE] space-y-3">
+                <div className="pb-3 border-b border-[#D8CDBE]">
+                  <IngredientPicker onAdd={(picked: PickedIngredient) => addIngredient(picked)} />
+                  <p className="mt-1.5 text-[10px] text-[#9A7E6F]">
+                    Auto-sorted into Dry / Wet below -- drag a card between columns if the guess is wrong.
+                  </p>
                 </div>
-              </Field>
-
-              <Field label="Wet Ingredients">
-                <div className="space-y-2 border border-[#B9A88F] rounded-xl p-3 bg-[#FBF6EE]">
-                  <div className="pb-3 border-b border-[#D8CDBE]">
-                    <IngredientPicker onAdd={(picked: PickedIngredient) => addIngredient(picked, "wet")} />
-                  </div>
-                  {ingredients.filter((ing) => ing.prep_section === "wet").length > 0 && (
-                    <div className="space-y-1 max-h-48 overflow-y-auto">
-                      {ingredients.filter((ing) => ing.prep_section === "wet").map((ing) => {
-                        const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
-                        return (
-                          <div key={ing.id} className="flex justify-between items-center bg-[rgba(251,247,240,0.9)] p-2 rounded-lg border border-[#E4D8C9]">
-                            <div className="flex-1">
-                              <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
-                              <p className="text-[10px] text-[#755B4C]">
-                                {formatIngredientWeight(ing.quantity_g, ing.category)}{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
-                              </p>
-                              <CookingMethodSelect
-                                value={ing.cooking_method_id}
-                                rawG={ing.quantity_g}
-                                cookingMethods={cookingMethods}
-                                onChange={(id) => updateIngredientCookingMethod(ing.id, id)}
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeIngredient(ing.id)}
-                              className="ml-2 text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                <div className="grid grid-cols-2 gap-3">
+                  {(["dry", "wet"] as const).map((section) => {
+                    const rows = ingredients.filter((ing) => ing.prep_section === section);
+                    return (
+                      <div
+                        key={section}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setDragOverIngredientSection(section);
+                        }}
+                        onDragLeave={() => setDragOverIngredientSection((s) => (s === section ? null : s))}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const id = e.dataTransfer.getData("text/plain");
+                          if (id) setIngredientSection(id, section);
+                          setDraggingIngredientId(null);
+                          setDragOverIngredientSection(null);
+                        }}
+                        className={`rounded-lg border p-2 min-h-[88px] transition ${
+                          dragOverIngredientSection === section ? "border-[#3E6594] bg-[#E8EEF5]" : "border-[#D8CDBE] bg-[#FBF7F0]"
+                        }`}
+                      >
+                        <p className="mb-1.5 text-[10px] font-extrabold uppercase tracking-wide text-[#755B4C]">
+                          {section === "dry" ? "Dry" : "Wet"} ({rows.length})
+                        </p>
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                          {rows.map((ing) => {
+                            const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
+                            return (
+                              <div
+                                key={ing.id}
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData("text/plain", ing.id);
+                                  setDraggingIngredientId(ing.id);
+                                }}
+                                onDragEnd={() => {
+                                  setDraggingIngredientId(null);
+                                  setDragOverIngredientSection(null);
+                                }}
+                                className={`flex items-start gap-1.5 bg-[rgba(251,247,240,0.9)] p-2 rounded-lg border border-[#E4D8C9] cursor-grab active:cursor-grabbing ${
+                                  draggingIngredientId === ing.id ? "opacity-40" : ""
+                                }`}
+                              >
+                                <GripVertical className="h-3.5 w-3.5 shrink-0 mt-0.5 text-[#B9A88F]" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold text-[#4B2B1D] truncate">{ing.name}</p>
+                                  <p className="text-[10px] text-[#755B4C]">
+                                    {formatIngredientWeight(ing.quantity_g, ing.category)}{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
+                                  </p>
+                                  <CookingMethodSelect
+                                    value={ing.cooking_method_id}
+                                    rawG={ing.quantity_g}
+                                    cookingMethods={cookingMethods}
+                                    onChange={(id) => updateIngredientCookingMethod(ing.id, id)}
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeIngredient(ing.id)}
+                                  className="text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition shrink-0"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </Field>
-            </div>
+              </div>
+            </Field>
 
             <Field label="Prep steps">
               <RecipeStepsEditor steps={steps} onChange={setSteps} />
@@ -1217,12 +1231,20 @@ function EditRecipeDrawer({
       .catch(() => {});
   }, []);
 
-  const addIngredient = (picked: PickedIngredient, prep_section: "dry" | "wet") => {
-    setIngredients((prev) => [...prev, { id: Date.now().toString(), ...picked, prep_section, cooking_method_id: null }]);
+  const addIngredient = (picked: PickedIngredient, prep_section?: "dry" | "wet") => {
+    setIngredients((prev) => [
+      ...prev,
+      { id: Date.now().toString(), ...picked, prep_section: prep_section || (guessIsLiquid(picked.name) ? "wet" : "dry"), cooking_method_id: null },
+    ]);
   };
   const updateIngredientCookingMethod = (id: string, cooking_method_id: number | null) => {
     setIngredients((prev) => prev.map((ing) => (ing.id === id ? { ...ing, cooking_method_id } : ing)));
   };
+  const setIngredientSection = (id: string, prep_section: "dry" | "wet") => {
+    setIngredients((prev) => prev.map((ing) => (ing.id === id ? { ...ing, prep_section } : ing)));
+  };
+  const [draggingIngredientId, setDraggingIngredientId] = useState<string | null>(null);
+  const [dragOverIngredientSection, setDragOverIngredientSection] = useState<"dry" | "wet" | null>(null);
   const [steps, setSteps] = useState<RecipeStep[]>(
     recipe.steps?.map((s) => ({
       id: s.id?.toString() || Date.now().toString(),
@@ -1358,7 +1380,7 @@ function EditRecipeDrawer({
       />
 
       <aside
-        className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-[33vw] min-w-[420px] flex-col border-l border-[#D8CDBE] bg-[#F8F2E8] shadow-[-18px_0_50px_rgba(75,43,29,0.12)] transition-transform duration-300 translate-x-0`}
+        className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-[48vw] min-w-[560px] flex-col border-l border-[#D8CDBE] bg-[#F8F2E8] shadow-[-18px_0_50px_rgba(75,43,29,0.12)] transition-transform duration-300 translate-x-0`}
       >
         <div className="flex items-center justify-between border-b border-[#DED2C2] px-6 py-5">
           <div>
@@ -1449,97 +1471,96 @@ function EditRecipeDrawer({
               <RecipeStepsEditor steps={steps} onChange={setSteps} />
             </Field>
 
-            <div className="flex flex-col gap-3">
-              <Field label="Dry Ingredients">
-                <div className="space-y-2 border border-[#B9A88F] rounded-xl p-3 bg-[#FBF6EE]">
-                  {ingredients.filter((ing) => ing.prep_section === "dry").length > 0 && (
-                    <div className="space-y-1 max-h-40 overflow-y-auto pb-2 border-b border-[#D8CDBE]">
-                      {ingredients.filter((ing) => ing.prep_section === "dry").map((ing) => {
-                        const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
-                        return (
-                          <div key={ing.id} className="flex justify-between items-center bg-[rgba(251,247,240,0.9)] p-2 rounded-lg border border-[#E4D8C9]">
-                            <div className="flex-1">
-                              <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <input
-                                  type="number"
-                                  value={ing.quantity_g}
-                                  onChange={(e) => updateIngredientQuantity(ing.id, Number(e.target.value))}
-                                  className="w-16 text-[10px] text-[#755B4C] bg-white border border-[#D8CDBE] rounded px-1 outline-none"
-                                />
-                                <span className="text-[10px] text-[#755B4C]">
-                                  g{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
-                                </span>
-                              </div>
-                              <CookingMethodSelect
-                                value={ing.cooking_method_id}
-                                rawG={ing.quantity_g}
-                                cookingMethods={cookingMethods}
-                                onChange={(id) => updateIngredientCookingMethod(ing.id, id)}
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeIngredient(ing.id)}
-                              className="ml-2 text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  <IngredientPicker onAdd={(picked: PickedIngredient) => addIngredient(picked, "dry")} />
+            <Field label="Ingredients">
+              <div className="border border-[#B9A88F] rounded-xl p-3 bg-[#FBF6EE] space-y-3">
+                <div className="pb-3 border-b border-[#D8CDBE]">
+                  <IngredientPicker onAdd={(picked: PickedIngredient) => addIngredient(picked)} />
+                  <p className="mt-1.5 text-[10px] text-[#9A7E6F]">
+                    Auto-sorted into Dry / Wet below -- drag a card between columns if the guess is wrong.
+                  </p>
                 </div>
-              </Field>
-
-              <Field label="Wet Ingredients">
-                <div className="space-y-2 border border-[#B9A88F] rounded-xl p-3 bg-[#FBF6EE]">
-                  {ingredients.filter((ing) => ing.prep_section === "wet").length > 0 && (
-                    <div className="space-y-1 max-h-40 overflow-y-auto pb-2 border-b border-[#D8CDBE]">
-                      {ingredients.filter((ing) => ing.prep_section === "wet").map((ing) => {
-                        const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
-                        return (
-                          <div key={ing.id} className="flex justify-between items-center bg-[rgba(251,247,240,0.9)] p-2 rounded-lg border border-[#E4D8C9]">
-                            <div className="flex-1">
-                              <p className="text-xs font-bold text-[#4B2B1D]">{ing.name}</p>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <input
-                                  type="number"
-                                  value={ing.quantity_g}
-                                  onChange={(e) => updateIngredientQuantity(ing.id, Number(e.target.value))}
-                                  className="w-16 text-[10px] text-[#755B4C] bg-white border border-[#D8CDBE] rounded px-1 outline-none"
-                                />
-                                <span className="text-[10px] text-[#755B4C]">
-                                  g{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
-                                </span>
+                <div className="grid grid-cols-2 gap-3">
+                  {(["dry", "wet"] as const).map((section) => {
+                    const rows = ingredients.filter((ing) => ing.prep_section === section);
+                    return (
+                      <div
+                        key={section}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setDragOverIngredientSection(section);
+                        }}
+                        onDragLeave={() => setDragOverIngredientSection((s) => (s === section ? null : s))}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const id = e.dataTransfer.getData("text/plain");
+                          if (id) setIngredientSection(id, section);
+                          setDraggingIngredientId(null);
+                          setDragOverIngredientSection(null);
+                        }}
+                        className={`rounded-lg border p-2 min-h-[88px] transition ${
+                          dragOverIngredientSection === section ? "border-[#3E6594] bg-[#E8EEF5]" : "border-[#D8CDBE] bg-[#FBF7F0]"
+                        }`}
+                      >
+                        <p className="mb-1.5 text-[10px] font-extrabold uppercase tracking-wide text-[#755B4C]">
+                          {section === "dry" ? "Dry" : "Wet"} ({rows.length})
+                        </p>
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                          {rows.map((ing) => {
+                            const cost = estimatedCostCents(ing.unit_price_cents, ing.quantity_g);
+                            return (
+                              <div
+                                key={ing.id}
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData("text/plain", ing.id);
+                                  setDraggingIngredientId(ing.id);
+                                }}
+                                onDragEnd={() => {
+                                  setDraggingIngredientId(null);
+                                  setDragOverIngredientSection(null);
+                                }}
+                                className={`flex items-start gap-1.5 bg-[rgba(251,247,240,0.9)] p-2 rounded-lg border border-[#E4D8C9] cursor-grab active:cursor-grabbing ${
+                                  draggingIngredientId === ing.id ? "opacity-40" : ""
+                                }`}
+                              >
+                                <GripVertical className="h-3.5 w-3.5 shrink-0 mt-0.5 text-[#B9A88F]" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-bold text-[#4B2B1D] truncate">{ing.name}</p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <input
+                                      type="number"
+                                      value={ing.quantity_g}
+                                      onChange={(e) => updateIngredientQuantity(ing.id, Number(e.target.value))}
+                                      className="w-16 text-[10px] text-[#755B4C] bg-white border border-[#D8CDBE] rounded px-1 outline-none"
+                                    />
+                                    <span className="text-[10px] text-[#755B4C]">
+                                      g{cost !== null && ` • $${(cost / 100).toFixed(2)}`}
+                                    </span>
+                                  </div>
+                                  <CookingMethodSelect
+                                    value={ing.cooking_method_id}
+                                    rawG={ing.quantity_g}
+                                    cookingMethods={cookingMethods}
+                                    onChange={(id) => updateIngredientCookingMethod(ing.id, id)}
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeIngredient(ing.id)}
+                                  className="text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition shrink-0"
+                                >
+                                  ✕
+                                </button>
                               </div>
-                              <CookingMethodSelect
-                                value={ing.cooking_method_id}
-                                rawG={ing.quantity_g}
-                                cookingMethods={cookingMethods}
-                                onChange={(id) => updateIngredientCookingMethod(ing.id, id)}
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeIngredient(ing.id)}
-                              className="ml-2 text-[#D62F3D] hover:bg-[#FDEBEC] p-1 rounded transition"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  <IngredientPicker onAdd={(picked: PickedIngredient) => addIngredient(picked, "wet")} />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </Field>
-            </div>
+              </div>
+            </Field>
 
             <Field label="Image URL">
               <input

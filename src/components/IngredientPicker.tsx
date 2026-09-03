@@ -39,6 +39,18 @@ function guessInventoryCategory(name: string): string {
   return 'Condiments'
 }
 
+// Same wet/dry call the recipe parser's AI extraction makes (is_liquid in
+// recipeImportService.js's EXTRACTION_SYSTEM_PROMPT) -- kept as a local
+// keyword heuristic here since manually-added ingredients never go through
+// that AI step. Just a starting guess; the caller still renders it into a
+// draggable dry/wet column so it can be corrected.
+export function guessIsLiquid(name: string): boolean {
+  const lower = name.toLowerCase()
+  return /milk|oil|honey|broth|stock|sauce|water|juice|butter|cream|vinegar|wine|syrup|dressing|puree|paste|yogurt/.test(
+    lower
+  )
+}
+
 export function IngredientPicker({ onAdd }: { onAdd: (ingredient: PickedIngredient) => void }) {
   const [options, setOptions] = useState<InventoryOption[]>([])
   const [query, setQuery] = useState('')
