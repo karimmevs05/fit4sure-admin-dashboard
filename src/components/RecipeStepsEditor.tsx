@@ -17,16 +17,24 @@ export type RecipeStep = {
   title: string
   description: string
   time_estimate_minutes: number | null
+  // Explicit now, not just inferred -- set by the recipe parser's Prep/Cook
+  // drag-and-drop, a manual toggle here, or left null for older/hand-typed
+  // steps that were never classified (falls back to the text heuristic
+  // below). The backend's Kitchen batch-sheet generator (classifyStep in
+  // adminMenuPlanner.js) reads this same field the same way, so whatever's
+  // decided here is what actually splits Prep-day vs. Production-day work,
+  // not just a cosmetic badge.
+  step_type?: 'prep' | 'cook' | null
 }
 
-// Same heat-application heuristic the backend uses to split a recipe's
-// steps into Prep-day vs. Production-day batch sheets (see classifyStep /
-// COOK_STEP_PATTERN in adminMenuPlanner.js) -- kept in sync here purely for
-// display, so what a chef sees while writing/reviewing a recipe's steps
-// already previews how it'll get split once it hits the kitchen.
+// Fallback only, for steps with no stored step_type -- same heat-
+// application heuristic the backend falls back to. Kept in sync with
+// COOK_STEP_PATTERN in adminMenuPlanner.js.
 const COOK_STEP_PATTERN = /\b(grill|bake|cook|sauté|saute|fry|boil|simmer|roast|broil|sear|steam|poach)|heat\b.*\b(oven|grill|skillet|pan|stove)/i
-function isCookStep(description: string): boolean {
-  return COOK_STEP_PATTERN.test(description)
+export function isCookStep(step: { description: string; step_type?: 'prep' | 'cook' | null }): boolean {
+  if (step.step_type === 'prep') return false
+  if (step.step_type === 'cook') return true
+  return COOK_STEP_PATTERN.test(step.description)
 }
 
 export function RecipeStepsEditor({
@@ -62,6 +70,9 @@ export function RecipeStepsEditor({
   }
 
   const removeStep = (id: string) => onChange(steps.filter((s) => s.id !== id))
+
+  const toggleStepType = (step: RecipeStep) =>
+    onChange(steps.map((s) => (s.id === step.id ? { ...s, step_type: isCookStep(s) ? 'prep' : 'cook' } : s)))
 
   const moveStep = (index: number, direction: -1 | 1) => {
     const target = index + direction
@@ -173,20 +184,29 @@ export function RecipeStepsEditor({
             ) : (
               <div
                 key={step.id}
-                className={`rounded-lg border p-2 ${isCookStep(step.description) ? 'border-[#F0C89A] bg-[#FFF7EC]' : 'border-[#E4D8C9] bg-[#FBF7F0]'}`}
+                className={`rounded-lg border p-2 ${isCookStep(step) ? 'border-[#F0C89A] bg-[#FFF7EC]' : 'border-[#E4D8C9] bg-[#FBF7F0]'}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1">
                     <p className="text-xs font-bold text-[#4B2B1D]">
                       Step {i + 1}
                       {step.title ? ` -- ${step.title}` : ''}
-                      {isCookStep(step.description) ? (
-                        <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-[#FCE4C8] px-1.5 py-0.5 text-[9px] font-extrabold text-[#B5651D]">
-                          <Flame className="h-2.5 w-2.5" /> Cook
-                        </span>
-                      ) : (
-                        <span className="ml-1.5 rounded-full bg-[#EDE7DC] px-1.5 py-0.5 text-[9px] font-extrabold text-[#755B4C]">Prep</span>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => toggleStepType(step)}
+                        title="Click to switch between Prep and Cook"
+                        className={`ml-1.5 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-extrabold transition ${
+                          isCookStep(step) ? 'bg-[#FCE4C8] text-[#B5651D] hover:bg-[#F8D5A8]' : 'bg-[#EDE7DC] text-[#755B4C] hover:bg-[#E4DACB]'
+                        }`}
+                      >
+                        {isCookStep(step) ? (
+                          <>
+                            <Flame className="h-2.5 w-2.5" /> Cook
+                          </>
+                        ) : (
+                          'Prep'
+                        )}
+                      </button>
                       {step.time_estimate_minutes ? (
                         <span className="ml-1.5 rounded-full bg-[#E8EEF5] px-1.5 py-0.5 text-[9px] font-extrabold text-[#134DA1]">
                           {step.time_estimate_minutes} min

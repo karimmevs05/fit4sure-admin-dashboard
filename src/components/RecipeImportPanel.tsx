@@ -14,9 +14,9 @@
 
 import React, { useRef, useState } from 'react'
 import axios from 'axios'
-import { AlertTriangle, Camera, Check, GripVertical, Link2, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, Camera, Check, ChevronDown, ChevronUp, Flame, GripVertical, Link2, Sparkles, X } from 'lucide-react'
 import { IngredientPicker, PickedIngredient } from './IngredientPicker'
-import { RecipeStepsEditor, RecipeStep } from './RecipeStepsEditor'
+import { RecipeStep } from './RecipeStepsEditor'
 
 type ExtractedIngredient = {
   raw_text: string
@@ -43,7 +43,7 @@ type ExtractedRecipe = {
   servings: number
   prep_time_minutes: number | null
   image: string | null
-  steps: { id: string; title: string; description: string; time_estimate_minutes: number | null }[]
+  steps: { id: string; title: string; description: string; time_estimate_minutes: number | null; step_type: 'prep' | 'cook' }[]
   ingredients: ExtractedIngredient[]
   source: 'jsonld' | 'text-fallback' | 'vision'
 }
@@ -117,7 +117,13 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
     setDraftPrepTime(extracted.prep_time_minutes != null ? String(extracted.prep_time_minutes) : '')
     setDraftImage(extracted.image || '')
     setDraftSteps(
-      extracted.steps.map((s) => ({ id: s.id, title: s.title, description: s.description, time_estimate_minutes: s.time_estimate_minutes }))
+      extracted.steps.map((s) => ({
+        id: s.id,
+        title: s.title,
+        description: s.description,
+        time_estimate_minutes: s.time_estimate_minutes,
+        step_type: s.step_type === 'cook' ? 'cook' : 'prep',
+      }))
     )
     setDraftIngredients(
       extracted.ingredients.map((ing, idx) => ({
@@ -196,6 +202,55 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
   const dryRows = draftIngredients.filter((r) => !r.isLiquid)
   const wetRows = draftIngredients.filter((r) => r.isLiquid)
 
+  // Steps mirror the ingredients' wet/dry pattern: one flat array, grouped
+  // into two columns purely for display/drag-drop, reassembled prep-then-
+  // cook (not raw array order) on Apply so physical execution order is
+  // always right regardless of how DnD left the underlying array.
+  const [draggingStepId, setDraggingStepId] = useState<string | null>(null)
+  const [dragOverStepSection, setDragOverStepSection] = useState<'prep' | 'cook' | null>(null)
+  const prepSteps = draftSteps.filter((s) => s.step_type !== 'cook')
+  const cookSteps = draftSteps.filter((s) => s.step_type === 'cook')
+
+  const updateStep = (id: string, patch: Partial<RecipeStep>) => {
+    setDraftSteps((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)))
+  }
+
+  const removeStepRow = (id: string) => setDraftSteps((prev) => prev.filter((s) => s.id !== id))
+
+  // Reorders within whichever column the step is already in -- swaps
+  // absolute array positions with its same-type neighbor so the per-type
+  // filtered order (what the columns actually render) moves as expected.
+  const moveStepInColumn = (id: string, direction: -1 | 1) => {
+    setDraftSteps((prev) => {
+      const step = prev.find((s) => s.id === id)
+      if (!step) return prev
+      const peers = prev.filter((s) => (s.step_type === 'cook') === (step.step_type === 'cook'))
+      const peerIdx = peers.findIndex((s) => s.id === id)
+      const targetPeer = peers[peerIdx + direction]
+      if (!targetPeer) return prev
+      const aPos = prev.findIndex((s) => s.id === id)
+      const bPos = prev.findIndex((s) => s.id === targetPeer.id)
+      const next = [...prev]
+      ;[next[aPos], next[bPos]] = [next[bPos], next[aPos]]
+      return next
+    })
+  }
+
+  // Drag from one column to the other -- moved to the end of the underlying
+  // array so it renders at the bottom of its new column, matching where it
+  // was visually dropped.
+  const reassignStepType = (id: string, type: 'prep' | 'cook') => {
+    setDraftSteps((prev) => {
+      const step = prev.find((s) => s.id === id)
+      if (!step || step.step_type === type) return prev
+      return [...prev.filter((s) => s.id !== id), { ...step, step_type: type }]
+    })
+  }
+
+  const addStepToColumn = (type: 'prep' | 'cook') => {
+    setDraftSteps((prev) => [...prev, { id: `new-${Date.now()}`, title: '', description: '', time_estimate_minutes: null, step_type: type }])
+  }
+
   const confirmApply = () => {
     onApply({
       name: draftName.trim(),
@@ -203,7 +258,7 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
       servings: Number(draftServings) || 1,
       prep_time_minutes: draftPrepTime ? Number(draftPrepTime) : null,
       image: draftImage.trim() || null,
-      steps: draftSteps,
+      steps: [...prepSteps, ...cookSteps],
       ingredients: draftIngredients
         .filter((r) => r.resolved)
         .map((r) => ({ ...r.resolved!, prep_section: r.isLiquid ? ('wet' as const) : ('dry' as const) })),
@@ -362,9 +417,123 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
 
           <div>
             <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#9A7E6F]">
-              Steps ({draftSteps.length}) -- edit, reorder, add, or remove
+              Steps ({draftSteps.length}) -- drag between columns if a step's phase is wrong
             </p>
-            <RecipeStepsEditor steps={draftSteps} onChange={setDraftSteps} />
+            <div className="grid grid-cols-2 gap-2">
+              {(['prep', 'cook'] as const).map((section) => {
+                const rows = section === 'prep' ? prepSteps : cookSteps
+                return (
+                  <div
+                    key={section}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      setDragOverStepSection(section)
+                    }}
+                    onDragLeave={() => setDragOverStepSection((s) => (s === section ? null : s))}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      const id = e.dataTransfer.getData('text/plain')
+                      if (id) reassignStepType(id, section)
+                      setDraggingStepId(null)
+                      setDragOverStepSection(null)
+                    }}
+                    className={`rounded-lg border p-1.5 transition ${
+                      dragOverStepSection === section ? 'border-[#3E6594] bg-[#EAF0F7]' : 'border-[#E4D8C9] bg-[#FBF6EE]'
+                    }`}
+                  >
+                    <div className="mb-1 flex items-center justify-between px-0.5">
+                      <p className="text-[9px] font-extrabold uppercase tracking-wide text-[#9A7E6F] flex items-center gap-1">
+                        {section === 'cook' && <Flame className="h-2.5 w-2.5 text-[#B5651D]" />}
+                        {section === 'prep' ? 'Prep' : 'Cook'} ({rows.length})
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => addStepToColumn(section)}
+                        className="text-[9px] font-bold text-[#2E527F] hover:underline"
+                      >
+                        + Add
+                      </button>
+                    </div>
+                    <div className="max-h-72 space-y-1.5 overflow-y-auto">
+                      {rows.map((step, i) => (
+                        <div
+                          key={step.id}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('text/plain', step.id)
+                            setDraggingStepId(step.id)
+                          }}
+                          onDragEnd={() => {
+                            setDraggingStepId(null)
+                            setDragOverStepSection(null)
+                          }}
+                          className={`rounded-lg border p-1.5 text-[11px] cursor-grab active:cursor-grabbing ${
+                            draggingStepId === step.id ? 'opacity-40' : ''
+                          } ${section === 'cook' ? 'border-[#F0C89A] bg-white' : 'border-[#E4D8C9] bg-white'}`}
+                        >
+                          <div className="flex items-start gap-1.5">
+                            <GripVertical className="h-3 w-3 shrink-0 mt-0.5 text-[#C9BBA8]" />
+                            <span className="flex-1 min-w-0 text-[9px] font-extrabold text-[#9A7E6F]">Step {i + 1}</span>
+                            <div className="flex shrink-0 flex-col">
+                              <button
+                                type="button"
+                                onClick={() => moveStepInColumn(step.id, -1)}
+                                disabled={i === 0}
+                                className="rounded text-[#755B4C] hover:bg-[#EDF2F7] disabled:opacity-20"
+                                aria-label="Move up"
+                              >
+                                <ChevronUp className="h-3 w-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveStepInColumn(step.id, 1)}
+                                disabled={i === rows.length - 1}
+                                className="rounded text-[#755B4C] hover:bg-[#EDF2F7] disabled:opacity-20"
+                                aria-label="Move down"
+                              >
+                                <ChevronDown className="h-3 w-3" />
+                              </button>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeStepRow(step.id)}
+                              className="shrink-0 text-[#D62F3D] hover:bg-[#FDEBEC] p-0.5 rounded"
+                              aria-label="Remove step"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            value={step.title}
+                            onChange={(e) => updateStep(step.id, { title: e.target.value })}
+                            placeholder="Step title (optional)"
+                            className="mt-1 h-6 w-full rounded border border-[#E4D8C9] bg-[#FBF7F0] px-1.5 text-[10px] font-semibold text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                          />
+                          <textarea
+                            value={step.description}
+                            onChange={(e) => updateStep(step.id, { description: e.target.value })}
+                            placeholder="What to do..."
+                            className="mt-1 min-h-10 w-full resize-none rounded border border-[#E4D8C9] bg-[#FBF7F0] px-1.5 py-1 text-[10px] text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                          />
+                          <input
+                            type="number"
+                            min={0}
+                            value={step.time_estimate_minutes ?? ''}
+                            onChange={(e) => updateStep(step.id, { time_estimate_minutes: e.target.value ? Number(e.target.value) : null })}
+                            placeholder="Minutes"
+                            className="mt-1 h-6 w-20 rounded border border-[#E4D8C9] bg-[#FBF7F0] px-1.5 text-[10px] text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                          />
+                        </div>
+                      ))}
+                      {rows.length === 0 && (
+                        <p className="px-1 py-2 text-center text-[10px] text-[#9A7E6F]">Drop {section} steps here</p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
 
           <div>

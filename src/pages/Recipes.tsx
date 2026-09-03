@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import axios from "axios";
 import { IngredientPicker, PickedIngredient } from "../components/IngredientPicker";
 import { RecipeImportPanel } from "../components/RecipeImportPanel";
-import { RecipeStepsEditor, RecipeStep } from "../components/RecipeStepsEditor";
+import { RecipeStepsEditor, RecipeStep, isCookStep } from "../components/RecipeStepsEditor";
 import { formatIngredientWeight } from "../utils/unitConversion";
 import { PLATE_STRUCTURE_SERVINGS, plateComponentFor, servingGramsFor } from "../utils/plateStructure";
 import { cardBgForCategory } from "../utils/categoryColors";
@@ -47,7 +47,7 @@ type Recipe = {
   category: Category;
   image?: string;
   instructions?: string;
-  steps?: { id: number; step_number: number; title: string | null; description: string; time_estimate_minutes: number | null }[];
+  steps?: { id: number; step_number: number; title: string | null; description: string; time_estimate_minutes: number | null; step_type?: 'prep' | 'cook' | null }[];
   calories: number;
   protein_g: string;
   carbs_g: string;
@@ -827,6 +827,7 @@ function AddRecipeDrawer({
             title: s.title || null,
             description: s.description,
             time_estimate_minutes: s.time_estimate_minutes,
+            step_type: s.step_type,
           })),
         };
         onDraftSave([...draftRecipes, newDraft]);
@@ -850,7 +851,7 @@ function AddRecipeDrawer({
               prep_section: ing.prep_section,
               cooking_method_id: ing.cooking_method_id,
             })),
-            steps: steps.map((s) => ({ title: s.title, description: s.description, time_estimate_minutes: s.time_estimate_minutes })),
+            steps: steps.map((s) => ({ title: s.title, description: s.description, time_estimate_minutes: s.time_estimate_minutes, step_type: s.step_type })),
           },
           {
             headers: { Authorization: `Bearer ${token}` },
@@ -1228,6 +1229,7 @@ function EditRecipeDrawer({
       title: s.title || "",
       description: s.description,
       time_estimate_minutes: s.time_estimate_minutes ?? null,
+      step_type: s.step_type ?? null,
     })) || []
   );
 
@@ -1318,7 +1320,7 @@ function EditRecipeDrawer({
         prep_section: ing.prep_section,
         cooking_method_id: ing.cooking_method_id,
       })),
-      steps: steps.map((s) => ({ title: s.title, description: s.description, time_estimate_minutes: s.time_estimate_minutes })),
+      steps: steps.map((s) => ({ title: s.title, description: s.description, time_estimate_minutes: s.time_estimate_minutes, step_type: s.step_type })),
     };
 
     try {
@@ -1770,7 +1772,16 @@ function RecipeDetailsDrawer({
                       {i + 1}
                     </span>
                     <div>
-                      {step.title && <p className="text-sm font-bold text-[#4B2B1D]">{step.title}</p>}
+                      <p className="text-sm font-bold text-[#4B2B1D] flex items-center gap-1.5">
+                        {step.title}
+                        {isCookStep(step) ? (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-[#FCE4C8] px-1.5 py-0.5 text-[9px] font-extrabold text-[#B5651D]">
+                            🔥 Cook
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-[#EDE7DC] px-1.5 py-0.5 text-[9px] font-extrabold text-[#755B4C]">Prep</span>
+                        )}
+                      </p>
                       <p className="text-sm text-[#755B4C]">
                         {step.description}
                         {step.time_estimate_minutes ? ` (${step.time_estimate_minutes} min)` : ""}
