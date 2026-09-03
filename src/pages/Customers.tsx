@@ -5,7 +5,7 @@ import {
   Search, Plus, Mail, Phone, Edit, Trash2, X, Clock, Zap,
   Download, LayoutGrid, AlignJustify, AlertTriangle, ChevronLeft, ChevronRight, ChevronDown,
   Building2, UserPlus, Square, Send, List,
-  FileText, Image as ImageIcon, Video, Link as LinkIcon, Copy, Eye, MapPin, Star,
+  FileText, Image as ImageIcon, Video, Link as LinkIcon, Copy, Eye, MapPin, Star, Home, Users,
 } from 'lucide-react'
 import { CustomerActivityPanel } from '../components/CustomerActivityPanel'
 import { AutomationBuilder } from '../components/AutomationBuilder'
@@ -18,6 +18,9 @@ type Customer = {
   address?: string
   apt_gate_code?: string
   address_count?: number
+  household_id?: number | null
+  household_name?: string | null
+  is_household_primary?: boolean
   payment_mode?: string
   household_size?: number
   occupation?: string
@@ -541,6 +544,7 @@ function CustomerAddressManager({
   onPrimaryChanged: (patch: Partial<Customer>) => void
 }) {
   const [addresses, setAddresses] = useState<CustomerAddress[]>([])
+  const [household, setHousehold] = useState<{ id: number; name: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -553,6 +557,7 @@ function CustomerAddressManager({
     try {
       const res = await axios.get(`${apiUrl}/api/admin/customers/${customer.id}/addresses`, authHeaders)
       setAddresses(res.data.data || [])
+      setHousehold(res.data.household || null)
     } catch (error) {
       console.error('Error fetching addresses:', error)
     } finally {
@@ -562,8 +567,12 @@ function CustomerAddressManager({
 
   useEffect(() => {
     fetchAddresses()
+    // Re-fetch on household_id changes too, not just a different customer --
+    // joining/leaving/dissolving a household changes whose address rows
+    // this customer's addresses actually resolve to (see resolveAddressOwner
+    // on the backend), without customer.id itself changing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customer.id])
+  }, [customer.id, customer.household_id])
 
   const applyPrimaryPatch = (list: CustomerAddress[]) => {
     const primary = list.find((a) => a.is_primary)
@@ -647,7 +656,7 @@ function CustomerAddressManager({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-1">
         <h3 className="text-lg font-extrabold text-[#4B2B1D]">🏠 Delivery Addresses</h3>
         {!showAddForm && (
           <button
@@ -658,6 +667,11 @@ function CustomerAddressManager({
           </button>
         )}
       </div>
+      {household && (
+        <p className="text-xs text-[#755B4C] mb-3 flex items-center gap-1">
+          <Home className="h-3 w-3" /> Shared with {household.name} -- editing here updates the address for every member.
+        </p>
+      )}
 
       {loading ? (
         <p className="text-xs text-[#755B4C]">Loading addresses...</p>
@@ -784,6 +798,342 @@ function CustomerAddressManager({
               </div>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+type HouseholdMember = {
+  id: number
+  name: string
+  email?: string
+  phone?: string
+  sales_pipeline_stage?: string
+  total_meals_ordered: number
+  lifetime_value_cents: number
+  is_primary: boolean
+}
+
+type HouseholdDetail = {
+  id: number
+  name: string
+  primary_customer_id: number
+  members: HouseholdMember[]
+  combined: { total_meals_ordered: number; lifetime_value_cents: number }
+}
+
+// Consolidates family/roommate customer records: shared delivery address
+// (handled by CustomerAddressManager once household_id is set -- this
+// component owns membership itself), combined order stats, and one
+// designated primary contact. A household groups real, independent
+// customer records together; it never merges them.
+function HouseholdManager({
+  customer,
+  allCustomers,
+  apiUrl,
+  token,
+  onHouseholdChanged,
+}: {
+  customer: Customer
+  allCustomers: Customer[]
+  apiUrl: string
+  token: string | null
+  onHouseholdChanged: () => void
+}) {
+  const [household, setHousehold] = useState<HouseholdDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [newHouseholdName, setNewHouseholdName] = useState('')
+  const [memberSearch, setMemberSearch] = useState('')
+  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([])
+  const [showJoinExisting, setShowJoinExisting] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const authHeaders = { headers: { Authorization: `Bearer ${token}` } }
+
+  const fetchHousehold = async () => {
+    if (!customer.household_id) {
+      setHousehold(null)
+      setLoading(false)
+      return
+    }
+    try {
+      const res = await axios.get(`${apiUrl}/api/admin/households/${customer.household_id}`, authHeaders)
+      setHousehold(res.data.data)
+    } catch (error) {
+      console.error('Error fetching household:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    setLoading(true)
+    fetchHousehold()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customer.household_id])
+
+  const unassignedCustomers = useMemo(
+    () =>
+      allCustomers
+        .filter((c) => c.id !== customer.id && !c.household_id)
+        .filter((c) => !memberSearch.trim() || c.name.toLowerCase().includes(memberSearch.toLowerCase()) || c.phone?.includes(memberSearch)),
+    [allCustomers, customer.id, memberSearch]
+  )
+
+  const existingHouseholds = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const c of allCustomers) {
+      if (c.household_id && c.household_name) map.set(c.household_id, c.household_name)
+    }
+    return Array.from(map.entries())
+  }, [allCustomers])
+
+  const createHousehold = async () => {
+    if (!newHouseholdName.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      await axios.post(
+        `${apiUrl}/api/admin/households`,
+        { name: newHouseholdName.trim(), primary_customer_id: customer.id, member_customer_ids: selectedMemberIds },
+        authHeaders
+      )
+      setShowCreateForm(false)
+      setNewHouseholdName('')
+      setSelectedMemberIds([])
+      onHouseholdChanged()
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to create household')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const joinHousehold = async (householdId: number) => {
+    setSaving(true)
+    setError(null)
+    try {
+      await axios.post(`${apiUrl}/api/admin/households/${householdId}/members`, { customer_id: customer.id }, authHeaders)
+      setShowJoinExisting(false)
+      onHouseholdChanged()
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to join household')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const removeMember = async (memberId: number) => {
+    if (!household) return
+    if (!confirm('Remove this person from the household? They keep their current address as their own.')) return
+    setSaving(true)
+    setError(null)
+    try {
+      await axios.delete(`${apiUrl}/api/admin/households/${household.id}/members/${memberId}`, authHeaders)
+      onHouseholdChanged()
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to remove member')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const setPrimary = async (memberId: number) => {
+    if (!household) return
+    setSaving(true)
+    setError(null)
+    try {
+      await axios.put(`${apiUrl}/api/admin/households/${household.id}`, { primary_customer_id: memberId }, authHeaders)
+      onHouseholdChanged()
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to change primary contact')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const dissolveHousehold = async () => {
+    if (!household) return
+    if (!confirm(`Dissolve ${household.name}? Every member goes back to being independent, each keeping a copy of the current shared address.`)) return
+    setSaving(true)
+    setError(null)
+    try {
+      await axios.delete(`${apiUrl}/api/admin/households/${household.id}`, authHeaders)
+      onHouseholdChanged()
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to dissolve household')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <p className="text-xs text-[#755B4C]">Loading household...</p>
+
+  if (household) {
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-lg font-extrabold text-[#4B2B1D] flex items-center gap-1.5">
+            <Users className="h-4 w-4" /> {household.name}
+          </h3>
+          <button
+            onClick={dissolveHousehold}
+            disabled={saving}
+            className="text-xs font-bold text-[#D62F3D] hover:underline disabled:opacity-40"
+          >
+            Dissolve household
+          </button>
+        </div>
+        <p className="text-xs text-[#755B4C] mb-3">
+          {household.members.length} members · {household.combined.total_meals_ordered} meals combined · $
+          {(household.combined.lifetime_value_cents / 100).toFixed(2)} combined LTV
+        </p>
+        {error && <p className="text-xs text-[#D62F3D] mb-2">{error}</p>}
+        <div className="space-y-2">
+          {household.members.map((m) => (
+            <div key={m.id} className="rounded-lg border border-[#E4D8C9] bg-white p-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-[#4B2B1D] flex items-center gap-1.5">
+                  {m.name}
+                  {m.is_primary && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#EAF5EC] text-[#16834A]">
+                      <Star className="h-2.5 w-2.5 fill-current" /> Primary contact
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-[#755B4C]">{m.total_meals_ordered} meals · ${(m.lifetime_value_cents / 100).toFixed(2)} LTV</p>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {!m.is_primary && (
+                  <>
+                    <button
+                      onClick={() => setPrimary(m.id)}
+                      disabled={saving}
+                      title="Make primary contact"
+                      className="p-1.5 rounded-lg text-[#755B4C] hover:bg-[#F5F0E8] hover:text-[#2E527F] transition disabled:opacity-40"
+                    >
+                      <Star className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => removeMember(m.id)}
+                      disabled={saving}
+                      title="Remove from household"
+                      className="p-1.5 rounded-lg text-[#D62F3D] hover:bg-[#FDEBEC] transition disabled:opacity-40"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-lg font-extrabold text-[#4B2B1D] flex items-center gap-1.5">
+          <Users className="h-4 w-4" /> Household
+        </h3>
+        {!showCreateForm && !showJoinExisting && (
+          <div className="flex gap-2">
+            {existingHouseholds.length > 0 && (
+              <button
+                onClick={() => setShowJoinExisting(true)}
+                className="rounded-lg border border-[#B9A88F] bg-white px-3 py-1.5 text-xs font-bold text-[#4B2B1D] hover:border-[#3E6594] transition"
+              >
+                Join Existing
+              </button>
+            )}
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-[#2E527F] text-white px-3 py-1.5 text-xs font-bold hover:bg-[#24466E] transition"
+            >
+              <Plus className="h-3.5 w-3.5" /> Create Household
+            </button>
+          </div>
+        )}
+      </div>
+
+      {error && <p className="text-xs text-[#D62F3D] mb-2">{error}</p>}
+
+      {!showCreateForm && !showJoinExisting && (
+        <p className="text-xs text-[#755B4C] italic">Not part of a household -- an independent contact.</p>
+      )}
+
+      {showJoinExisting && (
+        <div className="rounded-lg border border-[#3E6594] bg-white p-3 space-y-2">
+          <p className="text-xs font-bold text-[#4B2B1D]">Add {customer.name} to an existing household:</p>
+          <div className="space-y-1.5">
+            {existingHouseholds.map(([id, name]) => (
+              <button
+                key={id}
+                onClick={() => joinHousehold(id)}
+                disabled={saving}
+                className="flex w-full items-center justify-between rounded-lg border border-[#E4D8C9] px-3 py-2 text-left text-sm text-[#4B2B1D] hover:border-[#3E6594] hover:bg-[#FBF7F0] transition disabled:opacity-40"
+              >
+                {name}
+                <ChevronRight className="h-3.5 w-3.5 text-[#9A7E6F]" />
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-end">
+            <button onClick={() => setShowJoinExisting(false)} className="rounded-lg px-3 py-1.5 text-xs font-bold text-[#755B4C] hover:bg-[#F5F0E8] transition">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {showCreateForm && (
+        <div className="rounded-lg border border-[#3E6594] bg-white p-3 space-y-2">
+          <input
+            type="text"
+            value={newHouseholdName}
+            onChange={(e) => setNewHouseholdName(e.target.value)}
+            placeholder="Household name (e.g. The Smith Household)"
+            className="w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2.5 py-1.5 text-sm text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+          />
+          <p className="text-xs text-[#755B4C]">{customer.name} will be the primary contact. Add other members (optional):</p>
+          <input
+            type="text"
+            value={memberSearch}
+            onChange={(e) => setMemberSearch(e.target.value)}
+            placeholder="Search by name or phone..."
+            className="w-full rounded-lg border border-[#B9A88F] bg-[#FBF7F0] px-2.5 py-1.5 text-sm text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+          />
+          <div className="max-h-40 overflow-y-auto space-y-1 border border-[#E4D8C9] rounded-lg p-1.5">
+            {unassignedCustomers.length === 0 ? (
+              <p className="text-xs text-[#9A7E6F] px-1.5 py-1">No matching contacts</p>
+            ) : (
+              unassignedCustomers.slice(0, 25).map((c) => (
+                <label key={c.id} className="flex items-center gap-2 px-1.5 py-1 text-xs text-[#4B2B1D] hover:bg-[#FBF7F0] rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedMemberIds.includes(c.id)}
+                    onChange={(e) =>
+                      setSelectedMemberIds((prev) => (e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id)))
+                    }
+                  />
+                  {c.name}{c.phone ? ` · ${c.phone}` : ''}
+                </label>
+              ))
+            )}
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => { setShowCreateForm(false); setNewHouseholdName(''); setSelectedMemberIds([]) }} className="rounded-lg px-3 py-1.5 text-xs font-bold text-[#755B4C] hover:bg-[#F5F0E8] transition">Cancel</button>
+            <button
+              onClick={createHousehold}
+              disabled={saving || !newHouseholdName.trim()}
+              className="rounded-lg bg-[#2E527F] text-white px-3 py-1.5 text-xs font-bold hover:bg-[#24466E] disabled:opacity-40 transition"
+            >
+              {saving ? 'Creating...' : 'Create Household'}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -1410,15 +1760,21 @@ export default function CustomersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const fetchCustomers = async () => {
+  // silent=true skips the full-page loading state -- used when refreshing
+  // in the background (e.g. after a household change) while a modal is
+  // open, so the whole page doesn't flash back to its loading skeleton
+  // underneath it.
+  const fetchCustomers = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const response = await axios.get(`${apiUrl}/api/admin/customers`, { headers: { Authorization: `Bearer ${token}` } })
       setCustomers(response.data.data || [])
+      return response.data.data || []
     } catch (error) {
       console.error('Error fetching customers:', error)
+      return []
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -2203,6 +2559,11 @@ export default function CustomersPage() {
                               <Building2 className="h-3 w-3" /> {customer.company_name || 'Business'}
                             </span>
                           )}
+                          {customer.household_name && (
+                            <span className="text-xs px-2 py-1 rounded-full font-bold bg-[#F5F0E8] text-[#755B4C] border border-[#D8CDBE] flex items-center gap-1">
+                              <Home className="h-3 w-3" /> {customer.household_name}{customer.is_household_primary ? ' · Primary' : ''}
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -2344,6 +2705,11 @@ export default function CustomersPage() {
                           {customer.sales_pipeline_stage === 'active' ? '✓ Active' : '⏸️ Inactive'}
                         </span>
                         <LeadSourceBadge source={customer.lead_source} />
+                        {customer.household_name && (
+                          <span className="text-xs px-2 py-1 rounded-full font-bold bg-[#F5F0E8] text-[#755B4C] border border-[#D8CDBE] flex items-center gap-1 whitespace-nowrap">
+                            <Home className="h-3 w-3" /> {customer.household_name}{customer.is_household_primary ? ' · Primary' : ''}
+                          </span>
+                        )}
                         {customer.sales_pipeline_stage === 'churned' && (
                           <>
                             <span className="text-[10px] px-2 py-1 rounded-full font-bold bg-[#F5F0E8] text-[#755B4C] whitespace-nowrap">
@@ -3703,6 +4069,18 @@ export default function CustomersPage() {
                   )}
                 </div>
               </div>
+
+              <HouseholdManager
+                customer={selectedCustomer}
+                allCustomers={customers}
+                apiUrl={apiUrl}
+                token={token}
+                onHouseholdChanged={async () => {
+                  const fresh = await fetchCustomers(true)
+                  const updated = fresh.find((c) => c.id === selectedCustomer.id)
+                  if (updated) setSelectedCustomer(updated)
+                }}
+              />
 
               <CustomerAddressManager
                 customer={selectedCustomer}
