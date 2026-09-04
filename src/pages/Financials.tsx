@@ -954,7 +954,7 @@ function FinancialsPage() {
   const handleFileDrop = (e: React.DragEvent) => {
     e.preventDefault()
     const file = e.dataTransfer.files[0]
-    if (file && file.type.startsWith('image/')) {
+    if (file && (file.type.startsWith('image/') || file.type === 'application/pdf')) {
       processReceiptImage(file)
     }
   }
@@ -2243,7 +2243,7 @@ function FinancialsPage() {
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileSelect}
-                accept="image/*"
+                accept="image/*,application/pdf"
                 disabled={isProcessing}
                 className="hidden"
               />
@@ -2264,7 +2264,7 @@ function FinancialsPage() {
                     <>
                       <Upload className="h-8 w-8 text-[#8B6F47]" />
                       <div>
-                        <p className="font-semibold text-[#4B2B1D]">Drop receipt image here or click to upload</p>
+                        <p className="font-semibold text-[#4B2B1D]">Drop a receipt image or PDF here, or click to upload</p>
                         <p className="text-sm text-[#755B4C] mt-1">🤖 AI-powered parsing (Gemini) -- confirm the items before saving</p>
                       </div>
                     </>
@@ -2460,9 +2460,14 @@ function FinancialsPage() {
           {scannedReceipt && (
             <div className="space-y-4 mt-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Receipt Image Preview */}
+                {/* Receipt Preview -- a PDF data URL can't render in an <img>,
+                    so embed it instead; images keep the existing thumbnail. */}
                 <div className="rounded-lg border border-[#2E527F] p-3">
-                  <img src={scannedReceipt.image} alt="Receipt" className="w-full rounded-lg max-h-64 object-cover" />
+                  {scannedReceipt.image.startsWith('data:application/pdf') ? (
+                    <embed src={scannedReceipt.image} type="application/pdf" className="w-full rounded-lg h-64" />
+                  ) : (
+                    <img src={scannedReceipt.image} alt="Receipt" className="w-full rounded-lg max-h-64 object-cover" />
+                  )}
                 </div>
 
                 {/* Extracted Details */}
