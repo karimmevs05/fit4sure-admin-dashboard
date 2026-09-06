@@ -1,7 +1,7 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { IngredientPicker, PickedIngredient, guessIsLiquid } from "../components/IngredientPicker";
-import { RecipeImportPanel } from "../components/RecipeImportPanel";
+import { RecipeImportPanel, RecipeImportPanelHandle } from "../components/RecipeImportPanel";
 import { RecipeStepsEditor, RecipeStep, isCookStep } from "../components/RecipeStepsEditor";
 import { formatIngredientWeight } from "../utils/unitConversion";
 import { PLATE_STRUCTURE_SERVINGS, plateComponentFor, servingGramsFor } from "../utils/plateStructure";
@@ -720,6 +720,14 @@ function AddRecipeDrawer({
   const [ingredients, setIngredients] = useState<RecipeFormIngredient[]>([]);
   const [cookingMethods, setCookingMethods] = useState<CookingMethod[]>([]);
 
+  // When one link/screenshot yields more than one recipe, the import panel
+  // reports that via hasMoreRecipes on each Apply -- submit() below reads
+  // this after a successful create to decide whether to close the drawer
+  // (done) or reset the form and pull up the next recipe for review instead
+  // (via the panel's advanceToNextRecipe, reached through this ref).
+  const importPanelRef = useRef<RecipeImportPanelHandle>(null);
+  const [pendingMoreRecipes, setPendingMoreRecipes] = useState(false);
+
   useEffect(() => {
     const token = localStorage.getItem("token");
     const apiUrl = import.meta.env.VITE_API_BASE_URL;
@@ -874,9 +882,15 @@ function AddRecipeDrawer({
         prep_time_minutes: 30,
         image: "",
       });
+      setIngredients([]);
       setSteps([]);
 
-      onClose();
+      if (pendingMoreRecipes) {
+        setPendingMoreRecipes(false);
+        importPanelRef.current?.advanceToNextRecipe();
+      } else {
+        onClose();
+      }
     } catch (err: any) {
       setSubmitError(err.response?.data?.error || "Failed to create recipe");
     } finally {
@@ -931,6 +945,7 @@ function AddRecipeDrawer({
             </Field>
 
             <RecipeImportPanel
+              ref={importPanelRef}
               onApply={(imported) => {
                 setForm((current) => ({
                   ...current,
@@ -944,6 +959,7 @@ function AddRecipeDrawer({
                   ...imported.ingredients.map((ing) => ({ id: Date.now().toString() + Math.random(), ...ing, cooking_method_id: null })),
                 ]);
                 setSteps((prev) => [...prev, ...imported.steps]);
+                setPendingMoreRecipes(imported.hasMoreRecipes);
               }}
             />
 
@@ -1108,7 +1124,10 @@ function AddRecipeDrawer({
           <div className="grid grid-cols-3 gap-3 border-t border-[#DED2C2] bg-[#F8F2E8] px-6 py-4">
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => {
+                setPendingMoreRecipes(false);
+                onClose();
+              }}
               className="h-12 rounded-xl border border-[#B9A88F] bg-[rgba(251,247,240,0.9)] text-sm font-extrabold text-[#4B2B1D]"
             >
               Cancel

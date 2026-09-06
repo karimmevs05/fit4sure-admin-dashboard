@@ -12,7 +12,7 @@
 // Only calls onApply() once, when the user explicitly confirms the review
 // screen -- never autofills anything before that.
 
-import React, { useRef, useState } from 'react'
+import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react'
 import axios from 'axios'
 import { AlertTriangle, Camera, Check, ChevronDown, ChevronUp, Flame, GripVertical, Link2, Sparkles, X } from 'lucide-react'
 import { IngredientPicker, PickedIngredient } from './IngredientPicker'
@@ -69,11 +69,21 @@ type ApplyPayload = {
   image: string | null
   steps: RecipeStep[]
   ingredients: (PickedIngredient & { prep_section: 'wet' | 'dry' })[]
+  // True when this extraction found more than one recipe and at least one
+  // other one still hasn't been applied yet. The parent form uses this to
+  // decide whether to close after the user creates this recipe, or reset
+  // and call advanceToNextRecipe() (via the ref handle below) to bring up
+  // the next one for review instead.
+  hasMoreRecipes: boolean
+}
+
+export type RecipeImportPanelHandle = {
+  advanceToNextRecipe: () => void
 }
 
 const VALID_CATEGORIES = ['beef', 'chicken', 'turkey', 'carbohydrates', 'vegetables', 'sauces', 'beverage', 'breakfast']
 
-export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload) => void }) {
+export const RecipeImportPanel = forwardRef<RecipeImportPanelHandle, { onApply: (payload: ApplyPayload) => void }>(function RecipeImportPanel({ onApply }, ref) {
   const [tab, setTab] = useState<'link' | 'screenshot'>('link')
   const [url, setUrl] = useState('')
   const [imageBase64, setImageBase64] = useState<string | null>(null)
@@ -82,6 +92,19 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
   const [error, setError] = useState<string | null>(null)
   const [applied, setApplied] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // A single extraction can return more than one recipe (see
+  // recipeImportService.js) -- these track which one is currently loaded
+  // into the editable fields below, and which have already been applied to
+  // the real form so the tab row can show a checkmark and Apply can tell
+  // the parent whether to expect more.
+  const [extractedRecipes, setExtractedRecipes] = useState<ExtractedRecipe[]>([])
+  const [activeRecipeIndex, setActiveRecipeIndex] = useState(0)
+  const [appliedIndices, setAppliedIndices] = useState<Set<number>>(new Set())
+  // True right after Apply when more recipes are still queued -- the review
+  // fields are hidden in favor of a "go create it, then come back" prompt
+  // until the parent confirms the create succeeded (advanceToNextRecipe).
+  const [awaitingCreate, setAwaitingCreate] = useState(false)
 
   // Editable review state -- seeded from the extraction, then owned here
   // until the user confirms. Nothing in the real form changes until Apply.
@@ -158,7 +181,13 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
       const res = await axios.post(`${apiUrl}/api/admin/recipe-import/extract`, body, {
         headers: { Authorization: `Bearer ${token}` },
       })
-      loadDraft(res.data.data)
+      const recipes: ExtractedRecipe[] = res.data.data.recipes || []
+      if (recipes.length === 0) throw new Error('No recipe found')
+      setExtractedRecipes(recipes)
+      setActiveRecipeIndex(0)
+      setAppliedIndices(new Set())
+      setAwaitingCreate(false)
+      loadDraft(recipes[0])
     } catch (err: any) {
       setError(err.response?.data?.error || 'Could not extract a recipe from that. Try a different link or a clearer screenshot.')
     } finally {
@@ -175,7 +204,29 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
     setError(null)
     setApplied(false)
     setPickerOpenFor(null)
+    setExtractedRecipes([])
+    setActiveRecipeIndex(0)
+    setAppliedIndices(new Set())
+    setAwaitingCreate(false)
   }
+
+  const switchToRecipe = (index: number) => {
+    setActiveRecipeIndex(index)
+    loadDraft(extractedRecipes[index])
+  }
+
+  useImperativeHandle(ref, () => ({
+    advanceToNextRecipe() {
+      const nextIndex = extractedRecipes.findIndex((_, i) => !appliedIndices.has(i))
+      if (nextIndex === -1) {
+        setApplied(true)
+        setAwaitingCreate(false)
+        return
+      }
+      switchToRecipe(nextIndex)
+      setAwaitingCreate(false)
+    },
+  }))
 
   const updateIngredientQty = (key: string, quantity_g: number) => {
     setDraftIngredients((prev) => prev.map((r) => (r.key === key ? { ...r, resolved: r.resolved ? { ...r.resolved, quantity_g } : null } : r)))
@@ -252,6 +303,8 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
   }
 
   const confirmApply = () => {
+    const nextApplied = new Set(appliedIndices).add(activeRecipeIndex)
+    const hasMoreRecipes = nextApplied.size < extractedRecipes.length
     onApply({
       name: draftName.trim(),
       category: draftCategory,
@@ -262,8 +315,29 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
       ingredients: draftIngredients
         .filter((r) => r.resolved)
         .map((r) => ({ ...r.resolved!, prep_section: r.isLiquid ? ('wet' as const) : ('dry' as const) })),
+      hasMoreRecipes,
     })
-    setApplied(true)
+    setAppliedIndices(nextApplied)
+    if (hasMoreRecipes) {
+      setAwaitingCreate(true)
+    } else {
+      setApplied(true)
+    }
+  }
+
+  if (awaitingCreate) {
+    const remaining = extractedRecipes.length - appliedIndices.size
+    return (
+      <div className="rounded-xl border border-[#16834A]/40 bg-[#EAF5EC] px-3 py-2.5">
+        <p className="text-xs font-bold text-[#16834A]">
+          <Check className="mr-1 inline h-3.5 w-3.5" />
+          "{extractedRecipes[activeRecipeIndex]?.name}" imported below -- click Create Recipe to save it.
+        </p>
+        <p className="mt-1 text-[10px] font-semibold text-[#16834A]/80">
+          {remaining} more recipe{remaining > 1 ? 's' : ''} found on this page will be ready to review right after.
+        </p>
+      </div>
+    )
   }
 
   if (applied) {
@@ -354,6 +428,31 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
 
       {hasDraft && (
         <div className="space-y-3">
+          {extractedRecipes.length > 1 && (
+            <div className="rounded-lg border border-[#3E6594]/40 bg-[#E8EEF5] p-2">
+              <p className="mb-1.5 text-[10px] font-bold text-[#2E527F]">
+                Found {extractedRecipes.length} recipes on this page -- review and Apply each one
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {extractedRecipes.map((r, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => switchToRecipe(i)}
+                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold transition ${
+                      i === activeRecipeIndex
+                        ? 'border-[#3E6594] bg-white text-[#2E527F]'
+                        : 'border-[#B9A88F] bg-[rgba(255,255,255,0.5)] text-[#755B4C] hover:bg-white'
+                    }`}
+                  >
+                    {appliedIndices.has(i) && <Check className="h-3 w-3 text-[#16834A]" />}
+                    {i + 1}. {r.name || `Recipe ${i + 1}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <p className="text-[10px] font-bold uppercase tracking-wide text-[#9A7E6F]">
               Review everything below, then Apply -- nothing saves until Create Recipe
@@ -665,4 +764,4 @@ export function RecipeImportPanel({ onApply }: { onApply: (payload: ApplyPayload
       )}
     </div>
   )
-}
+})
