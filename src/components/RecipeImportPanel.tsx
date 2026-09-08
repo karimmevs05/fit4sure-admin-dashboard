@@ -81,7 +81,7 @@ export type RecipeImportPanelHandle = {
   advanceToNextRecipe: () => void
 }
 
-const VALID_CATEGORIES = ['beef', 'chicken', 'turkey', 'carbohydrates', 'vegetables', 'sauces', 'beverage', 'breakfast']
+const VALID_CATEGORIES = ['beef', 'chicken', 'turkey', 'pork', 'carbohydrates', 'pasta', 'vegetables', 'sauces', 'beverage', 'breakfast']
 
 export const RecipeImportPanel = forwardRef<RecipeImportPanelHandle, { onApply: (payload: ApplyPayload) => void }>(function RecipeImportPanel({ onApply }, ref) {
   const [tab, setTab] = useState<'link' | 'screenshot'>('link')

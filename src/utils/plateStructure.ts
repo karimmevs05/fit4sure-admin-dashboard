@@ -21,9 +21,9 @@ export const OZ_TO_G = 28.3495;
 // size, a carb side about the carbs serving size, etc. Sauces/beverages
 // don't map to any column in the sheet, so they get no selector.
 export function plateComponentFor(category: string): "protein" | "carbs" | "veggies" | null {
-  if (category === "carbohydrates") return "carbs";
+  if (category === "carbohydrates" || category === "pasta") return "carbs";
   if (category === "vegetables") return "veggies";
-  if (category === "beef" || category === "chicken" || category === "turkey" || category === "breakfast") return "protein";
+  if (category === "beef" || category === "chicken" || category === "turkey" || category === "pork" || category === "breakfast") return "protein";
   return null;
 }
 

@@ -3,8 +3,8 @@
 // Weekly Prep so the two group recipes the same way instead of drifting
 // into two slightly different taxonomies.
 export const CATEGORY_GROUP: Record<string, string> = {
-  beef: 'Proteins', chicken: 'Proteins', turkey: 'Proteins',
-  carbohydrates: 'Carbs',
+  beef: 'Proteins', chicken: 'Proteins', turkey: 'Proteins', pork: 'Proteins',
+  carbohydrates: 'Carbs', pasta: 'Carbs',
   vegetables: 'Veggies',
   sauces: 'Sauces',
   breakfast: 'Breakfast',

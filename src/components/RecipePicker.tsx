@@ -17,7 +17,7 @@ const GRAMS_PER_OUNCE = 28.3495
 // Proteins and sauces are portioned in ounces (butcher/pour-style), never
 // plain grams -- matches formatLbOz/formatIngredientWeight's convention
 // elsewhere in the app. Veggies and carbs stay in grams.
-export const OUNCE_RECIPE_CATEGORIES = new Set(['beef', 'chicken', 'turkey', 'sauces'])
+export const OUNCE_RECIPE_CATEGORIES = new Set(['beef', 'chicken', 'turkey', 'pork', 'sauces'])
 
 export function formatServingSize(grams: number, category: string) {
   if (OUNCE_RECIPE_CATEGORIES.has(category)) return `${(grams / GRAMS_PER_OUNCE).toFixed(1)}oz`
@@ -40,7 +40,9 @@ const CATEGORY_LABELS: Record<string, string> = {
   beef: 'Beef',
   chicken: 'Chicken',
   turkey: 'Turkey',
+  pork: 'Pork',
   carbohydrates: 'Carb',
+  pasta: 'Pasta',
   vegetables: 'Veg',
   sauces: 'Sauces',
   beverage: 'Beverage',

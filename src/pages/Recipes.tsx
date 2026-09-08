@@ -22,7 +22,7 @@ import {
   X,
 } from "lucide-react";
 
-type Category = "beef" | "chicken" | "turkey" | "carbohydrates" | "vegetables" | "sauces" | "beverage" | "breakfast";
+type Category = "beef" | "chicken" | "turkey" | "pork" | "carbohydrates" | "pasta" | "vegetables" | "sauces" | "beverage" | "breakfast";
 
 type RecipeIngredient = {
   id: number;
@@ -67,7 +67,9 @@ const CATEGORY_CLASSES: Record<Category, string> = {
   beef: "bg-[#8B4513] text-white border-[#8B4513]",
   chicken: "bg-[#D97706] text-white border-[#D97706]",
   turkey: "bg-[#92400E] text-white border-[#92400E]",
+  pork: "bg-[#DB7093] text-white border-[#DB7093]",
   carbohydrates: "bg-[#EAB308] text-[#1F2937] border-[#EAB308]",
+  pasta: "bg-[#FDE047] text-[#1F2937] border-[#FDE047]",
   vegetables: "bg-[#16A34A] text-white border-[#16A34A]",
   sauces: "bg-[#E11D48] text-white border-[#E11D48]",
   beverage: "bg-[#0EA5E9] text-white border-[#0EA5E9]",
@@ -89,17 +91,26 @@ function ReadOnlyValue({ value }: { value: string | number }) {
 }
 
 const REGULAR_STRUCTURE_ROW = PLATE_STRUCTURE_SERVINGS.find((row) => row.structure === "Regular")!;
+// Breakfast recipes get their own reference row rather than sharing the
+// Regular row's 5oz protein portion -- a Breakfast plate's own protein
+// serving (2.5oz) is a genuinely different, smaller portion, so a batch of
+// e.g. egg bites should yield servings sized against that, not against a
+// full Regular dinner portion.
+const BREAKFAST_STRUCTURE_ROW = PLATE_STRUCTURE_SERVINGS.find((row) => row.structure === "Breakfast")!;
 
-// How many actual Regular-plate servings a batch recipe yields -- total
-// ingredient weight divided by the Regular row's serving size for whichever
-// plate component this recipe's category feeds (protein/carbs/veggies).
-// Sauces/beverages aren't part of the plate structure table at all, so a
-// batch of one of those is just treated as a single serving.
+// How many actual plate-sized servings a batch recipe yields -- total
+// ingredient weight divided by the reference row's serving size for
+// whichever plate component this recipe's category feeds
+// (protein/carbs/veggies). Every category measures against the Regular row
+// except breakfast, which measures against its own Breakfast row (see
+// above). Sauces/beverages aren't part of the plate structure table at all,
+// so a batch of one of those is just treated as a single serving.
 function computeRegularServings(category: Category, totalWeightG: number): number {
   const component = plateComponentFor(category);
   if (!component) return 1;
   if (totalWeightG <= 0) return 0;
-  const regularServingGrams = servingGramsFor(REGULAR_STRUCTURE_ROW, component);
+  const referenceRow = category === "breakfast" ? BREAKFAST_STRUCTURE_ROW : REGULAR_STRUCTURE_ROW;
+  const regularServingGrams = servingGramsFor(referenceRow, component);
   return regularServingGrams > 0 ? Math.max(1, Math.round(totalWeightG / regularServingGrams)) : 1;
 }
 
@@ -424,7 +435,9 @@ function Header({
             <option value="beef">Beef</option>
             <option value="chicken">Chicken</option>
             <option value="turkey">Turkey</option>
+            <option value="pork">Pork</option>
             <option value="carbohydrates">Carbohydrates</option>
+            <option value="pasta">Pasta</option>
             <option value="vegetables">Vegetables</option>
             <option value="sauces">Sauces</option>
             <option value="beverage">Beverage</option>
@@ -964,8 +977,8 @@ function AddRecipeDrawer({
             />
 
             <Field label="Category">
-              <div className="grid grid-cols-4 gap-1.5">
-                {(["beef", "chicken", "turkey", "carbohydrates", "vegetables", "sauces", "beverage", "breakfast"] as Category[]).map((category) => (
+              <div className="grid grid-cols-5 gap-1.5">
+                {(["beef", "chicken", "turkey", "pork", "carbohydrates", "pasta", "vegetables", "sauces", "beverage", "breakfast"] as Category[]).map((category) => (
                   <button
                     type="button"
                     key={category}
@@ -1435,8 +1448,8 @@ function EditRecipeDrawer({
             </Field>
 
             <Field label="Category">
-              <div className="grid grid-cols-4 gap-1.5">
-                {(["beef", "chicken", "turkey", "carbohydrates", "vegetables", "sauces", "beverage", "breakfast"] as Category[]).map((category) => (
+              <div className="grid grid-cols-5 gap-1.5">
+                {(["beef", "chicken", "turkey", "pork", "carbohydrates", "pasta", "vegetables", "sauces", "beverage", "breakfast"] as Category[]).map((category) => (
                   <button
                     type="button"
                     key={category}
