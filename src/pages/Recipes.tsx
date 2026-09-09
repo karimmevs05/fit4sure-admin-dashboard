@@ -7,6 +7,7 @@ import { formatIngredientWeight } from "../utils/unitConversion";
 import { PLATE_STRUCTURE_SERVINGS, plateComponentFor, servingGramsFor } from "../utils/plateStructure";
 import { cardBgForCategory } from "../utils/categoryColors";
 import {
+  AlertTriangle,
   BookOpen,
   ChevronDown,
   Clock3,
@@ -21,6 +22,7 @@ import {
   User,
   X,
 } from "lucide-react";
+import { allergenLabel } from "../utils/allergens";
 
 type Category = "beef" | "chicken" | "turkey" | "pork" | "carbohydrates" | "pasta" | "vegetables" | "sauces" | "beverage" | "breakfast";
 
@@ -60,6 +62,10 @@ type Recipe = {
   total_recipe_cost_cents?: number;
   ingredients?: RecipeIngredient[];
   per_pound?: { calories: number; protein_g: string; carbs_g: string; fat_g: string };
+  // Derived live from ingredients' inventory.allergens on every read (see
+  // adminRecipes.js) -- never hand-entered, so it can't drift out of sync
+  // with whatever ingredients the recipe actually has right now.
+  allergens?: string[];
 };
 
 
@@ -532,6 +538,20 @@ function RecipeCard({
         <h2 className="text-sm font-extrabold tracking-[-0.015em] text-[#4B2B1D] line-clamp-2">
           {recipe.name}
         </h2>
+
+        {recipe.allergens && recipe.allergens.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {recipe.allergens.map((a) => (
+              <span
+                key={a}
+                className="inline-flex items-center gap-0.5 rounded-full bg-[#FDEBEC] px-1.5 py-0.5 text-[9px] font-extrabold text-[#D62F3D]"
+              >
+                <AlertTriangle className="h-2.5 w-2.5" />
+                {allergenLabel(a)}
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="mt-2 grid grid-cols-4 gap-1">
           <MacroBadge value={displayCalories} label="CAL" className="bg-[#E8EEF5] text-[#134DA1]" />
@@ -1672,10 +1692,19 @@ function RecipeDetailsDrawer({
             <p className="text-2xl font-extrabold tracking-[-0.03em] text-[#4B2B1D]">
               {recipe.name}
             </p>
-            <div className="mt-2 flex items-center gap-2">
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className={`rounded-full border px-3 py-1 text-xs font-extrabold uppercase tracking-[0.07em] shadow-sm ${colors}`}>
                 {recipe.category}
               </span>
+              {(recipe.allergens || []).map((a) => (
+                <span
+                  key={a}
+                  className="inline-flex items-center gap-1 rounded-full bg-[#FDEBEC] px-2.5 py-1 text-[11px] font-extrabold text-[#D62F3D]"
+                >
+                  <AlertTriangle className="h-3 w-3" />
+                  {allergenLabel(a)}
+                </span>
+              ))}
             </div>
           </div>
           <button

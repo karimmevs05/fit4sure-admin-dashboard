@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { CustomerActivityPanel } from '../components/CustomerActivityPanel'
 import { AutomationBuilder } from '../components/AutomationBuilder'
+import { ALL_ALLERGENS, allergenLabel } from '../utils/allergens'
 
 type Customer = {
   id: number
@@ -30,6 +31,11 @@ type Customer = {
   dietary_preference?: string
   foods_to_avoid?: string
   dietary_restrictions?: string
+  // Structured, same controlled vocabulary as a recipe's own derived
+  // allergens (see utils/allergens.ts) -- separate from the free-text
+  // dietary_restrictions field above so the two can eventually be matched
+  // exactly instead of by string comparison.
+  allergens?: string[]
   notes?: string
   created_at?: string
   stage_entered_at?: string | null
@@ -1191,7 +1197,7 @@ export default function CustomersPage() {
   const [formData, setFormData] = useState<Partial<Customer>>({
     name: '', email: '', phone: '', address: '', apt_gate_code: '', payment_mode: '',
     household_size: undefined, occupation: '', primary_goal: '', biggest_hurdle: '',
-    protein_preference: '', dietary_preference: '', dietary_restrictions: '', foods_to_avoid: '', notes: '',
+    protein_preference: '', dietary_preference: '', dietary_restrictions: '', foods_to_avoid: '', allergens: [], notes: '',
     sales_pipeline_stage: 'prospect', conversion_probability: 0, days_since_last_contact: 0, engagement_score: 0,
   })
   const [showCustomerDetail, setShowCustomerDetail] = useState(false)
@@ -1919,7 +1925,7 @@ export default function CustomersPage() {
       setFormData({
         name: '', email: '', phone: '', address: '', apt_gate_code: '', payment_mode: '',
         household_size: undefined, occupation: '', primary_goal: '', biggest_hurdle: '',
-        protein_preference: '', dietary_preference: '', dietary_restrictions: '', foods_to_avoid: '', notes: '',
+        protein_preference: '', dietary_preference: '', dietary_restrictions: '', foods_to_avoid: '', allergens: [], notes: '',
       })
     } catch (error) {
       console.error('Error saving customer:', error)
@@ -1935,6 +1941,14 @@ export default function CustomersPage() {
 
   const handleFormChange = (field: keyof Customer, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const toggleFormAllergen = (allergen: string) => {
+    setFormData((prev) => {
+      const current = prev.allergens || []
+      const next = current.includes(allergen) ? current.filter((a) => a !== allergen) : [...current, allergen]
+      return { ...prev, allergens: next }
+    })
   }
 
   const getLifetimeValue = (cents: number) => (cents / 100).toFixed(2)
@@ -2701,6 +2715,11 @@ export default function CustomersPage() {
                         {customer.dietary_restrictions && (
                           <span className="text-xs bg-[#FFF4F4] text-[#D62F3D] px-2 py-1 rounded font-bold">{customer.dietary_restrictions}</span>
                         )}
+                        {(customer.allergens || []).map((a) => (
+                          <span key={a} className="inline-flex items-center gap-1 text-xs bg-[#FDEBEC] text-[#D62F3D] px-2 py-1 rounded font-bold">
+                            <AlertTriangle className="h-3 w-3" /> {allergenLabel(a)}
+                          </span>
+                        ))}
                         <span className={`text-xs px-2 py-1 rounded font-bold ${customer.sales_pipeline_stage === 'active' ? 'bg-[#EAF5EC] text-[#16A34A]' : 'bg-[#F5F5F5] text-[#9CA3AF]'}`}>
                           {customer.sales_pipeline_stage === 'active' ? '✓ Active' : '⏸️ Inactive'}
                         </span>
@@ -3842,7 +3861,7 @@ export default function CustomersPage() {
                   setFormData({
                     name: '', email: '', phone: '', address: '', apt_gate_code: '', payment_mode: '',
                     household_size: undefined, occupation: '', primary_goal: '', biggest_hurdle: '',
-                    protein_preference: '', dietary_preference: '', dietary_restrictions: '', foods_to_avoid: '', notes: '',
+                    protein_preference: '', dietary_preference: '', dietary_restrictions: '', foods_to_avoid: '', allergens: [], notes: '',
                   })
                 }}
                 className="text-[#755B4C] hover:text-[#4B2B1D]"
@@ -3947,6 +3966,32 @@ export default function CustomersPage() {
                     <input type="text" value={formData.dietary_restrictions || ''} onChange={(e) => handleFormChange('dietary_restrictions', e.target.value)} placeholder="e.g., Gluten-free, Dairy-free, Nut allergy" className="w-full rounded-xl border border-[#B9A88F] bg-white px-3 py-2.5 text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10" />
                   </div>
                   <div>
+                    <label className="block text-xs font-bold text-[#4B2B1D] mb-2">
+                      Allergens
+                      <span className="ml-1.5 font-normal text-[#755B4C]">-- matched exactly against recipe ingredient tags</span>
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ALL_ALLERGENS.map((a) => {
+                        const active = (formData.allergens || []).includes(a)
+                        return (
+                          <button
+                            key={a}
+                            type="button"
+                            onClick={() => toggleFormAllergen(a)}
+                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-xs font-bold transition ${
+                              active
+                                ? 'border-[#D62F3D] bg-[#FDEBEC] text-[#D62F3D]'
+                                : 'border-[#B9A88F] bg-white text-[#755B4C] hover:bg-[#F5F0E8]'
+                            }`}
+                          >
+                            {active && <AlertTriangle className="h-3 w-3" />}
+                            {allergenLabel(a)}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <div>
                     <label className="block text-xs font-bold text-[#4B2B1D] mb-2">Foods to Avoid</label>
                     <textarea value={formData.foods_to_avoid || ''} onChange={(e) => handleFormChange('foods_to_avoid', e.target.value)} placeholder="e.g., Spicy foods, Shellfish, Mushrooms" className="w-full rounded-xl border border-[#B9A88F] bg-white px-3 py-2.5 text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10 resize-none h-20" />
                   </div>
@@ -3966,7 +4011,7 @@ export default function CustomersPage() {
                     setFormData({
                       name: '', email: '', phone: '', address: '', apt_gate_code: '', payment_mode: '',
                       household_size: undefined, occupation: '', primary_goal: '', biggest_hurdle: '',
-                      protein_preference: '', dietary_preference: '', dietary_restrictions: '', foods_to_avoid: '', notes: '',
+                      protein_preference: '', dietary_preference: '', dietary_restrictions: '', foods_to_avoid: '', allergens: [], notes: '',
                     })
                   }}
                   className="flex-1 rounded-lg border border-[#B9A88F] bg-white px-4 py-3 text-sm font-extrabold text-[#4B2B1D] hover:bg-[#F8F2E8] transition"
@@ -4147,6 +4192,20 @@ export default function CustomersPage() {
                     <div className="rounded-lg bg-[#FFF4F4] p-4 border border-[#FFE4E8]">
                       <p className="text-xs font-bold text-[#D62F3D]">Restrictions</p>
                       <p className="text-sm font-medium text-[#4B2B1D] mt-1">{selectedCustomer.dietary_restrictions}</p>
+                    </div>
+                  )}
+                  {(selectedCustomer.allergens || []).length > 0 && (
+                    <div className="rounded-lg bg-[#FFF4F4] p-4 border border-[#FFE4E8]">
+                      <p className="text-xs font-bold text-[#D62F3D] flex items-center gap-1">
+                        <AlertTriangle className="h-3.5 w-3.5" /> Allergens
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {(selectedCustomer.allergens || []).map((a) => (
+                          <span key={a} className="rounded-full bg-white border border-[#F0B8BE] px-2 py-0.5 text-xs font-bold text-[#D62F3D]">
+                            {allergenLabel(a)}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   )}
                   {selectedCustomer.foods_to_avoid && (
