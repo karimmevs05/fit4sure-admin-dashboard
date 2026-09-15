@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import {
@@ -323,24 +323,9 @@ async function parseInstagramMessageFile(file: File): Promise<{ handle: string; 
 // customer table -- it starts empty every session (nobody wants yesterday's
 // leftover triage staring back at them) and you build it by ticking people
 // on Active/Prospects/Lost Prospects. Wrapping up a session moves everyone
-// off the board and into this follow-up queue instead of just losing them --
-// this queue persists (localStorage, preview-only) since the whole point is
-// that nothing falls through the cracks. Becomes a real `crm-tasks` row per
-// person once there's a POST endpoint for it; today it's a holding pen.
-type FollowUpEntry = { customerId: number; name: string; note: string; createdAt: string }
-const FOLLOWUP_KEY = 'f4s_followup_queue_preview'
-
-function readFollowUps(): FollowUpEntry[] {
-  try {
-    const raw = localStorage.getItem(FOLLOWUP_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch {
-    return []
-  }
-}
-function writeFollowUps(list: FollowUpEntry[]) {
-  localStorage.setItem(FOLLOWUP_KEY, JSON.stringify(list))
-}
+// off the board and into a real crm_tasks row per person (via POST
+// /api/admin/crm-tasks) instead of just losing them -- shared across every
+// admin/device now, not a local-only holding pen (see realTasks below).
 
 const LEAD_SOURCE_LABEL: Record<LeadSource, string> = {
   ambassador: 'Ambassador',
@@ -1501,14 +1486,23 @@ export default function CustomersPage() {
     }
   }
 
-  // ---- new: Pipeline is a working set you build, not everyone by default.
-  // Session-only on purpose (no localStorage) -- it's meant to reset. ----
+  // ---- Pipeline is a working set you build, not everyone by default.
+  // Backed by pipeline_working_set (see adminCustomers.js) so it survives a
+  // refresh and shows the same list to every admin/device, not just this tab.
   const [workingSet, setWorkingSet] = useState<number[]>([])
-  const [followUps, setFollowUps] = useState<FollowUpEntry[]>(() => readFollowUps())
 
+  const fetchWorkingSet = async () => {
+    try {
+      const res = await axios.get(`${apiUrl}/api/admin/customers/working-pipeline`, { headers: { Authorization: `Bearer ${token}` } })
+      setWorkingSet(res.data.data || [])
+    } catch (error) {
+      console.error('Error fetching working pipeline:', error)
+    }
+  }
   useEffect(() => {
-    writeFollowUps(followUps)
-  }, [followUps])
+    fetchWorkingSet()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ---- new: Task View -- one list under the board, merging real
   // `crm-tasks` (fetched, completed via the real endpoint) with the local
@@ -1968,29 +1962,73 @@ export default function CustomersPage() {
     }
   }
 
-  // ---- new: build/wrap up the Pipeline working set ----
-  const addToWorkingSet = (ids: number[]) => {
+  // ---- build/wrap up the Pipeline working set -- optimistic local update,
+  // then the real shared write; a failure just refetches to correct drift
+  // rather than trying to hand-roll a rollback. ----
+  const addToWorkingSet = async (ids: number[]) => {
     setWorkingSet((prev) => Array.from(new Set([...prev, ...ids])))
     setSelectedIds([])
+    try {
+      await axios.post(`${apiUrl}/api/admin/customers/working-pipeline`, { customer_ids: ids }, { headers: { Authorization: `Bearer ${token}` } })
+    } catch (error) {
+      console.error('Error adding to working pipeline:', error)
+      fetchWorkingSet()
+    }
   }
-  const removeFromWorkingSet = (ids: number[]) => {
+  const removeFromWorkingSet = async (ids: number[]) => {
     setWorkingSet((prev) => prev.filter((id) => !ids.includes(id)))
     setSelectedIds([])
+    try {
+      await axios.delete(`${apiUrl}/api/admin/customers/working-pipeline`, { data: { customer_ids: ids }, headers: { Authorization: `Bearer ${token}` } })
+    } catch (error) {
+      console.error('Error removing from working pipeline:', error)
+      fetchWorkingSet()
+    }
   }
-  const sendToFollowUp = (ids: number[]) => {
-    const entries: FollowUpEntry[] = ids.map((id) => {
-      const c = customers.find((x) => x.id === id)
-      return { customerId: id, name: c?.name || `#${id}`, note: '', createdAt: new Date().toISOString() }
-    })
-    setFollowUps((prev) => [...entries, ...prev])
+  // Wrapping up a session used to move people into a local-only follow-up
+  // list (see the removed FollowUpEntry/localStorage code) -- now it creates
+  // a real crm_tasks row per person, same table/endpoint the manual quick-add
+  // task box already uses, so it shows up for every admin and survives a
+  // refresh.
+  const sendToFollowUp = async (ids: number[]) => {
     setWorkingSet((prev) => prev.filter((id) => !ids.includes(id)))
     setSelectedIds([])
+    try {
+      await Promise.all(
+        ids.map(async (id) => {
+          const c = customers.find((x) => x.id === id)
+          const res = await axios.post(
+            `${apiUrl}/api/admin/crm-tasks`,
+            { customer_id: id, title: `Follow up with ${c?.name || `#${id}`}` },
+            { headers: { Authorization: `Bearer ${token}` } }
+          )
+          setRealTasks((prev) => [res.data.data, ...prev])
+        })
+      )
+      await axios.delete(`${apiUrl}/api/admin/customers/working-pipeline`, { data: { customer_ids: ids }, headers: { Authorization: `Bearer ${token}` } })
+    } catch (error) {
+      console.error('Error sending to follow-up:', error)
+      fetchWorkingSet()
+      fetchRealTasks()
+    }
   }
-  const dismissFollowUp = (customerId: number) => {
-    setFollowUps((prev) => prev.filter((f) => f.customerId !== customerId))
+  // "Back to Pipeline" on a follow-up task -- closes the task (it's being
+  // worked now, not deferred) and re-adds the customer to the working set.
+  const backToPipeline = async (taskId: number, customerId: number) => {
+    await completeRealTask(taskId)
+    await addToWorkingSet([customerId])
   }
-  const updateFollowUpNote = (customerId: number, note: string) => {
-    setFollowUps((prev) => prev.map((f) => (f.customerId === customerId ? { ...f, note } : f)))
+  const updateTaskNoteTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
+  const updateTaskNote = (taskId: number, description: string) => {
+    setRealTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, description } : t)))
+    clearTimeout(updateTaskNoteTimers.current[taskId])
+    updateTaskNoteTimers.current[taskId] = setTimeout(async () => {
+      try {
+        await axios.patch(`${apiUrl}/api/admin/crm-tasks/${taskId}`, { description }, { headers: { Authorization: `Bearer ${token}` } })
+      } catch (error) {
+        console.error('Error updating task note:', error)
+      }
+    }, 600)
   }
 
   // ---- new: quick add lead ----
@@ -2149,7 +2187,7 @@ export default function CustomersPage() {
         </div>
         <div className="rounded-xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-5 py-4">
           <p className="text-xs font-bold text-[#755B4C]">Need Follow-Up</p>
-          <p className="text-2xl font-extrabold text-[#D62F3D] mt-1">{followUps.length + realTasks.length}</p>
+          <p className="text-2xl font-extrabold text-[#D62F3D] mt-1">{realTasks.length}</p>
         </div>
       </div>
 
@@ -2433,7 +2471,7 @@ export default function CustomersPage() {
           <p className="text-sm text-[#755B4C] mt-1">
             Go to the Customers tab, tick the people you want to work right now, and click "Add to Pipeline."
           </p>
-          <p className="text-xs text-[#9A7E6F] mt-2">Saved on this device only -- not shared with other admins or devices.</p>
+          <p className="text-xs text-[#9A7E6F] mt-2">Shared across every admin and device.</p>
         </div>
       )}
       {activeTab === 'pipeline' && pipelineView === 'board' ? (
@@ -3354,8 +3392,8 @@ export default function CustomersPage() {
         <div className="flex items-center justify-between mb-3">
           <p className="font-extrabold text-[#4B2B1D] flex items-center gap-2">
             ☑️ Tasks
-            {(followUps.length + realTasks.length) > 0 && (
-              <span className="text-[10px] font-bold rounded-full bg-[#EDF2F7] text-[#2E527F] px-2 py-0.5">{followUps.length + realTasks.length} open</span>
+            {realTasks.length > 0 && (
+              <span className="text-[10px] font-bold rounded-full bg-[#EDF2F7] text-[#2E527F] px-2 py-0.5">{realTasks.length} open</span>
             )}
           </p>
         </div>
@@ -3398,51 +3436,16 @@ export default function CustomersPage() {
           </div>
         )}
 
-        {followUps.length === 0 && realTasks.length === 0 ? (
+        {realTasks.length === 0 ? (
           <p className="text-xs text-[#755B4C]">Nothing open. Tasks you add here, and anyone you mark "✓ Done" on the board above, show up in this list.</p>
         ) : (
           <div className="space-y-2">
-            {followUps.map((f) => (
-              <div key={`f-${f.customerId}`} className="rounded-xl border border-[#E4D8C9] bg-white p-3 flex items-start gap-3">
-                <button onClick={() => dismissFollowUp(f.customerId)} className="mt-0.5 flex-shrink-0 text-[#755B4C] hover:text-[#16A34A]" title="Mark done">
-                  <Square className="h-4 w-4" />
-                </button>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-extrabold text-[#4B2B1D] flex items-center gap-1.5 flex-wrap">
-                    {f.name}
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#F5F0E8] text-[#9A7E6F]">This device only</span>
-                  </p>
-                  {f.customerId > 0 ? (
-                    <>
-                      <p className="text-[10px] text-[#9A7E6F] mb-1.5">Moved off Pipeline {new Date(f.createdAt).toLocaleDateString()}</p>
-                      <input
-                        type="text"
-                        value={f.note}
-                        onChange={(e) => updateFollowUpNote(f.customerId, e.target.value)}
-                        placeholder="What's the next step? (e.g. call back Thursday)"
-                        className="w-full rounded-lg border border-[#E4D8C9] bg-[#FBF7F0] px-2.5 py-1.5 text-xs text-[#4B2B1D] outline-none focus:border-[#3E6594]"
-                      />
-                    </>
-                  ) : (
-                    <p className="text-[10px] text-[#9A7E6F]">Added {new Date(f.createdAt).toLocaleDateString()}</p>
-                  )}
-                </div>
-                {f.customerId > 0 && (
-                  <button
-                    onClick={() => addToWorkingSet([f.customerId])}
-                    title="Put back on the Pipeline board"
-                    className="text-[10px] font-bold text-[#2E527F] hover:underline flex-shrink-0"
-                  >
-                    Back to Pipeline
-                  </button>
-                )}
-              </div>
-            ))}
-            {filteredRealTasks.length === 0 && realTasks.length > 0 && (
+            {filteredRealTasks.length === 0 && (
               <p className="text-xs text-[#755B4C] py-2">No tasks match this filter.</p>
             )}
             {filteredRealTasks.map((t) => {
               const tag = taskSourceTag(t)
+              const isPipelineFollowUp = t.customer_id != null && !t.system_source && !t.source_automation_rule_id
               return (
                 <div key={`t-${t.id}`} className="rounded-xl border border-[#E4D8C9] bg-white p-3 flex items-start gap-3">
                   <button onClick={() => completeRealTask(t.id)} className="mt-0.5 flex-shrink-0 text-[#755B4C] hover:text-[#16A34A]" title="Mark done">
@@ -3453,9 +3456,30 @@ export default function CustomersPage() {
                       {t.title}
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: tag.bg, color: tag.text }}>{tag.label}</span>
                     </p>
-                    {t.description && <p className="text-[10.5px] text-[#755B4C] mt-0.5">{t.description}</p>}
-                    {t.customer_name && <p className="text-[10px] text-[#9A7E6F] mt-0.5">{t.customer_name}</p>}
+                    {isPipelineFollowUp ? (
+                      <input
+                        type="text"
+                        value={t.description || ''}
+                        onChange={(e) => updateTaskNote(t.id, e.target.value)}
+                        placeholder="What's the next step? (e.g. call back Thursday)"
+                        className="mt-1 w-full rounded-lg border border-[#E4D8C9] bg-[#FBF7F0] px-2.5 py-1.5 text-xs text-[#4B2B1D] outline-none focus:border-[#3E6594]"
+                      />
+                    ) : (
+                      <>
+                        {t.description && <p className="text-[10.5px] text-[#755B4C] mt-0.5">{t.description}</p>}
+                        {t.customer_name && <p className="text-[10px] text-[#9A7E6F] mt-0.5">{t.customer_name}</p>}
+                      </>
+                    )}
                   </div>
+                  {isPipelineFollowUp && t.customer_id != null && (
+                    <button
+                      onClick={() => backToPipeline(t.id, t.customer_id!)}
+                      title="Put back on the Pipeline board"
+                      className="text-[10px] font-bold text-[#2E527F] hover:underline flex-shrink-0"
+                    >
+                      Back to Pipeline
+                    </button>
+                  )}
                 </div>
               )
             })}
