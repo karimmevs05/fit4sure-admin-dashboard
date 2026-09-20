@@ -11,7 +11,8 @@ import {
   DollarSign,
   FileText,
   Settings,
-  LogOut
+  LogOut,
+  Megaphone
 } from 'lucide-react'
 
 export function Navigation() {
@@ -26,6 +27,7 @@ export function Navigation() {
     { path: '/recipes', label: 'Recipes', icon: UtensilsCrossed },
     { path: '/inventory', label: 'Inventory', icon: Package },
     { path: '/financials', label: 'Financials', icon: DollarSign },
+    { path: '/marketing', label: 'Marketing', icon: Megaphone },
     { path: '/reports', label: 'Reports', icon: FileText },
     { path: '/settings', label: 'Settings', icon: Settings },
   ]

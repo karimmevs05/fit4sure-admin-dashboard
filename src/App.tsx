@@ -10,6 +10,7 @@ import OperationsHubPage from './pages/OperationsHub.tsx'
 import ProductionSOPPage from './pages/ProductionSOP.tsx'
 import CustomersPage from './pages/Customers.tsx'
 import FinancialsPage from './pages/Financials.tsx'
+import MarketingPage from './pages/Marketing.tsx'
 import ReportsPage from './pages/Reports.tsx'
 import SettingsPage from './pages/Settings.tsx'
 import TestPage from './pages/Test.tsx'
@@ -52,6 +53,7 @@ function App() {
           <Route path="/recipes" element={token ? <Fit4SureRecipesPage /> : <Navigate to="/login" />} />
           <Route path="/inventory" element={token ? <InventoryPage /> : <Navigate to="/login" />} />
           <Route path="/financials" element={token ? <FinancialsPage /> : <Navigate to="/login" />} />
+          <Route path="/marketing" element={token ? <MarketingPage /> : <Navigate to="/login" />} />
           <Route path="/meal-plan" element={token ? <MealPlan /> : <Navigate to="/login" />} />
           <Route path="/reports" element={token ? <ReportsPage /> : <Navigate to="/login" />} />
           <Route path="/settings" element={token ? <SettingsPage /> : <Navigate to="/login" />} />
