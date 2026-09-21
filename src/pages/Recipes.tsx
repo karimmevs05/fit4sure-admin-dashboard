@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { allergenLabel } from "../utils/allergens";
 
-type Category = "beef" | "chicken" | "turkey" | "pork" | "carbohydrates" | "pasta" | "vegetables" | "sauces" | "beverage" | "breakfast";
+type Category = "beef" | "chicken" | "turkey" | "pork" | "carbohydrates" | "pasta" | "vegetables" | "sauces" | "marinades" | "beverage" | "breakfast";
 
 type RecipeIngredient = {
   id: number;
@@ -78,6 +78,7 @@ const CATEGORY_CLASSES: Record<Category, string> = {
   pasta: "bg-[#FDE047] text-[#1F2937] border-[#FDE047]",
   vegetables: "bg-[#16A34A] text-white border-[#16A34A]",
   sauces: "bg-[#E11D48] text-white border-[#E11D48]",
+  marinades: "bg-[#7C3AED] text-white border-[#7C3AED]",
   beverage: "bg-[#0EA5E9] text-white border-[#0EA5E9]",
   breakfast: "bg-[#F59E0B] text-white border-[#F59E0B]",
 };
@@ -446,6 +447,7 @@ function Header({
             <option value="pasta">Pasta</option>
             <option value="vegetables">Vegetables</option>
             <option value="sauces">Sauces</option>
+            <option value="marinades">Marinades</option>
             <option value="beverage">Beverage</option>
             <option value="breakfast">Breakfast</option>
           </select>
@@ -998,7 +1000,7 @@ function AddRecipeDrawer({
 
             <Field label="Category">
               <div className="grid grid-cols-5 gap-1.5">
-                {(["beef", "chicken", "turkey", "pork", "carbohydrates", "pasta", "vegetables", "sauces", "beverage", "breakfast"] as Category[]).map((category) => (
+                {(["beef", "chicken", "turkey", "pork", "carbohydrates", "pasta", "vegetables", "sauces", "marinades", "beverage", "breakfast"] as Category[]).map((category) => (
                   <button
                     type="button"
                     key={category}
@@ -1469,7 +1471,7 @@ function EditRecipeDrawer({
 
             <Field label="Category">
               <div className="grid grid-cols-5 gap-1.5">
-                {(["beef", "chicken", "turkey", "pork", "carbohydrates", "pasta", "vegetables", "sauces", "beverage", "breakfast"] as Category[]).map((category) => (
+                {(["beef", "chicken", "turkey", "pork", "carbohydrates", "pasta", "vegetables", "sauces", "marinades", "beverage", "breakfast"] as Category[]).map((category) => (
                   <button
                     type="button"
                     key={category}

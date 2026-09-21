@@ -7,11 +7,12 @@ export const CATEGORY_GROUP: Record<string, string> = {
   carbohydrates: 'Carbs', pasta: 'Carbs',
   vegetables: 'Veggies',
   sauces: 'Sauces',
+  marinades: 'Marinades',
   breakfast: 'Breakfast',
   beverage: 'Beverages',
   custom: 'Custom',
 }
-export const GROUP_ORDER = ['Proteins', 'Carbs', 'Veggies', 'Sauces', 'Breakfast', 'Beverages', 'Custom']
+export const GROUP_ORDER = ['Proteins', 'Carbs', 'Veggies', 'Sauces', 'Marinades', 'Breakfast', 'Beverages', 'Custom']
 
 export function categoryGroup(category: string | null | undefined): string {
   return CATEGORY_GROUP[category || 'custom'] || 'Custom'
