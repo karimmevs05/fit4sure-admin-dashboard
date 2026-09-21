@@ -274,7 +274,7 @@ export default function MarketingPage() {
             <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-8 text-center">
               <ImageOff className="mx-auto h-8 w-8 text-[#9A7E6F]" />
               <p className="mt-2 font-extrabold text-[#4B2B1D]">No content pieces in this project yet.</p>
-              <p className="mt-1 text-sm text-[#755B4C]">Click "Add photo" to pull one in from the uploads folder.</p>
+              <p className="mt-1 text-sm text-[#755B4C]">Click "Create piece" to upload a photo, link one from Drive, or pull one from the uploads folder.</p>
             </div>
           ) : (
             <>
