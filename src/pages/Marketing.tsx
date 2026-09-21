@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import {
   Megaphone, Copy, Check, Sparkles, ImageOff, Download, Image as ImageIcon, Loader2, FolderOpen, Plus, X, FolderPlus,
-  CalendarDays, Link2, DollarSign,
+  CalendarDays, Link2, DollarSign, Upload, FolderSearch,
 } from "lucide-react";
 
 type UploadedPhoto = {
@@ -161,7 +161,7 @@ export default function MarketingPage() {
     }
   };
 
-  const addPhotoToProject = async (fileId: string) => {
+  const addFileIdToProject = async (fileId: string) => {
     if (selectedProjectId == null) return;
     try {
       await axios.post(`${apiUrl}/api/admin/marketing/projects/${selectedProjectId}/items`, { drive_file_id: fileId }, authHeaders);
@@ -251,15 +251,17 @@ export default function MarketingPage() {
               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#2E527F] px-3 text-xs font-bold text-white transition hover:bg-[#24466E]"
             >
               <Plus className="h-3.5 w-3.5" />
-              Add photo
+              Create piece
             </button>
           </div>
 
           {showPicker && (
-            <PhotoPicker
+            <CreatePieceMenu
               photos={pickablePhotos}
+              apiUrl={apiUrl}
+              authHeaders={authHeaders}
               onPick={(fileId) => {
-                addPhotoToProject(fileId);
+                addFileIdToProject(fileId);
                 setShowPicker(false);
               }}
               onClose={() => setShowPicker(false)}
@@ -387,24 +389,144 @@ function ProjectTabs({
   );
 }
 
-function PhotoPicker({ photos, onPick, onClose }: { photos: UploadedPhoto[]; onPick: (fileId: string) => void; onClose: () => void }) {
+type CreateTab = "upload" | "drive_link" | "folder";
+
+function CreatePieceMenu({
+  photos,
+  apiUrl,
+  authHeaders,
+  onPick,
+  onClose,
+}: {
+  photos: UploadedPhoto[];
+  apiUrl: string;
+  authHeaders: { headers: { Authorization: string } };
+  onPick: (fileId: string) => void;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<CreateTab>("upload");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [driveUrl, setDriveUrl] = useState("");
+  const [resolvingLink, setResolvingLink] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  const handleFileSelected = async (file: File) => {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const reader = new FileReader();
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await axios.post(
+        `${apiUrl}/api/admin/marketing/upload-photo`,
+        { imageBase64: dataUrl, mimeType: file.type, filename: file.name },
+        authHeaders
+      );
+      onPick(res.data.data.file_id);
+    } catch (err) {
+      console.error("Error uploading photo:", err);
+      setUploadError("Couldn't upload that photo -- try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleResolveLink = async () => {
+    if (!driveUrl.trim()) return;
+    setResolvingLink(true);
+    setLinkError(null);
+    try {
+      const res = await axios.post(`${apiUrl}/api/admin/marketing/resolve-drive-link`, { url: driveUrl.trim() }, authHeaders);
+      onPick(res.data.data.file_id);
+    } catch (err: any) {
+      console.error("Error resolving Drive link:", err);
+      setLinkError(err?.response?.data?.error || "Couldn't resolve that link -- try again.");
+    } finally {
+      setResolvingLink(false);
+    }
+  };
+
+  const TABS: { key: CreateTab; label: string; icon: React.ReactNode }[] = [
+    { key: "upload", label: "Upload", icon: <Upload className="h-3.5 w-3.5" /> },
+    { key: "drive_link", label: "Link from Drive", icon: <Link2 className="h-3.5 w-3.5" /> },
+    { key: "folder", label: "From Uploads Folder", icon: <FolderSearch className="h-3.5 w-3.5" /> },
+  ];
+
   return (
     <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.95)] p-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-bold uppercase tracking-wide text-[#9A7E6F]">Pick a photo from uploads</p>
+        <div className="flex gap-1.5">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition ${
+                tab === t.key ? "bg-[#2E527F] text-white" : "bg-white text-[#4B2B1D] hover:bg-[#F5F0E8]"
+              }`}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
+        </div>
         <button type="button" onClick={onClose} className="text-[#755B4C] hover:text-[#2E527F]">
           <X className="h-4 w-4" />
         </button>
       </div>
-      {photos.length === 0 ? (
-        <p className="mt-3 text-sm text-[#755B4C]">Every uploaded photo is already in this project.</p>
-      ) : (
-        <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
-          {photos.map((photo) => (
-            <PickerThumb key={photo.file_id} photo={photo} onClick={() => onPick(photo.file_id)} />
-          ))}
+
+      {tab === "upload" && (
+        <div className="mt-3">
+          <label className="flex h-24 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-[#2E527F] bg-white text-xs font-bold text-[#2E527F] hover:bg-[#F5F0E8]">
+            {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
+            {uploading ? "Uploading..." : "Click to choose a photo from your device"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={uploading}
+              onChange={(e) => e.target.files?.[0] && handleFileSelected(e.target.files[0])}
+            />
+          </label>
+          {uploadError && <p className="mt-2 text-xs font-bold text-[#D62F3D]">{uploadError}</p>}
         </div>
       )}
+
+      {tab === "drive_link" && (
+        <div className="mt-3 flex gap-2">
+          <input
+            value={driveUrl}
+            onChange={(e) => setDriveUrl(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleResolveLink()}
+            placeholder="Paste a Google Drive share link..."
+            className="h-9 flex-1 rounded-lg border border-[#D7C9B7] bg-white px-3 text-xs text-[#4B2B1D] placeholder:text-[#B9A88F]"
+          />
+          <button
+            type="button"
+            onClick={handleResolveLink}
+            disabled={resolvingLink || !driveUrl.trim()}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#2E527F] px-3 text-xs font-bold text-white hover:bg-[#24466E] disabled:opacity-50"
+          >
+            {resolvingLink ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Use link"}
+          </button>
+          {linkError && <p className="mt-2 text-xs font-bold text-[#D62F3D]">{linkError}</p>}
+        </div>
+      )}
+
+      {tab === "folder" &&
+        (photos.length === 0 ? (
+          <p className="mt-3 text-sm text-[#755B4C]">Every uploaded photo is already in this project.</p>
+        ) : (
+          <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+            {photos.map((photo) => (
+              <PickerThumb key={photo.file_id} photo={photo} onClick={() => onPick(photo.file_id)} />
+            ))}
+          </div>
+        ))}
     </div>
   );
 }
@@ -418,7 +540,7 @@ function PickerThumb({ photo, onClick }: { photo: UploadedPhoto; onClick: () => 
     let objectUrl: string | null = null;
     (async () => {
       try {
-        const res = await axios.get(`${apiUrl}/api/admin/marketing/photo/${photo.file_id}/thumbnail.jpg`, {
+        const res = await axios.get(`${apiUrl}/api/admin/marketing/photo/${encodeURIComponent(photo.file_id)}/thumbnail.jpg`, {
           headers: { Authorization: `Bearer ${token}` },
           responseType: "blob",
         });
@@ -575,7 +697,7 @@ function PhotoCard({
     let objectUrl: string | null = null;
     (async () => {
       try {
-        const res = await axios.get(`${apiUrl}/api/admin/marketing/photo/${fileId}/thumbnail.jpg`, {
+        const res = await axios.get(`${apiUrl}/api/admin/marketing/photo/${encodeURIComponent(fileId)}/thumbnail.jpg`, {
           headers: { Authorization: `Bearer ${token}` },
           responseType: "blob",
         });
@@ -710,7 +832,7 @@ function ImagesSection({ fileId, recipeId }: { fileId: string; recipeId: string 
     setGenerating(format);
     setImgError(null);
     try {
-      const res = await axios.get(`${apiUrl}/api/admin/marketing/photo/${fileId}/${format}.png`, {
+      const res = await axios.get(`${apiUrl}/api/admin/marketing/photo/${encodeURIComponent(fileId)}/${format}.png`, {
         headers: { Authorization: `Bearer ${token}` },
         params: recipeId ? { recipe_id: recipeId } : {},
         responseType: "blob",
