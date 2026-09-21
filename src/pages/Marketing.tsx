@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { Megaphone, Copy, Check, Sparkles, ImageOff, Download, Image as ImageIcon, Loader2, FolderOpen, Plus, X, FolderPlus } from "lucide-react";
+import {
+  Megaphone, Copy, Check, Sparkles, ImageOff, Download, Image as ImageIcon, Loader2, FolderOpen, Plus, X, FolderPlus,
+  CalendarDays, Link2, DollarSign,
+} from "lucide-react";
 
 type UploadedPhoto = {
   file_id: string;
@@ -11,8 +14,50 @@ type UploadedPhoto = {
 };
 
 type ProjectSummary = { id: number; name: string; created_at: string; item_count: number };
-type ProjectItem = { item_id: number; file_id: string; recipe_id: number | null; recipe_name: string | null };
+type ProjectItem = {
+  item_id: number;
+  file_id: string;
+  recipe_id: number | null;
+  recipe_name: string | null;
+  format: string | null;
+  size: string | null;
+  template_link: string | null;
+  status: string;
+  price_cents: number | null;
+  scheduled_date: string | null;
+  notes: string | null;
+  task_id: number | null;
+};
 type RecipeOption = { recipe_id: number; name: string; category: string };
+
+const FORMAT_OPTIONS = [
+  { value: "flyer", label: "Flyer" },
+  { value: "business_card", label: "Business Card" },
+  { value: "promo_card", label: "Promo Card" },
+  { value: "billboard", label: "Billboard" },
+  { value: "static_post", label: "Static Post" },
+  { value: "promo_video", label: "Promo Video" },
+  { value: "reel", label: "Reel" },
+  { value: "story", label: "Story" },
+];
+
+const STATUS_OPTIONS = [
+  { value: "idea", label: "Idea" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "review", label: "In Review" },
+  { value: "approved", label: "Approved" },
+  { value: "scheduled", label: "Scheduled" },
+  { value: "published", label: "Published" },
+];
+
+const STATUS_COLORS: Record<string, string> = {
+  idea: "bg-[#F5F0E8] text-[#755B4C]",
+  in_progress: "bg-[#E8EEF5] text-[#134DA1]",
+  review: "bg-[#FFF0E1] text-[#DC6500]",
+  approved: "bg-[#EAF5EC] text-[#16834A]",
+  scheduled: "bg-[#EDE9FE] text-[#6D28D9]",
+  published: "bg-[#16834A] text-white",
+};
 
 export default function MarketingPage() {
   const [configured, setConfigured] = useState(true);
@@ -151,6 +196,17 @@ export default function MarketingPage() {
     }
   };
 
+  const updateItemField = async (itemId: number, patch: Partial<ProjectItem>) => {
+    if (selectedProjectId == null) return;
+    setItems((prev) => prev.map((i) => (i.item_id === itemId ? { ...i, ...patch } : i)));
+    try {
+      const res = await axios.patch(`${apiUrl}/api/admin/marketing/projects/${selectedProjectId}/items/${itemId}`, patch, authHeaders);
+      setItems((prev) => prev.map((i) => (i.item_id === itemId ? { ...i, task_id: res.data.data.task_id } : i)));
+    } catch (err) {
+      console.error("Error updating item:", err);
+    }
+  };
+
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;
   const photosInProject = new Set(items.map((i) => i.file_id));
   const pickablePhotos = allPhotos.filter((p) => !photosInProject.has(p.file_id));
@@ -186,7 +242,7 @@ export default function MarketingPage() {
       {selectedProject && (
         <>
           <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-wide text-[#9A7E6F]">
+            <p className="text-xs font-bold uppercase tracking-wide text-[#2E527F]">
               {items.length} piece{items.length === 1 ? "" : "s"} in "{selectedProject.name}"
             </p>
             <button
@@ -219,18 +275,21 @@ export default function MarketingPage() {
               <p className="mt-1 text-sm text-[#755B4C]">Click "Add photo" to pull one in from the uploads folder.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-              {items.map((item) => (
-                <PhotoCard
-                  key={item.item_id}
-                  fileId={item.file_id}
-                  initialRecipeId={item.recipe_id ? String(item.recipe_id) : ""}
-                  allRecipes={allRecipes}
-                  onRecipeChange={(recipeId) => updateItemRecipe(item, recipeId)}
-                  onRemove={() => removeItem(item.item_id)}
-                />
-              ))}
-            </div>
+            <>
+              <ScheduleView items={items} />
+              <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                {items.map((item) => (
+                  <PhotoCard
+                    key={item.item_id}
+                    item={item}
+                    allRecipes={allRecipes}
+                    onRecipeChange={(recipeId) => updateItemRecipe(item, recipeId)}
+                    onFieldChange={(patch) => updateItemField(item.item_id, patch)}
+                    onRemove={() => removeItem(item.item_id)}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </>
       )}
@@ -286,7 +345,7 @@ function ProjectTabs({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {loading ? (
-        <Loader2 className="h-4 w-4 animate-spin text-[#9A7E6F]" />
+        <Loader2 className="h-4 w-4 animate-spin text-[#2E527F]" />
       ) : (
         projects.map((p) => (
           <div
@@ -312,13 +371,13 @@ function ProjectTabs({
         ))
       )}
 
-      <div className="flex items-center gap-1.5 rounded-full border border-dashed border-[#B9A88F] px-3 py-1">
+      <div className="flex items-center gap-1.5 rounded-full border-2 border-dashed border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-3 py-1">
         <input
           value={newProjectName}
           onChange={(e) => onNewProjectNameChange(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && onCreate()}
           placeholder="New project name..."
-          className="h-6 w-40 bg-transparent text-sm text-[#4B2B1D] placeholder:text-[#B9A88F] focus:outline-none"
+          className="h-6 w-40 bg-transparent text-sm text-[#2E527F] placeholder:text-[#2E527F]/60 focus:outline-none"
         />
         <button type="button" onClick={onCreate} disabled={creating || !newProjectName.trim()} className="text-[#2E527F] hover:text-[#24466E] disabled:opacity-40">
           {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
@@ -393,21 +452,117 @@ function PickerThumb({ photo, onClick }: { photo: UploadedPhoto; onClick: () => 
   );
 }
 
+function ScheduleView({ items }: { items: ProjectItem[] }) {
+  const scheduled = items.filter((i) => i.scheduled_date).sort((a, b) => (a.scheduled_date! < b.scheduled_date! ? -1 : 1));
+  if (scheduled.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
+      <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[#2E527F]">
+        <CalendarDays className="h-3.5 w-3.5" />
+        Schedule
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {scheduled.map((item) => (
+          <div key={item.item_id} className="flex items-center gap-2 rounded-lg border border-[#E4D8C9] bg-white px-3 py-1.5 text-xs">
+            <span className="font-bold text-[#4B2B1D]">{new Date(item.scheduled_date! + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${STATUS_COLORS[item.status] || STATUS_COLORS.idea}`}>
+              {STATUS_OPTIONS.find((s) => s.value === item.status)?.label || item.status}
+            </span>
+            {item.format && <span className="text-[#755B4C]">{FORMAT_OPTIONS.find((f) => f.value === item.format)?.label}</span>}
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-[11px] text-[#9A7E6F]">Scheduled pieces also appear on the Operations Hub board under Marketing.</p>
+    </div>
+  );
+}
+
+function TemplateSection({ item, onFieldChange }: { item: ProjectItem; onFieldChange: (patch: Partial<ProjectItem>) => void }) {
+  const [size, setSize] = useState(item.size || "");
+  const [templateLink, setTemplateLink] = useState(item.template_link || "");
+  const [price, setPrice] = useState(item.price_cents != null ? (item.price_cents / 100).toString() : "");
+
+  return (
+    <div className="border-t border-[#E4D8C9] p-4">
+      <p className="text-xs font-bold uppercase tracking-wide text-[#9A7E6F]">Template</p>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <select
+          value={item.format || ""}
+          onChange={(e) => onFieldChange({ format: e.target.value || null })}
+          className="h-8 rounded-lg border border-[#D7C9B7] bg-white px-2 text-xs text-[#4B2B1D]"
+        >
+          <option value="">Format...</option>
+          {FORMAT_OPTIONS.map((f) => (
+            <option key={f.value} value={f.value}>{f.label}</option>
+          ))}
+        </select>
+        <select
+          value={item.status}
+          onChange={(e) => onFieldChange({ status: e.target.value })}
+          className={`h-8 rounded-lg border border-[#D7C9B7] px-2 text-xs font-bold ${STATUS_COLORS[item.status] || STATUS_COLORS.idea}`}
+        >
+          {STATUS_OPTIONS.map((s) => (
+            <option key={s.value} value={s.value}>{s.label}</option>
+          ))}
+        </select>
+        <input
+          value={size}
+          onChange={(e) => setSize(e.target.value)}
+          onBlur={() => onFieldChange({ size: size || null })}
+          placeholder="Size (e.g. 1080x1920)"
+          className="h-8 rounded-lg border border-[#D7C9B7] bg-white px-2 text-xs text-[#4B2B1D] placeholder:text-[#B9A88F]"
+        />
+        <div className="flex items-center gap-1 rounded-lg border border-[#D7C9B7] bg-white px-2">
+          <DollarSign className="h-3 w-3 shrink-0 text-[#755B4C]" />
+          <input
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            onBlur={() => onFieldChange({ price_cents: price ? Math.round(parseFloat(price) * 100) : null })}
+            placeholder="Price"
+            className="h-8 w-full text-xs text-[#4B2B1D] placeholder:text-[#B9A88F] focus:outline-none"
+          />
+        </div>
+        <div className="col-span-2 flex items-center gap-1 rounded-lg border border-[#D7C9B7] bg-white px-2">
+          <Link2 className="h-3 w-3 shrink-0 text-[#755B4C]" />
+          <input
+            value={templateLink}
+            onChange={(e) => setTemplateLink(e.target.value)}
+            onBlur={() => onFieldChange({ template_link: templateLink || null })}
+            placeholder="Link to template or reference..."
+            className="h-8 w-full text-xs text-[#4B2B1D] placeholder:text-[#B9A88F] focus:outline-none"
+          />
+        </div>
+        <div className="col-span-2 flex items-center gap-1 rounded-lg border border-[#D7C9B7] bg-white px-2">
+          <CalendarDays className="h-3 w-3 shrink-0 text-[#755B4C]" />
+          <input
+            type="date"
+            value={item.scheduled_date || ""}
+            onChange={(e) => onFieldChange({ scheduled_date: e.target.value || null })}
+            className="h-8 w-full text-xs text-[#4B2B1D] focus:outline-none"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PhotoCard({
-  fileId,
-  initialRecipeId,
+  item,
   allRecipes,
   onRecipeChange,
+  onFieldChange,
   onRemove,
 }: {
-  fileId: string;
-  initialRecipeId: string;
+  item: ProjectItem;
   allRecipes: RecipeOption[];
   onRecipeChange: (recipeId: string) => void;
+  onFieldChange: (patch: Partial<ProjectItem>) => void;
   onRemove: () => void;
 }) {
+  const fileId = item.file_id;
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
-  const [recipeId, setRecipeId] = useState<string>(initialRecipeId);
+  const [recipeId, setRecipeId] = useState<string>(item.recipe_id ? String(item.recipe_id) : "");
   const [captions, setCaptions] = useState<string[] | null>(null);
   const [generatingCaptions, setGeneratingCaptions] = useState(false);
   const [captionError, setCaptionError] = useState<string | null>(null);
@@ -496,6 +651,8 @@ function PhotoCard({
           </select>
         </div>
       </div>
+
+      <TemplateSection item={item} onFieldChange={onFieldChange} />
 
       <div className="border-t border-[#E4D8C9] p-4">
         <div className="flex items-center justify-between">
