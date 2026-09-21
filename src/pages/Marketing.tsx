@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { Megaphone, Copy, Check, Sparkles, ImageOff, Download, Image as ImageIcon, Loader2, FolderOpen } from "lucide-react";
+import { Megaphone, Copy, Check, Sparkles, ImageOff, Download, Image as ImageIcon, Loader2, FolderOpen, Plus, X, FolderPlus } from "lucide-react";
 
 type UploadedPhoto = {
   file_id: string;
@@ -10,61 +10,156 @@ type UploadedPhoto = {
   recipe_id?: number;
 };
 
+type ProjectSummary = { id: number; name: string; created_at: string; item_count: number };
+type ProjectItem = { item_id: number; file_id: string; recipe_id: number | null; recipe_name: string | null };
 type RecipeOption = { recipe_id: number; name: string; category: string };
 
 export default function MarketingPage() {
   const [configured, setConfigured] = useState(true);
-  const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
+  const [driveError, setDriveError] = useState<string | null>(null);
+  const [allPhotos, setAllPhotos] = useState<UploadedPhoto[]>([]);
   const [allRecipes, setAllRecipes] = useState<RecipeOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [items, setItems] = useState<ProjectItem[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [creatingProject, setCreatingProject] = useState(false);
 
   const token = localStorage.getItem("token");
   const apiUrl = import.meta.env.VITE_API_BASE_URL;
+  const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
 
   useEffect(() => {
+    fetchProjects();
     fetchUploadedPhotos();
     fetchAllRecipes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (selectedProjectId != null) fetchItems(selectedProjectId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectId]);
+
+  const fetchProjects = async () => {
+    try {
+      setLoadingProjects(true);
+      const res = await axios.get(`${apiUrl}/api/admin/marketing/projects`, authHeaders);
+      const list: ProjectSummary[] = res.data.data || [];
+      setProjects(list);
+      setSelectedProjectId((current) => current ?? (list[0] ? list[0].id : null));
+    } catch (err) {
+      console.error("Error fetching projects:", err);
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
   const fetchUploadedPhotos = async () => {
     try {
-      setLoading(true);
-      setError(null);
-      const res = await axios.get(`${apiUrl}/api/admin/marketing/uploaded-photos`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await axios.get(`${apiUrl}/api/admin/marketing/uploaded-photos`, authHeaders);
       setConfigured(res.data.data.configured);
-      setPhotos(res.data.data.photos || []);
+      setAllPhotos(res.data.data.photos || []);
     } catch (err) {
       console.error("Error fetching uploaded photos:", err);
-      setError("Could not load photos from Drive.");
-    } finally {
-      setLoading(false);
+      setDriveError("Could not load photos from Drive.");
     }
   };
 
   const fetchAllRecipes = async () => {
     try {
-      const res = await axios.get(`${apiUrl}/api/admin/recipes`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`${apiUrl}/api/admin/recipes`, authHeaders);
       setAllRecipes((res.data.data || []).map((r: any) => ({ recipe_id: r.recipe_id, name: r.name, category: r.category })));
     } catch (err) {
       console.error("Error fetching recipes:", err);
     }
   };
 
+  const fetchItems = async (projectId: number) => {
+    try {
+      setLoadingItems(true);
+      const res = await axios.get(`${apiUrl}/api/admin/marketing/projects/${projectId}/items`, authHeaders);
+      setItems(res.data.data || []);
+    } catch (err) {
+      console.error("Error fetching project items:", err);
+    } finally {
+      setLoadingItems(false);
+    }
+  };
+
+  const createProject = async () => {
+    if (!newProjectName.trim()) return;
+    setCreatingProject(true);
+    try {
+      const res = await axios.post(`${apiUrl}/api/admin/marketing/projects`, { name: newProjectName.trim() }, authHeaders);
+      setProjects((prev) => [res.data.data, ...prev]);
+      setSelectedProjectId(res.data.data.id);
+      setNewProjectName("");
+    } catch (err) {
+      console.error("Error creating project:", err);
+    } finally {
+      setCreatingProject(false);
+    }
+  };
+
+  const deleteProject = async (id: number) => {
+    try {
+      await axios.delete(`${apiUrl}/api/admin/marketing/projects/${id}`, authHeaders);
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+      if (selectedProjectId === id) setSelectedProjectId(null);
+    } catch (err) {
+      console.error("Error deleting project:", err);
+    }
+  };
+
+  const addPhotoToProject = async (fileId: string) => {
+    if (selectedProjectId == null) return;
+    try {
+      await axios.post(`${apiUrl}/api/admin/marketing/projects/${selectedProjectId}/items`, { drive_file_id: fileId }, authHeaders);
+      await fetchItems(selectedProjectId);
+      setProjects((prev) => prev.map((p) => (p.id === selectedProjectId ? { ...p, item_count: p.item_count + 1 } : p)));
+    } catch (err) {
+      console.error("Error adding photo to project:", err);
+    }
+  };
+
+  const removeItem = async (itemId: number) => {
+    if (selectedProjectId == null) return;
+    try {
+      await axios.delete(`${apiUrl}/api/admin/marketing/projects/${selectedProjectId}/items/${itemId}`, authHeaders);
+      setItems((prev) => prev.filter((i) => i.item_id !== itemId));
+      setProjects((prev) => prev.map((p) => (p.id === selectedProjectId ? { ...p, item_count: Math.max(0, p.item_count - 1) } : p)));
+    } catch (err) {
+      console.error("Error removing item:", err);
+    }
+  };
+
+  const updateItemRecipe = async (item: ProjectItem, recipeId: string) => {
+    if (selectedProjectId == null) return;
+    try {
+      await axios.post(
+        `${apiUrl}/api/admin/marketing/projects/${selectedProjectId}/items`,
+        { drive_file_id: item.file_id, recipe_id: recipeId || undefined },
+        authHeaders
+      );
+    } catch (err) {
+      console.error("Error updating item recipe:", err);
+    }
+  };
+
+  const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;
+  const photosInProject = new Set(items.map((i) => i.file_id));
+  const pickablePhotos = allPhotos.filter((p) => !photosInProject.has(p.file_id));
+
   return (
     <main className="flex-1 space-y-6 p-8">
       <Header />
 
-      {loading ? (
-        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-8 text-center text-sm text-[#755B4C]">
-          Checking the photos folder...
-        </div>
-      ) : error ? (
-        <div className="rounded-2xl border border-[#E8B4B9] bg-[#FFF4F5] p-6 text-sm text-[#D62F3D]">{error}</div>
-      ) : !configured ? (
+      {!configured && (
         <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-8 text-center">
           <FolderOpen className="mx-auto h-8 w-8 text-[#9A7E6F]" />
           <p className="mt-2 font-extrabold text-[#4B2B1D]">No photos folder connected yet.</p>
@@ -73,24 +168,79 @@ export default function MarketingPage() {
             is enough), then have the folder ID set on the backend.
           </p>
         </div>
-      ) : photos.length === 0 ? (
-        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-8 text-center">
-          <ImageOff className="mx-auto h-8 w-8 text-[#9A7E6F]" />
-          <p className="mt-2 font-extrabold text-[#4B2B1D]">No photos in the folder yet.</p>
-          <p className="mt-1 text-sm text-[#755B4C]">Upload real photos of the actual plate -- any filename is fine.</p>
-        </div>
-      ) : (
-        <>
-          <p className="text-xs font-bold uppercase tracking-wide text-[#9A7E6F]">
-            {photos.length} photo{photos.length === 1 ? "" : "s"}
-          </p>
+      )}
+      {driveError && <p className="text-xs font-bold text-[#D62F3D]">{driveError}</p>}
 
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            {photos.map((photo) => (
-              <PhotoCard key={photo.file_id} photo={photo} allRecipes={allRecipes} />
-            ))}
+      <ProjectTabs
+        projects={projects}
+        selectedProjectId={selectedProjectId}
+        onSelect={setSelectedProjectId}
+        onDelete={deleteProject}
+        loading={loadingProjects}
+        newProjectName={newProjectName}
+        onNewProjectNameChange={setNewProjectName}
+        onCreate={createProject}
+        creating={creatingProject}
+      />
+
+      {selectedProject && (
+        <>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wide text-[#9A7E6F]">
+              {items.length} piece{items.length === 1 ? "" : "s"} in "{selectedProject.name}"
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowPicker(true)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#2E527F] px-3 text-xs font-bold text-white transition hover:bg-[#24466E]"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add photo
+            </button>
           </div>
+
+          {showPicker && (
+            <PhotoPicker
+              photos={pickablePhotos}
+              onPick={(fileId) => {
+                addPhotoToProject(fileId);
+                setShowPicker(false);
+              }}
+              onClose={() => setShowPicker(false)}
+            />
+          )}
+
+          {loadingItems ? (
+            <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-8 text-center text-sm text-[#755B4C]">Loading...</div>
+          ) : items.length === 0 ? (
+            <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-8 text-center">
+              <ImageOff className="mx-auto h-8 w-8 text-[#9A7E6F]" />
+              <p className="mt-2 font-extrabold text-[#4B2B1D]">No content pieces in this project yet.</p>
+              <p className="mt-1 text-sm text-[#755B4C]">Click "Add photo" to pull one in from the uploads folder.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              {items.map((item) => (
+                <PhotoCard
+                  key={item.item_id}
+                  fileId={item.file_id}
+                  initialRecipeId={item.recipe_id ? String(item.recipe_id) : ""}
+                  allRecipes={allRecipes}
+                  onRecipeChange={(recipeId) => updateItemRecipe(item, recipeId)}
+                  onRemove={() => removeItem(item.item_id)}
+                />
+              ))}
+            </div>
+          )}
         </>
+      )}
+
+      {!loadingProjects && projects.length === 0 && (
+        <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-8 text-center">
+          <FolderPlus className="mx-auto h-8 w-8 text-[#9A7E6F]" />
+          <p className="mt-2 font-extrabold text-[#4B2B1D]">No projects yet.</p>
+          <p className="mt-1 text-sm text-[#755B4C]">Create one above to start grouping content pieces together.</p>
+        </div>
       )}
     </main>
   );
@@ -105,21 +255,103 @@ function Header() {
       <div>
         <h1 className="text-3xl font-extrabold tracking-[-0.03em] text-[#4B2B1D]">Marketing</h1>
         <p className="mt-1 text-sm text-[#755B4C]">
-          Built from real plate photos -- Gemini looks at what's actually on the plate to name and caption it, no recipe match required.
+          Organize content into projects -- Gemini looks at what's actually on the plate to name and caption each piece, no recipe match required.
         </p>
       </div>
     </header>
   );
 }
 
-function PhotoCard({ photo, allRecipes }: { photo: UploadedPhoto; allRecipes: RecipeOption[] }) {
-  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
-  const [recipeId, setRecipeId] = useState<string>(photo.recipe_id ? String(photo.recipe_id) : "");
-  const [captions, setCaptions] = useState<string[] | null>(null);
-  const [generatingCaptions, setGeneratingCaptions] = useState(false);
-  const [captionError, setCaptionError] = useState<string | null>(null);
-  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+function ProjectTabs({
+  projects,
+  selectedProjectId,
+  onSelect,
+  onDelete,
+  loading,
+  newProjectName,
+  onNewProjectNameChange,
+  onCreate,
+  creating,
+}: {
+  projects: ProjectSummary[];
+  selectedProjectId: number | null;
+  onSelect: (id: number) => void;
+  onDelete: (id: number) => void;
+  loading: boolean;
+  newProjectName: string;
+  onNewProjectNameChange: (v: string) => void;
+  onCreate: () => void;
+  creating: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {loading ? (
+        <Loader2 className="h-4 w-4 animate-spin text-[#9A7E6F]" />
+      ) : (
+        projects.map((p) => (
+          <div
+            key={p.id}
+            className={`group flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-bold transition ${
+              selectedProjectId === p.id
+                ? "border-[#2E527F] bg-[#2E527F] text-white"
+                : "border-[#D7C9B7] bg-[rgba(251,247,240,0.9)] text-[#4B2B1D] hover:border-[#2E527F]"
+            }`}
+          >
+            <button type="button" onClick={() => onSelect(p.id)}>
+              {p.name} <span className="opacity-70">({p.item_count})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onDelete(p.id)}
+              className={`opacity-0 transition group-hover:opacity-100 ${selectedProjectId === p.id ? "text-white/80 hover:text-white" : "text-[#9A7E6F] hover:text-[#D62F3D]"}`}
+              title="Delete project"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))
+      )}
 
+      <div className="flex items-center gap-1.5 rounded-full border border-dashed border-[#B9A88F] px-3 py-1">
+        <input
+          value={newProjectName}
+          onChange={(e) => onNewProjectNameChange(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && onCreate()}
+          placeholder="New project name..."
+          className="h-6 w-40 bg-transparent text-sm text-[#4B2B1D] placeholder:text-[#B9A88F] focus:outline-none"
+        />
+        <button type="button" onClick={onCreate} disabled={creating || !newProjectName.trim()} className="text-[#2E527F] hover:text-[#24466E] disabled:opacity-40">
+          {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PhotoPicker({ photos, onPick, onClose }: { photos: UploadedPhoto[]; onPick: (fileId: string) => void; onClose: () => void }) {
+  return (
+    <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.95)] p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-bold uppercase tracking-wide text-[#9A7E6F]">Pick a photo from uploads</p>
+        <button type="button" onClick={onClose} className="text-[#755B4C] hover:text-[#2E527F]">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      {photos.length === 0 ? (
+        <p className="mt-3 text-sm text-[#755B4C]">Every uploaded photo is already in this project.</p>
+      ) : (
+        <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+          {photos.map((photo) => (
+            <PickerThumb key={photo.file_id} photo={photo} onClick={() => onPick(photo.file_id)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PickerThumb({ photo, onClick }: { photo: UploadedPhoto; onClick: () => void }) {
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const token = localStorage.getItem("token");
   const apiUrl = import.meta.env.VITE_API_BASE_URL;
 
@@ -134,7 +366,7 @@ function PhotoCard({ photo, allRecipes }: { photo: UploadedPhoto; allRecipes: Re
         objectUrl = URL.createObjectURL(res.data);
         setThumbUrl(objectUrl);
       } catch (err) {
-        console.error("Error fetching photo thumbnail:", err);
+        console.error("Error fetching thumbnail:", err);
       }
     })();
     return () => {
@@ -143,13 +375,74 @@ function PhotoCard({ photo, allRecipes }: { photo: UploadedPhoto; allRecipes: Re
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [photo.file_id]);
 
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="aspect-square overflow-hidden rounded-lg border border-[#E4D8C9] bg-[#E3D8C9] transition hover:ring-2 hover:ring-[#2E527F]"
+      title={photo.filename}
+    >
+      {thumbUrl ? (
+        <img src={thumbUrl} alt={photo.filename} className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-[#B9A88F]">
+          <Loader2 className="h-4 w-4 animate-spin" />
+        </div>
+      )}
+    </button>
+  );
+}
+
+function PhotoCard({
+  fileId,
+  initialRecipeId,
+  allRecipes,
+  onRecipeChange,
+  onRemove,
+}: {
+  fileId: string;
+  initialRecipeId: string;
+  allRecipes: RecipeOption[];
+  onRecipeChange: (recipeId: string) => void;
+  onRemove: () => void;
+}) {
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+  const [recipeId, setRecipeId] = useState<string>(initialRecipeId);
+  const [captions, setCaptions] = useState<string[] | null>(null);
+  const [generatingCaptions, setGeneratingCaptions] = useState(false);
+  const [captionError, setCaptionError] = useState<string | null>(null);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+
+  const token = localStorage.getItem("token");
+  const apiUrl = import.meta.env.VITE_API_BASE_URL;
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    (async () => {
+      try {
+        const res = await axios.get(`${apiUrl}/api/admin/marketing/photo/${fileId}/thumbnail.jpg`, {
+          headers: { Authorization: `Bearer ${token}` },
+          responseType: "blob",
+        });
+        objectUrl = URL.createObjectURL(res.data);
+        setThumbUrl(objectUrl);
+      } catch (err) {
+        console.error("Error fetching photo thumbnail:", err);
+      }
+    })();
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileId]);
+
   const generateCaptions = async () => {
     setGeneratingCaptions(true);
     setCaptionError(null);
     try {
       const res = await axios.post(
         `${apiUrl}/api/admin/marketing/generate-captions`,
-        { file_id: photo.file_id, recipe_id: recipeId || undefined },
+        { file_id: fileId, recipe_id: recipeId || undefined },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setCaptions(res.data.data.captions || []);
@@ -172,7 +465,7 @@ function PhotoCard({ photo, allRecipes }: { photo: UploadedPhoto; allRecipes: Re
       <div className="flex gap-4 p-4">
         <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-[#E4D8C9] bg-[#E3D8C9]">
           {thumbUrl ? (
-            <img src={thumbUrl} alt={photo.filename} className="h-full w-full object-cover" />
+            <img src={thumbUrl} alt="" className="h-full w-full object-cover" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-[#B9A88F]">
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -180,15 +473,18 @@ function PhotoCard({ photo, allRecipes }: { photo: UploadedPhoto; allRecipes: Re
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs text-[#9A7E6F]" title={photo.filename}>
-            {photo.filename}
-          </p>
-          <label className="mt-2 block text-[10px] font-bold uppercase tracking-wide text-[#9A7E6F]">
-            Link a recipe for real macros (optional)
-          </label>
+          <div className="flex items-start justify-between gap-2">
+            <label className="block text-[10px] font-bold uppercase tracking-wide text-[#9A7E6F]">Link a recipe for real macros (optional)</label>
+            <button type="button" onClick={onRemove} className="shrink-0 text-[#9A7E6F] hover:text-[#D62F3D]" title="Remove from project">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <select
             value={recipeId}
-            onChange={(e) => setRecipeId(e.target.value)}
+            onChange={(e) => {
+              setRecipeId(e.target.value);
+              onRecipeChange(e.target.value);
+            }}
             className="mt-1 h-8 w-full rounded-lg border border-[#D7C9B7] bg-white px-2 text-xs text-[#4B2B1D]"
           >
             <option value="">No recipe linked -- name only</option>
@@ -238,7 +534,7 @@ function PhotoCard({ photo, allRecipes }: { photo: UploadedPhoto; allRecipes: Re
         )}
       </div>
 
-      <ImagesSection fileId={photo.file_id} recipeId={recipeId} />
+      <ImagesSection fileId={fileId} recipeId={recipeId} />
     </div>
   );
 }
@@ -267,9 +563,19 @@ function ImagesSection({ fileId, recipeId }: { fileId: string; recipeId: string 
         if (prev[format]) URL.revokeObjectURL(prev[format]!);
         return { ...prev, [format]: objectUrl };
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error(`Error rendering ${format}:`, err);
-      setImgError(`Couldn't render the ${format} image -- try again.`);
+      if (err?.response?.status === 422 && err.response.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const parsed = JSON.parse(text);
+          setImgError(`Needs manual review: ${parsed.reason || "layout validation failed"}`);
+        } catch {
+          setImgError(`Needs manual review -- couldn't render cleanly.`);
+        }
+      } else {
+        setImgError(`Couldn't render the ${format} image -- try again.`);
+      }
     } finally {
       setGenerating(null);
     }
