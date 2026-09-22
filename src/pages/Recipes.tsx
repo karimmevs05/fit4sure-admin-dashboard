@@ -59,6 +59,7 @@ type Recipe = {
   prep_time_minutes: number | null;
   cost_per_serving_cents: number;
   cost_per_pound_cents?: number;
+  total_weight_g?: number;
   total_recipe_cost_cents?: number;
   ingredients?: RecipeIngredient[];
   per_pound?: { calories: number; protein_g: string; carbs_g: string; fat_g: string };
@@ -112,6 +113,12 @@ const BREAKFAST_STRUCTURE_ROW = PLATE_STRUCTURE_SERVINGS.find((row) => row.struc
 // except breakfast, which measures against its own Breakfast row (see
 // above). Sauces/beverages aren't part of the plate structure table at all,
 // so a batch of one of those is just treated as a single serving.
+// Matches the "1 lb (455g)" convention the backend already uses for
+// per-pound macros/cost (see GRAMS_PER_POUND in adminRecipes.js) so the
+// cooked-weight figure shown here lines up with those other lb-based
+// figures instead of drifting off actual-avoirdupois-pound math.
+const GRAMS_PER_POUND = 455;
+
 function computeRegularServings(category: Category, totalWeightG: number): number {
   const component = plateComponentFor(category);
   if (!component) return 1;
@@ -1046,6 +1053,9 @@ function AddRecipeDrawer({
                     </button>
                   )}
                 </div>
+                <p className="mt-1 text-[11px] text-[#755B4C]">
+                  ≈ {(cookedWeightG / GRAMS_PER_POUND).toFixed(1)} lbs cooked yield
+                </p>
               </Field>
               <Field label="Prep Time (minutes)">
                 <input
@@ -1543,6 +1553,9 @@ function EditRecipeDrawer({
                     </button>
                   )}
                 </div>
+                <p className="mt-1 text-[11px] text-[#755B4C]">
+                  ≈ {(cookedWeightG / GRAMS_PER_POUND).toFixed(1)} lbs cooked yield
+                </p>
               </Field>
               <Field label="Prep Time (min)">
                 <input
@@ -1803,8 +1816,8 @@ function RecipeDetailsDrawer({
           </div>
           <p className="-mt-3 text-[10px] text-[#2E527F]">per lb (455g)</p>
 
-          {/* Cost and Servings */}
-          <div className="grid grid-cols-2 gap-4 border-t border-[#D8CDBE] pt-4">
+          {/* Cost, Servings, and Cooked Weight */}
+          <div className="grid grid-cols-3 gap-4 border-t border-[#D8CDBE] pt-4">
             <div className="rounded-xl bg-[#F5F0E8] p-4">
               <p className="text-xs text-[#755B4C] font-bold mb-1">PRICE PER 1 LB</p>
               <p className="text-2xl font-extrabold text-[#16813D]">
@@ -1815,6 +1828,12 @@ function RecipeDetailsDrawer({
               <p className="text-xs text-[#755B4C] font-bold mb-1">SERVINGS</p>
               <p className="text-2xl font-extrabold text-[#2E527F]">
                 {recipe.servings}
+              </p>
+            </div>
+            <div className="rounded-xl bg-[#F5F0E8] p-4">
+              <p className="text-xs text-[#755B4C] font-bold mb-1">COOKED YIELD</p>
+              <p className="text-2xl font-extrabold text-[#4B2B1D]">
+                {((recipe.total_weight_g ?? 0) / GRAMS_PER_POUND).toFixed(1)} lbs
               </p>
             </div>
           </div>
