@@ -801,6 +801,13 @@ function AddRecipeDrawer({
   );
   const regularServings = useMemo(() => computeRegularServings(form.category, cookedWeightG), [form.category, cookedWeightG]);
 
+  // Regular Servings defaults to the auto-computed value above, but a human
+  // can override it (e.g. they know the batch actually yielded more/fewer
+  // plates than the cooked-weight math assumes). Empty string means "use
+  // the live calculated value" -- typing a number pins it.
+  const [servingsOverride, setServingsOverride] = useState("");
+  const effectiveServings = servingsOverride !== "" ? Number(servingsOverride) || 1 : regularServings || 1;
+
   // Calories/macros are never hand-entered -- the backend recalculates them
   // live from ingredients on every read (see adminRecipes.js), so an
   // editable field here would silently get overwritten the moment the
@@ -816,14 +823,14 @@ function AddRecipeDrawer({
       }),
       { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
     );
-    const divisor = regularServings || 1;
+    const divisor = effectiveServings;
     return {
       calories: Math.round(totals.calories / divisor),
       protein_g: +(totals.protein_g / divisor).toFixed(1),
       carbs_g: +(totals.carbs_g / divisor).toFixed(1),
       fat_g: +(totals.fat_g / divisor).toFixed(1),
     };
-  }, [ingredients, regularServings]);
+  }, [ingredients, effectiveServings]);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -858,7 +865,7 @@ function AddRecipeDrawer({
         const newDraft: Recipe = {
           recipe_id: Date.now(), // temporary ID
           ...form,
-          servings: regularServings || 1,
+          servings: effectiveServings,
           calories: computedMacros.calories,
           protein_g: computedMacros.protein_g.toString(),
           carbs_g: computedMacros.carbs_g.toString(),
@@ -890,7 +897,7 @@ function AddRecipeDrawer({
           {
             name: form.name.trim(),
             category: form.category,
-            servings: regularServings || 1,
+            servings: effectiveServings,
             prep_time_minutes: form.prep_time_minutes,
             calories: computedMacros.calories,
             protein_g: computedMacros.protein_g,
@@ -1019,7 +1026,26 @@ function AddRecipeDrawer({
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Regular Servings">
-                <ReadOnlyValue value={regularServings} />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    value={servingsOverride}
+                    placeholder={String(regularServings || 1)}
+                    onChange={(event) => setServingsOverride(event.target.value)}
+                    className={INPUT_CLASS}
+                  />
+                  {servingsOverride !== "" && (
+                    <button
+                      type="button"
+                      onClick={() => setServingsOverride("")}
+                      title={`Reset to calculated (${regularServings || 1})`}
+                      className="whitespace-nowrap text-[10px] font-extrabold text-[#2E527F] hover:underline"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
               </Field>
               <Field label="Prep Time (minutes)">
                 <input
@@ -1175,7 +1201,7 @@ function AddRecipeDrawer({
                     const newDraft: Recipe = {
                       recipe_id: Date.now(),
                       ...form,
-                      servings: regularServings || 1,
+                      servings: effectiveServings,
                       calories: computedMacros.calories,
                       protein_g: computedMacros.protein_g.toString(),
                       carbs_g: computedMacros.carbs_g.toString(),
@@ -1319,6 +1345,13 @@ function EditRecipeDrawer({
   );
   const regularServings = useMemo(() => computeRegularServings(form.category, cookedWeightG), [form.category, cookedWeightG]);
 
+  // Regular Servings defaults to this recipe's real stored servings count
+  // (not a fresh recalculation, which could drift from what's actually
+  // saved) but a human can override it. Empty string means "use the live
+  // calculated value" -- typing a number pins it.
+  const [servingsOverride, setServingsOverride] = useState(recipe.servings ? String(recipe.servings) : "");
+  const effectiveServings = servingsOverride !== "" ? Number(servingsOverride) || 1 : regularServings || 1;
+
   // Calories/macros are never hand-entered -- the backend recalculates them
   // live from ingredients on every read (see adminRecipes.js), so an
   // editable field here would silently get overwritten the moment the
@@ -1334,14 +1367,14 @@ function EditRecipeDrawer({
       }),
       { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
     );
-    const divisor = regularServings || 1;
+    const divisor = effectiveServings;
     return {
       calories: Math.round(totals.calories / divisor),
       protein_g: +(totals.protein_g / divisor).toFixed(1),
       carbs_g: +(totals.carbs_g / divisor).toFixed(1),
       fat_g: +(totals.fat_g / divisor).toFixed(1),
     };
-  }, [ingredients, regularServings]);
+  }, [ingredients, effectiveServings]);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -1383,7 +1416,7 @@ function EditRecipeDrawer({
     const payload = {
       name: form.name.trim(),
       category: form.category,
-      servings: regularServings || 1,
+      servings: effectiveServings,
       prep_time_minutes: form.prep_time_minutes,
       calories: computedMacros.calories,
       protein_g: computedMacros.protein_g,
@@ -1490,7 +1523,26 @@ function EditRecipeDrawer({
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Regular Servings">
-                <ReadOnlyValue value={regularServings} />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    value={servingsOverride}
+                    placeholder={String(regularServings || 1)}
+                    onChange={(event) => setServingsOverride(event.target.value)}
+                    className={INPUT_CLASS}
+                  />
+                  {servingsOverride !== "" && (
+                    <button
+                      type="button"
+                      onClick={() => setServingsOverride("")}
+                      title={`Reset to calculated (${regularServings || 1})`}
+                      className="whitespace-nowrap text-[10px] font-extrabold text-[#2E527F] hover:underline"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
               </Field>
               <Field label="Prep Time (min)">
                 <input
