@@ -1355,11 +1355,14 @@ function EditRecipeDrawer({
   );
   const regularServings = useMemo(() => computeRegularServings(form.category, cookedWeightG), [form.category, cookedWeightG]);
 
-  // Regular Servings defaults to this recipe's real stored servings count
-  // (not a fresh recalculation, which could drift from what's actually
-  // saved) but a human can override it. Empty string means "use the live
-  // calculated value" -- typing a number pins it.
-  const [servingsOverride, setServingsOverride] = useState(recipe.servings ? String(recipe.servings) : "");
+  // Regular Servings always defaults to the live portion-based calculation
+  // above, not whatever's already stored on the recipe -- a recipe's
+  // existing servings count can be stale (imported from a source recipe's
+  // stated yield, set before ingredients/cooking methods were tagged,
+  // etc.) and shouldn't be trusted over our own portion sizes. A human can
+  // still override it by typing a number; empty string means "use the live
+  // calculated value."
+  const [servingsOverride, setServingsOverride] = useState("");
   const effectiveServings = servingsOverride !== "" ? Number(servingsOverride) || 1 : regularServings || 1;
 
   // Calories/macros are never hand-entered -- the backend recalculates them
