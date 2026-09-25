@@ -640,6 +640,30 @@ function FinancialsPage() {
     }
   }
 
+  // Real Stripe checkout link for a single pending order -- staff copy this
+  // and text/email it to the customer. The order only actually flips to
+  // paid once the customer completes checkout (Stripe webhook), not here.
+  const [sendingLinkOrderId, setSendingLinkOrderId] = useState<number | null>(null)
+  const [copiedLinkOrderId, setCopiedLinkOrderId] = useState<number | null>(null)
+  const sendPaymentLink = async (orderId: number) => {
+    setSendingLinkOrderId(orderId)
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/orders/${orderId}/payment-link`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error || 'Failed to create payment link')
+      await navigator.clipboard.writeText(body.data.url)
+      setCopiedLinkOrderId(orderId)
+      setTimeout(() => setCopiedLinkOrderId((cur) => (cur === orderId ? null : cur)), 2500)
+    } catch (err: any) {
+      alert(err.message || 'Failed to create payment link')
+    } finally {
+      setSendingLinkOrderId(null)
+    }
+  }
+
   // One row per receipt (Drive scan, manual entry, or screenshot entry) --
   // whatever produced expense line items also produces one of these, so this
   // refreshes alongside fetchExpenses everywhere that already calls it.
@@ -1801,6 +1825,18 @@ function FinancialsPage() {
                                             <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${t.payment_status === 'paid' ? 'bg-[#EAF4EC] text-[#2F7A4D]' : 'bg-[#FBF2DE] text-[#B4831F]'}`}>
                                               {t.payment_status === 'paid' ? 'Paid' : 'Pending'}
                                             </span>
+                                          </td>
+                                          <td className="py-1.5 pl-2 text-right">
+                                            {t.payment_status === 'pending' && (
+                                              <button
+                                                onClick={() => sendPaymentLink(t.id)}
+                                                disabled={sendingLinkOrderId === t.id}
+                                                title="Create a Stripe payment link and copy it to your clipboard"
+                                                className="rounded-lg border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-2 py-1 text-[11px] font-bold text-[#2E527F] hover:bg-[#EAF0F7] disabled:opacity-50 whitespace-nowrap"
+                                              >
+                                                {copiedLinkOrderId === t.id ? 'Link copied!' : sendingLinkOrderId === t.id ? '...' : 'Send payment link'}
+                                              </button>
+                                            )}
                                           </td>
                                         </tr>
                                       ))}

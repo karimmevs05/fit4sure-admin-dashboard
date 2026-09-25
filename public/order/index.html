@@ -265,8 +265,8 @@
   <div class="confirm" id="confirmOverlay">
     <div class="confirm-card">
       <div class="confirm-icon">&#10003;</div>
-      <h2>Order Submitted</h2>
-      <p>Thanks! We've got your order. We'll text you shortly to confirm details and arrange payment.</p>
+      <h2 id="confirmTitle">Order Submitted</h2>
+      <p id="confirmBody">Thanks! We've got your order. We'll text you shortly to confirm details and arrange payment.</p>
       <div class="confirm-total" id="confirmTotal"></div>
       <button class="confirm-close" id="confirmClose">Done</button>
     </div>
@@ -769,6 +769,7 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
     phone: document.getElementById('custPhone').value.trim(),
     email: document.getElementById('custEmail').value.trim(),
     address: document.getElementById('custAddress').value.trim(),
+    origin: window.location.origin,
     items: Object.values(cart).map((it) => ({
       day: it.day,
       recipeName: it.recipeName,
@@ -787,6 +788,17 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || 'Failed to submit order');
+
+    // Real payment: the order is saved but still pending until the
+    // customer actually pays, so send them straight to Stripe's hosted
+    // checkout instead of the "you're done" confirmation. If Stripe isn't
+    // reachable for some reason, checkoutUrl comes back null and this
+    // falls back to the old confirm-overlay behavior so the order isn't
+    // lost -- staff can still collect payment another way.
+    if (body.data.checkoutUrl) {
+      window.location.href = body.data.checkoutUrl;
+      return;
+    }
 
     document.getElementById('confirmTotal').textContent = `Total: ${money(body.data.total)}`;
     document.getElementById('confirmOverlay').classList.add('show');
@@ -807,6 +819,27 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
 document.getElementById('confirmClose').addEventListener('click', () => {
   document.getElementById('confirmOverlay').classList.remove('show');
 });
+
+// Landing back here after Stripe Checkout (?paid=1 / ?cancelled=1) -- the
+// order row(s) were already saved server-side before the redirect to
+// Stripe, so a cancelled payment doesn't lose the order, it's just still
+// pending until the customer pays another way.
+(function handleStripeReturn() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('paid') === '1') {
+    document.getElementById('confirmTitle').textContent = 'Payment Received';
+    document.getElementById('confirmBody').textContent = "Thanks! Your payment went through and your order is confirmed.";
+    document.getElementById('confirmTotal').textContent = '';
+    document.getElementById('confirmOverlay').classList.add('show');
+    window.history.replaceState({}, '', window.location.pathname);
+  } else if (params.get('cancelled') === '1') {
+    document.getElementById('confirmTitle').textContent = 'Payment Not Completed';
+    document.getElementById('confirmBody').textContent = "Your order was saved, but the payment didn't go through. We'll text you to arrange payment another way.";
+    document.getElementById('confirmTotal').textContent = '';
+    document.getElementById('confirmOverlay').classList.add('show');
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+})();
 
 updateOrderBar();
 loadMenu();
