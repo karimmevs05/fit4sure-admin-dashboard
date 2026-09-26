@@ -76,6 +76,10 @@
   }
   .info-row input:focus{border-color:var(--navy);}
   .info-row input.invalid{border-color:var(--red);}
+  .consent-row{display:flex;align-items:flex-start;gap:8px;margin-top:12px;}
+  .consent-row input[type=checkbox]{margin-top:2px;flex-shrink:0;width:16px;height:16px;accent-color:var(--navy,#2E527F);}
+  .consent-row label{font-size:11px;color:var(--ink-soft);font-weight:500;line-height:1.4;}
+  .consent-row label.invalid{color:var(--red);}
 
   /* delivery day accordion */
   .day-section{
@@ -245,6 +249,10 @@
       <div class="info-row">
         <label for="custAddress">Delivery Address</label>
         <input type="text" id="custAddress" name="street-address" placeholder="123 Main St, Tampa, FL" autocomplete="street-address">
+      </div>
+      <div class="consent-row">
+        <input type="checkbox" id="smsConsent">
+        <label for="smsConsent" id="smsConsentLabel">I agree to receive order and payment texts from Fit4Sure at the number above. Msg &amp; data rates may apply. Message frequency varies. Reply STOP to opt out, HELP for help.</label>
       </div>
     </form>
   </div>
@@ -739,14 +747,20 @@ document.getElementById('contactForm').addEventListener('submit', (e) => e.preve
 function validateContact(){
   const nameEl = document.getElementById('custName');
   const phoneEl = document.getElementById('custPhone');
+  const consentEl = document.getElementById('smsConsent');
+  const consentLabelEl = document.getElementById('smsConsentLabel');
   const name = nameEl.value.trim();
   const phone = phoneEl.value.trim();
   const phoneDigits = phone.replace(/\D/g, '');
 
   nameEl.classList.toggle('invalid', name.length === 0);
   phoneEl.classList.toggle('invalid', phoneDigits.length < 10);
+  // A2P 10DLC compliance -- we can't text order/payment updates without
+  // recorded opt-in consent, and the order/payment flow depends on being
+  // able to reach the customer, so this is required, not optional.
+  consentLabelEl.classList.toggle('invalid', !consentEl.checked);
 
-  return name.length > 0 && phoneDigits.length >= 10;
+  return name.length > 0 && phoneDigits.length >= 10 && consentEl.checked;
 }
 
 document.getElementById('submitBtn').addEventListener('click', async () => {
@@ -755,7 +769,9 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
 
   if (Object.keys(cart).length === 0) return;
   if (!validateContact()) {
-    errorEl.textContent = 'Please enter your name and a valid phone number.';
+    errorEl.textContent = document.getElementById('smsConsent').checked
+      ? 'Please enter your name and a valid phone number.'
+      : 'Please enter your name and phone number, and agree to receive order/payment texts.';
     errorEl.style.display = 'block';
     return;
   }
@@ -769,6 +785,7 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
     phone: document.getElementById('custPhone').value.trim(),
     email: document.getElementById('custEmail').value.trim(),
     address: document.getElementById('custAddress').value.trim(),
+    smsConsent: document.getElementById('smsConsent').checked,
     origin: window.location.origin,
     items: Object.values(cart).map((it) => ({
       day: it.day,
