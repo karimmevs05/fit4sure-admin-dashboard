@@ -4,7 +4,7 @@ import { IngredientPicker, PickedIngredient, guessIsLiquid } from "../components
 import { RecipeImportPanel, RecipeImportPanelHandle } from "../components/RecipeImportPanel";
 import { RecipeStepsEditor, RecipeStep, isCookStep } from "../components/RecipeStepsEditor";
 import { formatIngredientWeight } from "../utils/unitConversion";
-import { PLATE_STRUCTURE_SERVINGS, plateComponentFor, servingGramsFor } from "../utils/plateStructure";
+import { PLATE_STRUCTURE_SERVINGS, plateComponentFor, servingGramsFor, fetchPlateConfig, type PlateFormatConfig } from "../utils/plateStructure";
 import { cardBgForCategory } from "../utils/categoryColors";
 import {
   AlertTriangle,
@@ -98,32 +98,30 @@ function ReadOnlyValue({ value }: { value: string | number }) {
   );
 }
 
-const REGULAR_STRUCTURE_ROW = PLATE_STRUCTURE_SERVINGS.find((row) => row.structure === "Regular")!;
-// Breakfast recipes get their own reference row rather than sharing the
-// Regular row's 5oz protein portion -- a Breakfast plate's own protein
-// serving (2.5oz) is a genuinely different, smaller portion, so a batch of
-// e.g. egg bites should yield servings sized against that, not against a
-// full Regular dinner portion.
-const BREAKFAST_STRUCTURE_ROW = PLATE_STRUCTURE_SERVINGS.find((row) => row.structure === "Breakfast")!;
-
-// How many actual plate-sized servings a batch recipe yields -- total
-// ingredient weight divided by the reference row's serving size for
-// whichever plate component this recipe's category feeds
-// (protein/carbs/veggies). Every category measures against the Regular row
-// except breakfast, which measures against its own Breakfast row (see
-// above). Sauces/beverages aren't part of the plate structure table at all,
-// so a batch of one of those is just treated as a single serving.
 // Matches the "1 lb (455g)" convention the backend already uses for
 // per-pound macros/cost (see GRAMS_PER_POUND in adminRecipes.js) so the
 // cooked-weight figure shown here lines up with those other lb-based
 // figures instead of drifting off actual-avoirdupois-pound math.
 const GRAMS_PER_POUND = 455;
 
-function computeRegularServings(category: Category, totalWeightG: number): number {
+// How many actual plate-sized servings a batch recipe yields -- total
+// ingredient weight divided by the reference row's serving size for
+// whichever plate component this recipe's category feeds
+// (protein/carbs/veggies). Every category measures against the Regular row
+// except breakfast, which measures against its own Breakfast row (a
+// Breakfast plate's own protein serving is a genuinely different, smaller
+// portion than a full Regular dinner portion). Sauces/beverages aren't part
+// of the plate structure table at all, so a batch of one of those is just
+// treated as a single serving. `formats` is the live config fetched from
+// /api/admin/plate-config (editable in Operations Hub), falling back to
+// PLATE_STRUCTURE_SERVINGS only until that fetch resolves.
+function computeRegularServings(category: Category, totalWeightG: number, formats: typeof PLATE_STRUCTURE_SERVINGS): number {
   const component = plateComponentFor(category);
   if (!component) return 1;
   if (totalWeightG <= 0) return 0;
-  const referenceRow = category === "breakfast" ? BREAKFAST_STRUCTURE_ROW : REGULAR_STRUCTURE_ROW;
+  const referenceStructure = category === "breakfast" ? "Breakfast" : "Regular";
+  const referenceRow = formats.find((row) => row.structure === referenceStructure);
+  if (!referenceRow) return 1;
   const regularServingGrams = servingGramsFor(referenceRow, component);
   return regularServingGrams > 0 ? Math.max(1, Math.round(totalWeightG / regularServingGrams)) : 1;
 }
@@ -157,6 +155,11 @@ export default function Fit4SureRecipesPage() {
   // shared across the whole grid so switching it once updates every card,
   // instead of clicking through each card's own selector individually.
   const [structureIdx, setStructureIdx] = useState<number | null>(null);
+  // Live portion sizes (protein oz / carbs g / veggies g per format),
+  // editable in Operations Hub's Portions & Pricing section -- falls back
+  // to the hardcoded PLATE_STRUCTURE_SERVINGS only until this fetch
+  // resolves, never afterward.
+  const [plateFormats, setPlateFormats] = useState<typeof PLATE_STRUCTURE_SERVINGS>(PLATE_STRUCTURE_SERVINGS);
 
   const token = localStorage.getItem("token");
   const apiUrl = import.meta.env.VITE_API_BASE_URL;
@@ -164,6 +167,9 @@ export default function Fit4SureRecipesPage() {
   useEffect(() => {
     fetchRecipes();
     loadDrafts();
+    fetchPlateConfig(apiUrl, token).then((config) => {
+      if (config) setPlateFormats(config.formats);
+    });
   }, []);
 
   const loadDrafts = () => {
@@ -253,6 +259,7 @@ export default function Fit4SureRecipesPage() {
             onTabChange={setActiveTab}
             structureIdx={structureIdx}
             setStructureIdx={setStructureIdx}
+            plateFormats={plateFormats}
           />
 
           {error && (
@@ -276,6 +283,7 @@ export default function Fit4SureRecipesPage() {
                     <RecipeCard
                       key={recipe.recipe_id}
                       recipe={recipe}
+                      plateFormats={plateFormats}
                       structureIdx={structureIdx}
                       onStructureChange={setStructureIdx}
                       onDelete={deleteRecipe}
@@ -342,6 +350,7 @@ export default function Fit4SureRecipesPage() {
         isDraft={true}
         onDraftSave={saveDrafts}
         draftRecipes={draftRecipes}
+        plateFormats={plateFormats}
       />
 
       {selectedRecipe && !editingRecipe && (
@@ -360,6 +369,7 @@ export default function Fit4SureRecipesPage() {
           }}
           draftRecipes={draftRecipes}
           saveDrafts={saveDrafts}
+          plateFormats={plateFormats}
         />
       )}
     </main>
@@ -376,6 +386,7 @@ function Header({
   onTabChange,
   structureIdx,
   setStructureIdx,
+  plateFormats,
 }: {
   search: string;
   setSearch: (value: string) => void;
@@ -386,6 +397,7 @@ function Header({
   onTabChange: (tab: "library" | "drafts") => void;
   structureIdx: number | null;
   setStructureIdx: (idx: number | null) => void;
+  plateFormats: typeof PLATE_STRUCTURE_SERVINGS;
 }) {
   return (
     <header className="flex flex-col gap-5">
@@ -469,7 +481,7 @@ function Header({
             className="h-12 appearance-none rounded-xl border border-[#B7A58F] bg-[rgba(251,247,240,0.9)] pl-11 pr-10 text-sm font-bold text-[#4B2B1D] outline-none focus:border-[#3E6594] focus:ring-4 focus:ring-[#3E6594]/10"
           >
             <option value="">Plate format: Per lb</option>
-            {PLATE_STRUCTURE_SERVINGS.map((row, idx) => (
+            {plateFormats.map((row, idx) => (
               <option key={row.structure} value={idx}>
                 Plate format: {row.structure}
               </option>
@@ -492,6 +504,7 @@ function Header({
 
 function RecipeCard({
   recipe,
+  plateFormats,
   structureIdx,
   onStructureChange,
   onDelete,
@@ -499,6 +512,7 @@ function RecipeCard({
   onEdit,
 }: {
   recipe: Recipe;
+  plateFormats: typeof PLATE_STRUCTURE_SERVINGS;
   structureIdx: number | null;
   onStructureChange: (idx: number | null) => void;
   onDelete: (id: number) => void;
@@ -514,7 +528,7 @@ function RecipeCard({
   const selectedStructureIdx = structureIdx;
 
   const component = plateComponentFor(recipe.category);
-  const selectedRow = selectedStructureIdx != null ? PLATE_STRUCTURE_SERVINGS[selectedStructureIdx] : null;
+  const selectedRow = selectedStructureIdx != null ? plateFormats[selectedStructureIdx] : null;
   const servingGrams = selectedRow && component ? servingGramsFor(selectedRow, component) : null;
   const ratio = servingGrams != null ? servingGrams / 455 : null;
 
@@ -613,7 +627,7 @@ function RecipeCard({
                 >
                   Per lb (455g)
                 </button>
-                {PLATE_STRUCTURE_SERVINGS.map((row, idx) => {
+                {plateFormats.map((row, idx) => {
                   const grams = servingGramsFor(row, component);
                   const disabled = grams == null;
                   return (
@@ -730,12 +744,14 @@ function AddRecipeDrawer({
   isDraft = false,
   onDraftSave,
   draftRecipes = [],
+  plateFormats,
 }: {
   open: boolean;
   onClose: () => void;
   isDraft?: boolean;
   onDraftSave?: (drafts: Recipe[]) => void;
   draftRecipes?: Recipe[];
+  plateFormats: typeof PLATE_STRUCTURE_SERVINGS;
 }) {
   type RecipeFormIngredient = {
     id: string;
@@ -806,7 +822,7 @@ function AddRecipeDrawer({
     () => ingredients.reduce((sum, ing) => sum + cookedGrams(ing.quantity_g, ing.cooking_method_id, cookingMethods), 0),
     [ingredients, cookingMethods]
   );
-  const regularServings = useMemo(() => computeRegularServings(form.category, cookedWeightG), [form.category, cookedWeightG]);
+  const regularServings = useMemo(() => computeRegularServings(form.category, cookedWeightG, plateFormats), [form.category, cookedWeightG, plateFormats]);
 
   // Regular Servings defaults to the auto-computed value above, but a human
   // can override it (e.g. they know the batch actually yielded more/fewer
@@ -1266,12 +1282,14 @@ function EditRecipeDrawer({
   onSave,
   draftRecipes,
   saveDrafts,
+  plateFormats,
 }: {
   recipe: Recipe;
   onClose: () => void;
   onSave?: () => void;
   draftRecipes?: Recipe[];
   saveDrafts?: (drafts: Recipe[]) => void;
+  plateFormats: typeof PLATE_STRUCTURE_SERVINGS;
 }) {
   type RecipeFormIngredient = {
     id: string;
@@ -1353,7 +1371,7 @@ function EditRecipeDrawer({
     () => ingredients.reduce((sum, ing) => sum + cookedGrams(ing.quantity_g, ing.cooking_method_id, cookingMethods), 0),
     [ingredients, cookingMethods]
   );
-  const regularServings = useMemo(() => computeRegularServings(form.category, cookedWeightG), [form.category, cookedWeightG]);
+  const regularServings = useMemo(() => computeRegularServings(form.category, cookedWeightG, plateFormats), [form.category, cookedWeightG, plateFormats]);
 
   // Regular Servings always defaults to the live portion-based calculation
   // above, not whatever's already stored on the recipe -- a recipe's

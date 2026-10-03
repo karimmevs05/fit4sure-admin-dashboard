@@ -1,5 +1,10 @@
-// Standard serving sizes per plate structure -- source of truth is the
-// "Plate structure" reference sheet, not derived/computed from recipe data.
+import axios from "axios";
+
+// Fallback serving sizes per plate structure, used only until the live
+// config (fetchPlateConfig below) has loaded -- the real source of truth is
+// now the plate_formats table, editable from Operations Hub's Portions &
+// Pricing section, not this hardcoded array. Kept as a default so the page
+// isn't empty during the brief window before the first fetch resolves.
 export const PLATE_STRUCTURE_SERVINGS: Array<{
   structure: string;
   proteinOz: number;
@@ -27,7 +32,7 @@ export function plateComponentFor(category: string): "protein" | "carbs" | "vegg
   return null;
 }
 
-export function servingGramsFor(row: (typeof PLATE_STRUCTURE_SERVINGS)[number], component: "protein" | "carbs" | "veggies"): number {
+export function servingGramsFor(row: { proteinOz: number; carbsG: number; veggiesG: number }, component: "protein" | "carbs" | "veggies"): number {
   if (component === "protein") return row.proteinOz * OZ_TO_G;
   if (component === "carbs") return row.carbsG;
   return row.veggiesG;
@@ -49,15 +54,86 @@ export const FORMAT_LABEL_TO_STRUCTURE: Record<string, string> = {
 // protein, which side categories make sense to suggest -- e.g. Low Carb
 // (0g carbs) shouldn't suggest carb sides, High Protein (no veggies figure)
 // shouldn't suggest veggie sides, By the Pound (0g both) suggests neither.
-export function sideCategoriesFor(selectedFormatLabels: string[]): { carbs: boolean; veggies: boolean } {
+// `rows` defaults to the fallback constant but callers should pass the live
+// fetched config once available.
+export function sideCategoriesFor(
+  selectedFormatLabels: string[],
+  rows: typeof PLATE_STRUCTURE_SERVINGS = PLATE_STRUCTURE_SERVINGS
+): { carbs: boolean; veggies: boolean } {
   let carbs = false;
   let veggies = false;
   for (const label of selectedFormatLabels) {
     const structureName = FORMAT_LABEL_TO_STRUCTURE[label];
-    const row = PLATE_STRUCTURE_SERVINGS.find((r) => r.structure === structureName);
+    const row = rows.find((r) => r.structure === structureName);
     if (!row) continue;
     if (row.carbsG > 0) carbs = true;
     if (row.veggiesG > 0) veggies = true;
   }
   return { carbs, veggies };
+}
+
+// ---------------------------------------------------------------------------
+// Live config -- fetched from /api/admin/plate-config (backed by
+// plate_formats/by_the_pound_prices/addon_rules, editable in Operations
+// Hub's Portions & Pricing section). Replaces what used to be this file's
+// own hardcoded PLATE_STRUCTURE_SERVINGS as the actual source of truth, and
+// Orders.tsx's separately hardcoded add-on pricing constants.
+// ---------------------------------------------------------------------------
+
+export type PlateFormatConfig = {
+  key: string;
+  label: string; // raw backend label, e.g. "Regular", "1 Pound"
+  structure: string; // lookup name used against FORMAT_LABEL_TO_STRUCTURE/PLATE_STRUCTURE_SERVINGS-shaped code ("1 Pound" is aliased to "By the Pound" here, same alias the old hardcoded sheet used)
+  proteinOz: number;
+  carbsG: number;
+  veggiesG: number;
+  priceCents: number;
+  isRecipeFormat: boolean;
+  active: boolean;
+};
+
+export type AddonConfig = Record<string, { freePrice: number; freeCount: number; extraPrice: number }>;
+
+export type ByThePoundConfig = Record<string, number>; // category -> dollars
+
+// Returns null on failure (network error, not yet authenticated, etc.) so
+// callers can fall back to PLATE_STRUCTURE_SERVINGS rather than crash --
+// never silently substitutes invented numbers.
+export async function fetchPlateConfig(
+  apiUrl: string,
+  token: string | null
+): Promise<{ formats: PlateFormatConfig[]; addons: AddonConfig; byThePound: ByThePoundConfig } | null> {
+  try {
+    const res = await axios.get(`${apiUrl}/api/admin/plate-config`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = res.data.data;
+
+    const formats: PlateFormatConfig[] = (data.formats || []).map((f: any) => ({
+      key: f.key,
+      label: f.label,
+      structure: f.label === "1 Pound" ? "By the Pound" : f.label,
+      proteinOz: parseFloat(f.protein_oz),
+      carbsG: parseFloat(f.carbs_g),
+      veggiesG: parseFloat(f.veggies_g),
+      priceCents: f.price_cents,
+      isRecipeFormat: f.is_recipe_format,
+      active: f.active,
+    }));
+
+    const addons: AddonConfig = {};
+    for (const a of data.addons || []) {
+      addons[a.label] = { freePrice: 0, freeCount: a.free_count, extraPrice: a.extra_price_cents / 100 };
+    }
+
+    const byThePound: ByThePoundConfig = {};
+    for (const b of data.byThePound || []) {
+      byThePound[b.category] = b.price_cents / 100;
+    }
+
+    return { formats, addons, byThePound };
+  } catch (err) {
+    console.error("Error fetching live plate config, falling back to defaults:", err);
+    return null;
+  }
 }

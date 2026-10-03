@@ -21,6 +21,8 @@ import {
   ChefHat,
 } from 'lucide-react'
 import { WeeklyRecipeStatusWidget } from '../components/WeeklyRecipeStatusWidget'
+import PortionsPricingPanel from '../components/PortionsPricingPanel'
+import { DollarSign } from 'lucide-react'
 
 const SOP_SOURCE_TYPES = new Set(['weekly_recipe_plan_batch', 'weekly_recipe_plan_production'])
 
@@ -297,6 +299,11 @@ export default function OperationsHubPage() {
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
   const authConfig = { headers: { Authorization: `Bearer ${token}` } }
+
+  // "Tasks" (the existing weekly task board, unchanged default) vs
+  // "Portions & Pricing" (new -- the real control panel for every price and
+  // portion size sold, see PortionsPricingPanel.tsx).
+  const [activeSection, setActiveSection] = useState<'tasks' | 'pricing'>('tasks')
 
   // ?week=YYYY-MM-DD lets another page (Weekly Prep's "View Kitchen Tasks")
   // deep-link straight to the week it's already looking at, instead of
@@ -785,27 +792,60 @@ export default function OperationsHubPage() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-extrabold text-[#4B2B1D]">Operations Hub</h1>
-          <p className="mt-1 text-sm text-[#755B4C]">What needs to happen today, who owns it, what's blocking it</p>
+          <p className="mt-1 text-sm text-[#755B4C]">
+            {activeSection === 'tasks' ? "What needs to happen today, who owns it, what's blocking it" : 'Every price and portion size sold -- the real link between the backend and the shop'}
+          </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 rounded-lg border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-2 py-1">
-            <button onClick={() => setWeekStart((w) => addDays(w, -7))} className="p-1 text-[#4B2B1D] hover:text-[#2E527F] transition">
-              <ChevronLeft className="h-4 w-4" />
+          {activeSection === 'tasks' && (
+            <div className="flex items-center gap-1 rounded-lg border border-[#2E527F] bg-[rgba(251,247,240,0.9)] px-2 py-1">
+              <button onClick={() => setWeekStart((w) => addDays(w, -7))} className="p-1 text-[#4B2B1D] hover:text-[#2E527F] transition">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-sm font-bold text-[#4B2B1D] px-2 whitespace-nowrap">{formatWeekRange(weekStart)}</span>
+              <button onClick={() => setWeekStart((w) => addDays(w, 7))} className="p-1 text-[#4B2B1D] hover:text-[#2E527F] transition">
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+          {activeSection === 'tasks' && (
+            <button
+              onClick={openCreateModal}
+              className="flex items-center gap-1 rounded-lg bg-[#2E527F] text-white px-4 py-2 text-sm font-bold hover:bg-[#254368] transition"
+            >
+              <Plus className="h-4 w-4" />
+              New Task
             </button>
-            <span className="text-sm font-bold text-[#4B2B1D] px-2 whitespace-nowrap">{formatWeekRange(weekStart)}</span>
-            <button onClick={() => setWeekStart((w) => addDays(w, 7))} className="p-1 text-[#4B2B1D] hover:text-[#2E527F] transition">
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-          <button
-            onClick={openCreateModal}
-            className="flex items-center gap-1 rounded-lg bg-[#2E527F] text-white px-4 py-2 text-sm font-bold hover:bg-[#254368] transition"
-          >
-            <Plus className="h-4 w-4" />
-            New Task
-          </button>
+          )}
         </div>
       </div>
+
+      {/* Section toggle -- Tasks is the existing default view, unchanged;
+          Portions & Pricing is the new control panel. */}
+      <div className="flex items-center gap-2 border-b border-[#D8CDBE] pb-0">
+        <button
+          onClick={() => setActiveSection('tasks')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-bold border-b-2 transition ${
+            activeSection === 'tasks' ? 'border-[#2E527F] text-[#2E527F]' : 'border-transparent text-[#9A8774] hover:text-[#4B2B1D]'
+          }`}
+        >
+          <ChefHat className="h-4 w-4" />
+          Tasks
+        </button>
+        <button
+          onClick={() => setActiveSection('pricing')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-bold border-b-2 transition ${
+            activeSection === 'pricing' ? 'border-[#2E527F] text-[#2E527F]' : 'border-transparent text-[#9A8774] hover:text-[#4B2B1D]'
+          }`}
+        >
+          <DollarSign className="h-4 w-4" />
+          Portions & Pricing
+        </button>
+      </div>
+
+      {activeSection === 'pricing' && <PortionsPricingPanel />}
+
+      <div className={activeSection === 'tasks' ? 'space-y-6' : 'hidden'}>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
         <div className="space-y-6 min-w-0">
@@ -1244,6 +1284,7 @@ export default function OperationsHubPage() {
           </div>
         </div>
       )}
+      </div>
     </main>
     <WeeklyRecipeStatusWidget />
     </>

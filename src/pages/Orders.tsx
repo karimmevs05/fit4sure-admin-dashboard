@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import WeeklyPrepPage from './WeeklyPrep'
 import { formatIngredientWeight } from '../utils/unitConversion'
-import { sideCategoriesFor, PLATE_STRUCTURE_SERVINGS, FORMAT_LABEL_TO_STRUCTURE, plateComponentFor, servingGramsFor } from '../utils/plateStructure'
+import { sideCategoriesFor, PLATE_STRUCTURE_SERVINGS, FORMAT_LABEL_TO_STRUCTURE, plateComponentFor, servingGramsFor, fetchPlateConfig, type AddonConfig } from '../utils/plateStructure'
 
 type OrderLine = {
   id: number
@@ -151,10 +151,17 @@ const SAUCE_CATEGORY = 'sauces'
 const SIDE_FORMAT = 'Included Side'
 const SAUCE_ADDON_FORMAT = 'Sauce Add-On'
 const ADD_ON_FORMATS = [SIDE_FORMAT, SAUCE_ADDON_FORMAT]
-const ADD_ON_FREE_PRICE = 0
-const ADD_ON_EXTRA_PRICE = 2.5
-// Sides get 2 free per day before the $2.50 charge kicks in; sauces get 1.
-const ADD_ON_FREE_COUNT: Record<string, number> = { [SIDE_FORMAT]: 2, [SAUCE_ADDON_FORMAT]: 1 }
+const ADD_ON_FREE_PRICE = 0 // "free" is free by definition, not an editable config value
+
+// Fallback free-count/extra-price per addon type, used only until the live
+// config (fetchPlateConfig, backed by addon_rules -- editable in Operations
+// Hub's Portions & Pricing section) has loaded. Matches the real values as
+// of this migration -- sides get 2 free per day before the $2.50 charge
+// kicks in; sauces get 1.
+const DEFAULT_ADDON_CONFIG: AddonConfig = {
+  [SIDE_FORMAT]: { freePrice: ADD_ON_FREE_PRICE, freeCount: 2, extraPrice: 2.5 },
+  [SAUCE_ADDON_FORMAT]: { freePrice: ADD_ON_FREE_PRICE, freeCount: 1, extraPrice: 2.5 },
+}
 
 type OrderItem = { mealName: string; category: string; quantity: string; dayOfWeek: string; price: number; notes: string }
 
@@ -1652,11 +1659,22 @@ function AddOrderModal({
   const [loadingMenu, setLoadingMenu] = useState(true)
   const [openDay, setOpenDay] = useState<'monday' | 'thursday' | 'breakfast' | null>('monday')
   const [reviewOpen, setReviewOpen] = useState(false)
+  // Live portion sizes and add-on free-count/extra-price, editable in
+  // Operations Hub's Portions & Pricing section -- falls back to the
+  // hardcoded defaults only until this fetch resolves.
+  const [plateFormats, setPlateFormats] = useState<typeof PLATE_STRUCTURE_SERVINGS>(PLATE_STRUCTURE_SERVINGS)
+  const [addonConfig, setAddonConfig] = useState<AddonConfig>(DEFAULT_ADDON_CONFIG)
 
   const orderTotal = items.reduce((sum, it) => sum + it.price * (parseFloat(it.quantity) || 0), 0)
   const orderCount = items.reduce((sum, it) => sum + (parseFloat(it.quantity) || 0), 0)
 
   useEffect(() => {
+    fetchPlateConfig(apiUrl, token).then((config) => {
+      if (config) {
+        setPlateFormats(config.formats)
+        setAddonConfig(config.addons)
+      }
+    })
     const fetchMenu = async () => {
       try {
         const res = await axios.get(`${apiUrl}/api/admin/orders/weekly-menu`, {
@@ -1692,11 +1710,12 @@ function AddOrderModal({
   // same-format add-on lines -- so removing the free one promotes whichever
   // line is left to free, instead of leaving a stale $2.50 everywhere.
   const repriceAddOns = (list: OrderItem[], category: string, dayOfWeek: string) => {
-    const freeCount = ADD_ON_FREE_COUNT[category] ?? 1
+    const freeCount = addonConfig[category]?.freeCount ?? 1
+    const extraPrice = addonConfig[category]?.extraPrice ?? 2.5
     let seen = 0
     return list.map((it) => {
       if (it.category !== category || it.dayOfWeek !== dayOfWeek) return it
-      const price = seen < freeCount ? ADD_ON_FREE_PRICE : ADD_ON_EXTRA_PRICE
+      const price = seen < freeCount ? ADD_ON_FREE_PRICE : extraPrice
       seen += 1
       return { ...it, price }
     })
@@ -1843,6 +1862,8 @@ function AddOrderModal({
                               qtyInCart={qtyInCart}
                               addFromMenu={addFromMenu}
                               toggleAddOn={toggleAddOn}
+                              plateFormats={plateFormats}
+                              addonConfig={addonConfig}
                               isOpen={openProteinKey === `${day}::${recipe.recipeId}`}
                               onToggleOpen={() =>
                                 setOpenProteinKey((k) => (k === `${day}::${recipe.recipeId}` ? null : `${day}::${recipe.recipeId}`))
@@ -2033,6 +2054,8 @@ function ProteinCard({
   qtyInCart,
   addFromMenu,
   toggleAddOn,
+  plateFormats,
+  addonConfig,
   isOpen,
   onToggleOpen,
 }: {
@@ -2044,6 +2067,8 @@ function ProteinCard({
   qtyInCart: (mealName: string, category: string, dayOfWeek: string) => string | undefined
   addFromMenu: (mealName: string, category: string, dayOfWeek: string, price: number, qty?: number, itemNotes?: string) => void
   toggleAddOn: (mealName: string, category: string, dayOfWeek: string) => void
+  plateFormats: typeof PLATE_STRUCTURE_SERVINGS
+  addonConfig: AddonConfig
   isOpen: boolean
   onToggleOpen: () => void
 }) {
@@ -2054,7 +2079,7 @@ function ProteinCard({
   // Which side categories actually belong on this plate depends on the
   // selected format -- Low Carb has no carbs serving, High Protein has no
   // veggies serving, By the Pound has neither.
-  const allowedSides = sideCategoriesFor(selectedFormat ? [selectedFormat.label] : [])
+  const allowedSides = sideCategoriesFor(selectedFormat ? [selectedFormat.label] : [], plateFormats)
   const sidesForFormat = daySides.filter(
     (r) => (r.category === 'carbohydrates' && allowedSides.carbs) || (r.category === 'vegetables' && allowedSides.veggies)
   )
@@ -2072,7 +2097,7 @@ function ProteinCard({
   // accepts, so this treats every side in the cart for the day as part of
   // whichever plate is currently open.
   const structureRow = selectedFormat
-    ? PLATE_STRUCTURE_SERVINGS.find((r) => r.structure === FORMAT_LABEL_TO_STRUCTURE[selectedFormat.label])
+    ? plateFormats.find((r) => r.structure === FORMAT_LABEL_TO_STRUCTURE[selectedFormat.label])
     : null
   const proteinComponent = plateComponentFor(recipe.category)
   const proteinMacros = structureRow && proteinComponent ? scaleMacros(recipe.perPound, servingGramsFor(structureRow, proteinComponent)) : null
@@ -2100,12 +2125,13 @@ function ProteinCard({
   }
 
   const addOnPriceLabel = (name: string, category: string, unitsThisDay: number) => {
+    const extraPrice = addonConfig[category]?.extraPrice ?? 2.5
     const inCart = !!qtyInCart(name, category, day)
     if (inCart) {
       const existing = items.find((it) => it.mealName === name && it.category === category && it.dayOfWeek === day)
-      return existing?.price === ADD_ON_FREE_PRICE ? 'Free' : `+$${ADD_ON_EXTRA_PRICE.toFixed(2)}`
+      return existing?.price === ADD_ON_FREE_PRICE ? 'Free' : `+$${extraPrice.toFixed(2)}`
     }
-    return unitsThisDay < ADD_ON_FREE_COUNT[category] ? 'Free' : `+$${ADD_ON_EXTRA_PRICE.toFixed(2)}`
+    return unitsThisDay < (addonConfig[category]?.freeCount ?? 1) ? 'Free' : `+$${extraPrice.toFixed(2)}`
   }
 
   return (
