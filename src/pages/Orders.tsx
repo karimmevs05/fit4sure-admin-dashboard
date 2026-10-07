@@ -163,7 +163,12 @@ const DEFAULT_ADDON_CONFIG: AddonConfig = {
   [SAUCE_ADDON_FORMAT]: { freePrice: ADD_ON_FREE_PRICE, freeCount: 1, extraPrice: 2.5 },
 }
 
-type OrderItem = { mealName: string; category: string; quantity: string; dayOfWeek: string; price: number; notes: string }
+// recipeId, when known (picked from this week's live menu rather than a
+// free-text manual entry), lets the backend check for a per-recipe price
+// override (recipe_format_overrides, editable in Operations Hub's new
+// recipe toggle) -- undefined for Breakfast items, which this picker has no
+// real recipe linkage for.
+type OrderItem = { mealName: string; category: string; quantity: string; dayOfWeek: string; price: number; notes: string; recipeId?: number }
 
 type BreakfastItem = {
   id: number
@@ -1694,7 +1699,7 @@ function AddOrderModal({
   // button once staff has finished building it (format, sides, sauces,
   // notes, qty), matching the client page's "build then confirm" flow
   // instead of committing on every tap.
-  const addFromMenu = (mealName: string, category: string, dayOfWeek: string, price: number, qty: number = 1, itemNotes: string = '') => {
+  const addFromMenu = (mealName: string, category: string, dayOfWeek: string, price: number, qty: number = 1, itemNotes: string = '', recipeId?: number) => {
     setItems((prev) => {
       const idx = prev.findIndex((it) => it.mealName === mealName && it.category === category && it.dayOfWeek === dayOfWeek)
       if (idx >= 0) {
@@ -1702,7 +1707,7 @@ function AddOrderModal({
         next[idx] = { ...next[idx], quantity: String((parseFloat(next[idx].quantity) || 0) + qty) }
         return next
       }
-      return [...prev, { mealName, category, quantity: String(qty), dayOfWeek, price, notes: itemNotes }]
+      return [...prev, { mealName, category, quantity: String(qty), dayOfWeek, price, notes: itemNotes, recipeId }]
     })
   }
 
@@ -1774,6 +1779,7 @@ function AddOrderModal({
             dayOfWeek: item.dayOfWeek || null,
             notes: item.notes || notes || null,
             price: ADD_ON_FORMATS.includes(item.category) ? item.price : undefined,
+            recipeId: item.recipeId,
           },
           { headers: { Authorization: `Bearer ${token}` } }
         )
@@ -2065,7 +2071,7 @@ function ProteinCard({
   daySauces: RecipePlanItem[]
   items: OrderItem[]
   qtyInCart: (mealName: string, category: string, dayOfWeek: string) => string | undefined
-  addFromMenu: (mealName: string, category: string, dayOfWeek: string, price: number, qty?: number, itemNotes?: string) => void
+  addFromMenu: (mealName: string, category: string, dayOfWeek: string, price: number, qty?: number, itemNotes?: string, recipeId?: number) => void
   toggleAddOn: (mealName: string, category: string, dayOfWeek: string) => void
   plateFormats: typeof PLATE_STRUCTURE_SERVINGS
   addonConfig: AddonConfig
@@ -2117,7 +2123,7 @@ function ProteinCard({
 
   const handleAdd = () => {
     if (!selectedFormat) return
-    addFromMenu(recipe.name, selectedFormat.label, day, selectedFormat.price, qty, cardNotes.trim())
+    addFromMenu(recipe.name, selectedFormat.label, day, selectedFormat.price, qty, cardNotes.trim(), recipe.recipeId)
     setSelectedFormat(null)
     setQty(1)
     setCardNotes('')

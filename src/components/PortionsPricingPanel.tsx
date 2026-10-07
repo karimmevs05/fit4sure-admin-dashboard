@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-import { Save, AlertTriangle } from 'lucide-react'
+import { Save, AlertTriangle, ChevronDown } from 'lucide-react'
 
 // Real, staff-editable control panel for every price and portion size the
 // business actually sells against -- the live link between this backend
@@ -31,6 +31,20 @@ type ByThePoundRow = { id: number; category: string; price_cents: number }
 
 type AddonRow = { id: number; key: string; label: string; free_count: number; extra_price_cents: number }
 
+type RecipeOption = { recipe_id: number; name: string }
+
+// One row per format for the currently-selected recipe -- `standard` is the
+// shared value (same for every recipe), `override` is this specific
+// recipe's custom value if one has ever been saved (active: false means a
+// custom value exists but isn't currently in effect -- "mostly comes as
+// standard unless checked and changed").
+type RecipeOverrideRow = {
+  formatKey: string
+  formatLabel: string
+  standard: { proteinOz: number; carbsG: number; veggiesG: number; priceCents: number }
+  override: { proteinOz: number; carbsG: number; veggiesG: number; priceCents: number; active: boolean } | null
+}
+
 function centsToDollarsStr(cents: number): string {
   return (cents / 100).toFixed(2)
 }
@@ -60,6 +74,50 @@ export default function PortionsPricingPanel() {
   const [byThePoundError, setByThePoundError] = useState<string | null>(null)
   const [addonsError, setAddonsError] = useState<string | null>(null)
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
+
+  // Recipe toggle -- no selection (default) edits the shared standard above;
+  // selecting a recipe switches the Plate Formats table to that recipe's
+  // effective values, each with its own "Custom for this recipe" checkbox.
+  const [recipes, setRecipes] = useState<RecipeOption[]>([])
+  const [selectedRecipeId, setSelectedRecipeId] = useState<number | ''>('')
+  const [recipeOverrides, setRecipeOverrides] = useState<RecipeOverrideRow[]>([])
+  const [recipeOverridePriceInputs, setRecipeOverridePriceInputs] = useState<Record<string, string>>({})
+  const [loadingRecipeOverrides, setLoadingRecipeOverrides] = useState(false)
+  const [savingRecipeOverrides, setSavingRecipeOverrides] = useState(false)
+  const [recipeOverridesError, setRecipeOverridesError] = useState<string | null>(null)
+
+  const fetchRecipes = async () => {
+    try {
+      const res = await axios.get(`${apiUrl}/api/admin/recipes`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      setRecipes((res.data.data || []).map((r: any) => ({ recipe_id: r.recipe_id, name: r.name })).sort((a: RecipeOption, b: RecipeOption) => a.name.localeCompare(b.name)))
+    } catch {
+      // Non-fatal -- the recipe dropdown just stays empty; the shared
+      // standard editor above still works fine without it.
+    }
+  }
+
+  const fetchRecipeOverrides = async (recipeId: number) => {
+    try {
+      setLoadingRecipeOverrides(true)
+      setRecipeOverridesError(null)
+      const res = await axios.get(`${apiUrl}/api/admin/plate-config/recipe-overrides/${recipeId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const rows: RecipeOverrideRow[] = res.data.data
+      setRecipeOverrides(rows)
+      const inputs: Record<string, string> = {}
+      for (const r of rows) {
+        inputs[r.formatKey] = centsToDollarsStr(r.override ? r.override.priceCents : r.standard.priceCents)
+      }
+      setRecipeOverridePriceInputs(inputs)
+    } catch (err: any) {
+      setRecipeOverridesError(err.response?.data?.error || 'Failed to load this recipe\'s overrides')
+    } finally {
+      setLoadingRecipeOverrides(false)
+    }
+  }
 
   const fetchConfig = async () => {
     try {
@@ -93,7 +151,16 @@ export default function PortionsPricingPanel() {
 
   useEffect(() => {
     fetchConfig()
+    fetchRecipes()
   }, [])
+
+  useEffect(() => {
+    if (selectedRecipeId === '') {
+      setRecipeOverrides([])
+      return
+    }
+    fetchRecipeOverrides(selectedRecipeId)
+  }, [selectedRecipeId])
 
   const flashSaved = (label: string) => {
     setSavedMessage(label)
@@ -195,6 +262,76 @@ export default function PortionsPricingPanel() {
     }
   }
 
+  // Flip one format's "Custom for this recipe" checkbox. Turning it ON for
+  // a format that's never had an override saved pre-fills the editable
+  // fields with the current standard, so there's always a sensible
+  // starting point to adjust from rather than a blank/zeroed row.
+  const toggleRecipeOverrideActive = (formatKey: string, active: boolean) => {
+    setRecipeOverrides((prev) =>
+      prev.map((r) => {
+        if (r.formatKey !== formatKey) return r
+        const base = r.override ?? { ...r.standard, active: false }
+        return { ...r, override: { ...base, active } }
+      })
+    )
+    setRecipeOverridePriceInputs((prev) => {
+      const row = recipeOverrides.find((r) => r.formatKey === formatKey)
+      if (!row) return prev
+      if (prev[formatKey] && row.override) return prev // keep whatever's already typed
+      return { ...prev, [formatKey]: centsToDollarsStr(row.override ? row.override.priceCents : row.standard.priceCents) }
+    })
+  }
+
+  const updateRecipeOverrideField = (formatKey: string, field: 'proteinOz' | 'carbsG' | 'veggiesG', value: number) => {
+    setRecipeOverrides((prev) =>
+      prev.map((r) => {
+        if (r.formatKey !== formatKey || !r.override) return r
+        return { ...r, override: { ...r.override, [field]: value } }
+      })
+    )
+  }
+
+  const saveRecipeOverrides = async () => {
+    if (selectedRecipeId === '') return
+    setRecipeOverridesError(null)
+    const payload = recipeOverrides.map((r) => {
+      const active = r.override?.active ?? false
+      const proteinOz = r.override?.proteinOz ?? r.standard.proteinOz
+      const carbsG = r.override?.carbsG ?? r.standard.carbsG
+      const veggiesG = r.override?.veggiesG ?? r.standard.veggiesG
+      const dollars = Number(recipeOverridePriceInputs[r.formatKey] ?? centsToDollarsStr(r.standard.priceCents))
+      return { format_key: r.formatKey, protein_oz: proteinOz, carbs_g: carbsG, veggies_g: veggiesG, price_cents: Math.round(dollars * 100), active }
+    })
+    for (const p of payload) {
+      if (!Number.isFinite(p.price_cents) || p.price_cents <= 0) {
+        setRecipeOverridesError(`${p.format_key}: enter a valid price greater than $0`)
+        return
+      }
+      if ([p.protein_oz, p.carbs_g, p.veggies_g].some((n) => !Number.isFinite(n) || n < 0)) {
+        setRecipeOverridesError(`${p.format_key}: portion sizes must be non-negative numbers`)
+        return
+      }
+    }
+    setSavingRecipeOverrides(true)
+    try {
+      const res = await axios.put(
+        `${apiUrl}/api/admin/plate-config/recipe-overrides/${selectedRecipeId}`,
+        { overrides: payload },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      const rows: RecipeOverrideRow[] = res.data.data
+      setRecipeOverrides(rows)
+      const inputs: Record<string, string> = {}
+      for (const r of rows) inputs[r.formatKey] = centsToDollarsStr(r.override ? r.override.priceCents : r.standard.priceCents)
+      setRecipeOverridePriceInputs(inputs)
+      flashSaved(`${recipes.find((r) => r.recipe_id === selectedRecipeId)?.name || 'Recipe'} overrides saved`)
+    } catch (err: any) {
+      setRecipeOverridesError(err.response?.data?.error || 'Failed to save')
+    } finally {
+      setSavingRecipeOverrides(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-10 text-center">
@@ -231,99 +368,212 @@ export default function PortionsPricingPanel() {
         immediately; already-placed orders never change retroactively.
       </div>
 
-      {/* Plate formats: price + portion sizes */}
+      {/* Plate formats: price + portion sizes -- the recipe toggle at top
+          switches this whole card between editing the shared standard
+          (no recipe selected) and one specific recipe's overrides. */}
       <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
+        <div className="mb-4">
+          <label className="block text-[11px] font-bold uppercase tracking-wide text-[#755B4C] mb-1.5">Recipe</label>
+          <div className="relative max-w-sm">
+            <select
+              value={selectedRecipeId}
+              onChange={(e) => setSelectedRecipeId(e.target.value === '' ? '' : Number(e.target.value))}
+              className="w-full appearance-none rounded-lg border border-[#B9A88F] bg-white px-3 py-2 pr-9 text-sm font-semibold text-[#4B2B1D]"
+            >
+              <option value="">Standard (applies to every recipe)</option>
+              {recipes.map((r) => (
+                <option key={r.recipe_id} value={r.recipe_id}>{r.name}</option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#755B4C]" />
+          </div>
+          <p className="mt-1.5 text-xs text-[#755B4C]">
+            {selectedRecipeId === ''
+              ? 'Editing the shared standard every recipe uses by default.'
+              : 'A recipe uses the standard unless "Custom" is checked below for a format.'}
+          </p>
+        </div>
+
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <div>
-            <h3 className="text-base font-extrabold text-[#4B2B1D]">Plate Formats</h3>
+            <h3 className="text-base font-extrabold text-[#4B2B1D]">
+              {selectedRecipeId === '' ? 'Plate Formats' : recipes.find((r) => r.recipe_id === selectedRecipeId)?.name || 'Plate Formats'}
+            </h3>
             <p className="text-xs text-[#755B4C] mt-0.5">Price and portion sizes (protein oz / carbs g / veggies g) per format</p>
           </div>
           <button
-            onClick={saveFormats}
-            disabled={savingFormats}
+            onClick={selectedRecipeId === '' ? saveFormats : saveRecipeOverrides}
+            disabled={selectedRecipeId === '' ? savingFormats : savingRecipeOverrides}
             className="flex items-center gap-1.5 rounded-lg bg-[#2E527F] text-white px-4 py-2 text-sm font-bold hover:bg-[#254368] transition disabled:opacity-50"
           >
             <Save className="h-4 w-4" />
-            {savingFormats ? 'Saving...' : 'Save Formats'}
+            {selectedRecipeId === ''
+              ? (savingFormats ? 'Saving...' : 'Save Formats')
+              : (savingRecipeOverrides ? 'Saving...' : 'Save This Recipe')}
           </button>
         </div>
-        {formatsError && <p className="mb-3 text-sm font-bold text-[#D62F3D]">{formatsError}</p>}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[720px]">
-            <thead>
-              <tr className="text-left text-[11px] font-bold uppercase tracking-wide text-[#755B4C] border-b border-[#D8CDBE]">
-                <th className="py-2 pr-3">Format</th>
-                <th className="py-2 px-3">Protein (oz)</th>
-                <th className="py-2 px-3">Carbs (g)</th>
-                <th className="py-2 px-3">Veggies (g)</th>
-                <th className="py-2 px-3">Price ($)</th>
-                <th className="py-2 px-3">Per-recipe format</th>
-                <th className="py-2 pl-3">Active</th>
-              </tr>
-            </thead>
-            <tbody>
-              {formats.map((f, idx) => (
-                <tr key={f.id} className="border-b border-[#EFE8DB] last:border-0">
-                  <td className="py-2.5 pr-3 font-bold text-[#4B2B1D] whitespace-nowrap">{f.label}</td>
-                  <td className="py-2.5 px-3">
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.1"
-                      value={f.protein_oz}
-                      onChange={(e) => setFormats((prev) => prev.map((row, i) => (i === idx ? { ...row, protein_oz: e.target.value } : row)))}
-                      className="w-20 rounded-lg border border-[#B9A88F] bg-white px-2 py-1 text-sm text-[#4B2B1D]"
-                    />
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <input
-                      type="number"
-                      min={0}
-                      value={f.carbs_g}
-                      onChange={(e) => setFormats((prev) => prev.map((row, i) => (i === idx ? { ...row, carbs_g: e.target.value } : row)))}
-                      className="w-20 rounded-lg border border-[#B9A88F] bg-white px-2 py-1 text-sm text-[#4B2B1D]"
-                    />
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <input
-                      type="number"
-                      min={0}
-                      value={f.veggies_g}
-                      onChange={(e) => setFormats((prev) => prev.map((row, i) => (i === idx ? { ...row, veggies_g: e.target.value } : row)))}
-                      className="w-20 rounded-lg border border-[#B9A88F] bg-white px-2 py-1 text-sm text-[#4B2B1D]"
-                    />
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <input
-                      type="number"
-                      min={0.01}
-                      step="0.01"
-                      value={formatPriceInputs[f.id] ?? ''}
-                      onChange={(e) => setFormatPriceInputs((prev) => ({ ...prev, [f.id]: e.target.value }))}
-                      className="w-24 rounded-lg border border-[#B9A88F] bg-white px-2 py-1 text-sm text-[#4B2B1D]"
-                    />
-                  </td>
-                  <td className="py-2.5 px-3 text-center">
-                    <input
-                      type="checkbox"
-                      checked={f.is_recipe_format}
-                      onChange={(e) => setFormats((prev) => prev.map((row, i) => (i === idx ? { ...row, is_recipe_format: e.target.checked } : row)))}
-                      className="h-4 w-4 accent-[#2E527F]"
-                    />
-                  </td>
-                  <td className="py-2.5 pl-3 text-center">
-                    <input
-                      type="checkbox"
-                      checked={f.active}
-                      onChange={(e) => setFormats((prev) => prev.map((row, i) => (i === idx ? { ...row, active: e.target.checked } : row)))}
-                      className="h-4 w-4 accent-[#2E527F]"
-                    />
-                  </td>
+
+        {selectedRecipeId === '' && formatsError && <p className="mb-3 text-sm font-bold text-[#D62F3D]">{formatsError}</p>}
+        {selectedRecipeId !== '' && recipeOverridesError && <p className="mb-3 text-sm font-bold text-[#D62F3D]">{recipeOverridesError}</p>}
+
+        {selectedRecipeId === '' ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[720px]">
+              <thead>
+                <tr className="text-left text-[11px] font-bold uppercase tracking-wide text-[#755B4C] border-b border-[#D8CDBE]">
+                  <th className="py-2 pr-3">Format</th>
+                  <th className="py-2 px-3">Protein (oz)</th>
+                  <th className="py-2 px-3">Carbs (g)</th>
+                  <th className="py-2 px-3">Veggies (g)</th>
+                  <th className="py-2 px-3">Price ($)</th>
+                  <th className="py-2 px-3">Per-recipe format</th>
+                  <th className="py-2 pl-3">Active</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {formats.map((f, idx) => (
+                  <tr key={f.id} className="border-b border-[#EFE8DB] last:border-0">
+                    <td className="py-2.5 pr-3 font-bold text-[#4B2B1D] whitespace-nowrap">{f.label}</td>
+                    <td className="py-2.5 px-3">
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.1"
+                        value={f.protein_oz}
+                        onChange={(e) => setFormats((prev) => prev.map((row, i) => (i === idx ? { ...row, protein_oz: e.target.value } : row)))}
+                        className="w-20 rounded-lg border border-[#B9A88F] bg-white px-2 py-1 text-sm text-[#4B2B1D]"
+                      />
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={f.carbs_g}
+                        onChange={(e) => setFormats((prev) => prev.map((row, i) => (i === idx ? { ...row, carbs_g: e.target.value } : row)))}
+                        className="w-20 rounded-lg border border-[#B9A88F] bg-white px-2 py-1 text-sm text-[#4B2B1D]"
+                      />
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={f.veggies_g}
+                        onChange={(e) => setFormats((prev) => prev.map((row, i) => (i === idx ? { ...row, veggies_g: e.target.value } : row)))}
+                        className="w-20 rounded-lg border border-[#B9A88F] bg-white px-2 py-1 text-sm text-[#4B2B1D]"
+                      />
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <input
+                        type="number"
+                        min={0.01}
+                        step="0.01"
+                        value={formatPriceInputs[f.id] ?? ''}
+                        onChange={(e) => setFormatPriceInputs((prev) => ({ ...prev, [f.id]: e.target.value }))}
+                        className="w-24 rounded-lg border border-[#B9A88F] bg-white px-2 py-1 text-sm text-[#4B2B1D]"
+                      />
+                    </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={f.is_recipe_format}
+                        onChange={(e) => setFormats((prev) => prev.map((row, i) => (i === idx ? { ...row, is_recipe_format: e.target.checked } : row)))}
+                        className="h-4 w-4 accent-[#2E527F]"
+                      />
+                    </td>
+                    <td className="py-2.5 pl-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={f.active}
+                        onChange={(e) => setFormats((prev) => prev.map((row, i) => (i === idx ? { ...row, active: e.target.checked } : row)))}
+                        className="h-4 w-4 accent-[#2E527F]"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : loadingRecipeOverrides ? (
+          <p className="text-sm text-[#755B4C]">Loading...</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[720px]">
+              <thead>
+                <tr className="text-left text-[11px] font-bold uppercase tracking-wide text-[#755B4C] border-b border-[#D8CDBE]">
+                  <th className="py-2 pr-3">Format</th>
+                  <th className="py-2 px-3">Protein (oz)</th>
+                  <th className="py-2 px-3">Carbs (g)</th>
+                  <th className="py-2 px-3">Veggies (g)</th>
+                  <th className="py-2 px-3">Price ($)</th>
+                  <th className="py-2 pl-3">Custom</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recipeOverrides.map((r) => {
+                  const isCustom = r.override?.active ?? false
+                  const proteinOz = r.override?.proteinOz ?? r.standard.proteinOz
+                  const carbsG = r.override?.carbsG ?? r.standard.carbsG
+                  const veggiesG = r.override?.veggiesG ?? r.standard.veggiesG
+                  return (
+                    <tr key={r.formatKey} className="border-b border-[#EFE8DB] last:border-0">
+                      <td className="py-2.5 pr-3 font-bold text-[#4B2B1D] whitespace-nowrap">{r.formatLabel}</td>
+                      <td className="py-2.5 px-3">
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.1"
+                          disabled={!isCustom}
+                          value={proteinOz}
+                          onChange={(e) => updateRecipeOverrideField(r.formatKey, 'proteinOz', Number(e.target.value))}
+                          className="w-20 rounded-lg border border-[#B9A88F] bg-white px-2 py-1 text-sm text-[#4B2B1D] disabled:bg-[#F3ECDE] disabled:text-[#9A8774]"
+                        />
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <input
+                          type="number"
+                          min={0}
+                          disabled={!isCustom}
+                          value={carbsG}
+                          onChange={(e) => updateRecipeOverrideField(r.formatKey, 'carbsG', Number(e.target.value))}
+                          className="w-20 rounded-lg border border-[#B9A88F] bg-white px-2 py-1 text-sm text-[#4B2B1D] disabled:bg-[#F3ECDE] disabled:text-[#9A8774]"
+                        />
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <input
+                          type="number"
+                          min={0}
+                          disabled={!isCustom}
+                          value={veggiesG}
+                          onChange={(e) => updateRecipeOverrideField(r.formatKey, 'veggiesG', Number(e.target.value))}
+                          className="w-20 rounded-lg border border-[#B9A88F] bg-white px-2 py-1 text-sm text-[#4B2B1D] disabled:bg-[#F3ECDE] disabled:text-[#9A8774]"
+                        />
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <input
+                          type="number"
+                          min={0.01}
+                          step="0.01"
+                          disabled={!isCustom}
+                          value={recipeOverridePriceInputs[r.formatKey] ?? ''}
+                          onChange={(e) => setRecipeOverridePriceInputs((prev) => ({ ...prev, [r.formatKey]: e.target.value }))}
+                          className="w-24 rounded-lg border border-[#B9A88F] bg-white px-2 py-1 text-sm text-[#4B2B1D] disabled:bg-[#F3ECDE] disabled:text-[#9A8774]"
+                        />
+                      </td>
+                      <td className="py-2.5 pl-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isCustom}
+                          onChange={(e) => toggleRecipeOverrideActive(r.formatKey, e.target.checked)}
+                          className="h-4 w-4 accent-[#2E527F]"
+                        />
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* By The LB */}
