@@ -3640,12 +3640,12 @@ export default function CustomersPage() {
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="rounded-lg bg-white p-4">
-                    <p className="text-xs font-bold text-[#755B4C] mb-2">Submissions by partner location</p>
+                    <p className="text-xs font-bold text-[#755B4C] mb-2">Submissions by promo code</p>
                     <div style={{ height: 180 }}>
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={campaignStats.byLocation} margin={{ top: 4, right: 8, left: -20, bottom: 4 }}>
+                        <BarChart data={campaignStats.byPromoCode} margin={{ top: 4, right: 8, left: -20, bottom: 4 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#EFE8DB" />
-                          <XAxis dataKey="source_location" tick={{ fontSize: 10, fill: '#755B4C' }} interval={0} angle={-15} textAnchor="end" height={50} />
+                          <XAxis dataKey="promo_code" tick={{ fontSize: 10, fill: '#755B4C' }} interval={0} angle={-15} textAnchor="end" height={50} />
                           <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#755B4C' }} />
                           <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                           <Bar dataKey="submissions" fill="#2E527F" radius={[4, 4, 0, 0]} />
@@ -3672,7 +3672,7 @@ export default function CustomersPage() {
                   <table className="w-full text-xs min-w-[600px]">
                     <thead>
                       <tr className="text-left font-bold uppercase tracking-wide text-[#755B4C] border-b border-[#D8CDBE]">
-                        <th className="py-2 pr-3">Location</th>
+                        <th className="py-2 pr-3">Promo Code</th>
                         <th className="py-2 px-3">Submissions</th>
                         <th className="py-2 px-3">Contactable</th>
                         <th className="py-2 px-3">Plans Built</th>
@@ -3681,9 +3681,9 @@ export default function CustomersPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {campaignStats.byLocation.map((row: any) => (
-                        <tr key={row.source_location} className="border-b border-[#EFE8DB] last:border-0">
-                          <td className="py-2 pr-3 font-bold text-[#4B2B1D]">{row.source_location}</td>
+                      {campaignStats.byPromoCode.map((row: any) => (
+                        <tr key={row.promo_code} className="border-b border-[#EFE8DB] last:border-0">
+                          <td className="py-2 pr-3 font-bold text-[#4B2B1D]">{row.promo_code}</td>
                           <td className="py-2 px-3">{row.submissions}</td>
                           <td className="py-2 px-3">{row.contactable}</td>
                           <td className="py-2 px-3">{row.plans_built}</td>
