@@ -60,7 +60,55 @@ type Customer = {
 // Active/Prospects/Lost Prospects used to be three separate tabs over the
 // same underlying table. Folded into one "Customers" tab -- the database --
 // with the three as a category filter inside it instead of three clicks.
-type Tab = 'pipeline' | 'customers' | 'sources'
+type Tab = 'pipeline' | 'customers' | 'sources' | 'plans'
+
+// Meal Plans tab -- customer_plans is a real standing per-customer record
+// (see migrations/create_customer_plans.sql), not a preview/proposal like
+// the lead_source fields below. A roster row has no plan fields when
+// plan_id is null.
+type MealPlanRosterRow = {
+  customer_id: number
+  name: string
+  phone?: string
+  email?: string
+  sales_pipeline_stage?: string
+  plan_id: number | null
+  meals_per_week?: string
+  portion?: string
+  dietary_preference?: string
+  protein_preference?: string
+  fulfillment_method?: string
+  delivery_zip?: string
+  price_cents?: number
+  status?: string
+  source?: string
+  activated_at?: string
+  updated_at?: string
+}
+
+type LeadNeedingPlan = {
+  form_intake_id: number
+  customer_id: number
+  submission_type: string
+  source_location?: string
+  requested_meals_per_week?: string
+  requested_portion?: string
+  fulfillment_method?: string
+  delivery_zip?: string
+  needs_review: boolean
+  created_at: string
+  name: string
+  phone?: string
+  primary_goal?: string
+  protein_preference?: string
+  dietary_preference?: string
+}
+
+type EditingPlan = {
+  id: number // 0 = not yet created
+  customer_id: number
+  customer_name: string
+}
 type CustomerCategory = 'all' | 'active' | 'prospect' | 'churned'
 
 // ---------------------------------------------------------------------------
@@ -1760,6 +1808,125 @@ export default function CustomersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ---- Meal Plans tab ----
+  const [mealPlans, setMealPlans] = useState<MealPlanRosterRow[]>([])
+  const [leadsNeedingPlans, setLeadsNeedingPlans] = useState<LeadNeedingPlan[]>([])
+  const [loadingMealPlans, setLoadingMealPlans] = useState(false)
+  const [mealPlansError, setMealPlansError] = useState<string | null>(null)
+  const [editingPlan, setEditingPlan] = useState<EditingPlan | null>(null)
+  const [editingPlanInputs, setEditingPlanInputs] = useState({
+    meals_per_week: '', portion: '', dietary_preference: '', protein_preference: '',
+    fulfillment_method: '', delivery_zip: '', price: '',
+  })
+  const [savingPlan, setSavingPlan] = useState(false)
+  const [addPlanCustomerId, setAddPlanCustomerId] = useState<number | ''>('')
+
+  const fetchMealPlans = async () => {
+    setLoadingMealPlans(true)
+    setMealPlansError(null)
+    try {
+      const [rosterRes, leadsRes] = await Promise.all([
+        axios.get(`${apiUrl}/api/admin/customer-plans`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${apiUrl}/api/admin/customer-plans/leads-needing-plans`, { headers: { Authorization: `Bearer ${token}` } }),
+      ])
+      setMealPlans(rosterRes.data.data || [])
+      setLeadsNeedingPlans(leadsRes.data.data || [])
+    } catch (error) {
+      console.error('Error fetching meal plans:', error)
+      setMealPlansError('Failed to load meal plans')
+    } finally {
+      setLoadingMealPlans(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'plans') fetchMealPlans()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
+
+  const fillEditingPlanInputs = (plan?: Partial<MealPlanRosterRow>) => {
+    setEditingPlanInputs({
+      meals_per_week: plan?.meals_per_week || '',
+      portion: plan?.portion || '',
+      dietary_preference: plan?.dietary_preference || '',
+      protein_preference: plan?.protein_preference || '',
+      fulfillment_method: plan?.fulfillment_method || '',
+      delivery_zip: plan?.delivery_zip || '',
+      price: plan?.price_cents != null ? (plan.price_cents / 100).toFixed(2) : '',
+    })
+  }
+
+  // Pre-fills a draft from the lead's own submitted answers -- staff still
+  // reviews/edits everything below before it's ever saved or activated.
+  const buildDraftFromLead = async (lead: LeadNeedingPlan) => {
+    setMealPlansError(null)
+    try {
+      const res = await axios.post(
+        `${apiUrl}/api/admin/customer-plans/from-intake/${lead.form_intake_id}`, {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      const plan = res.data.data
+      setEditingPlan({ id: plan.id, customer_id: plan.customer_id, customer_name: lead.name })
+      fillEditingPlanInputs({
+        meals_per_week: plan.meals_per_week, portion: plan.portion,
+        dietary_preference: plan.dietary_preference, protein_preference: plan.protein_preference,
+        fulfillment_method: plan.fulfillment_method, delivery_zip: plan.delivery_zip,
+        price_cents: plan.price_cents,
+      })
+    } catch (error) {
+      console.error('Error building draft plan:', error)
+      setMealPlansError('Failed to build a draft plan from this lead')
+    }
+  }
+
+  const startPlanForCustomer = (row: MealPlanRosterRow) => {
+    setEditingPlan({ id: row.plan_id || 0, customer_id: row.customer_id, customer_name: row.name })
+    fillEditingPlanInputs(row)
+  }
+
+  const saveEditingPlan = async (activate: boolean) => {
+    if (!editingPlan) return
+    const trimmedPrice = editingPlanInputs.price.trim()
+    const priceCents = trimmedPrice ? Math.round(parseFloat(trimmedPrice) * 100) : null
+    if (trimmedPrice && (!priceCents || priceCents <= 0)) {
+      setMealPlansError('Price must be a positive number')
+      return
+    }
+    setSavingPlan(true)
+    setMealPlansError(null)
+    try {
+      const payload = {
+        meals_per_week: editingPlanInputs.meals_per_week || null,
+        portion: editingPlanInputs.portion || null,
+        dietary_preference: editingPlanInputs.dietary_preference || null,
+        protein_preference: editingPlanInputs.protein_preference || null,
+        fulfillment_method: editingPlanInputs.fulfillment_method || null,
+        delivery_zip: editingPlanInputs.delivery_zip || null,
+        price_cents: priceCents,
+      }
+      let planId = editingPlan.id
+      if (!planId) {
+        const res = await axios.post(
+          `${apiUrl}/api/admin/customer-plans`, { customer_id: editingPlan.customer_id, ...payload },
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        planId = res.data.data.id
+      } else {
+        await axios.put(`${apiUrl}/api/admin/customer-plans/${planId}`, payload, { headers: { Authorization: `Bearer ${token}` } })
+      }
+      if (activate) {
+        await axios.post(`${apiUrl}/api/admin/customer-plans/${planId}/activate`, {}, { headers: { Authorization: `Bearer ${token}` } })
+      }
+      setEditingPlan(null)
+      fetchMealPlans()
+    } catch (error) {
+      console.error('Error saving plan:', error)
+      setMealPlansError('Failed to save plan')
+    } finally {
+      setSavingPlan(false)
+    }
+  }
+
   // silent=true skips the full-page loading state -- used when refreshing
   // in the background (e.g. after a household change) while a modal is
   // open, so the whole page doesn't flash back to its loading skeleton
@@ -2239,6 +2406,7 @@ export default function CustomersPage() {
           { id: 'pipeline' as Tab, label: 'Pipeline', icon: '📊' },
           { id: 'customers' as Tab, label: 'Customers', icon: '🗂️' },
           { id: 'sources' as Tab, label: 'Lead Sources', icon: '📡' },
+          { id: 'plans' as Tab, label: 'Meal Plans', icon: '🍽️' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -3378,6 +3546,215 @@ export default function CustomersPage() {
               </div>
               )
             })()}
+          </div>
+        </div>
+      ) : activeTab === 'plans' ? (
+        <div className="space-y-4">
+          {mealPlansError && <p className="text-sm font-bold text-[#D62F3D]">{mealPlansError}</p>}
+
+          {/* Leads needing a plan -- full inquiries from the flyer/QR form
+              intake with no assigned plan yet (excludes grab-and-go, same
+              distinction the backend draws). */}
+          <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-5">
+            <h3 className="text-base font-extrabold text-[#4B2B1D] mb-1">Leads needing a plan</h3>
+            <p className="text-xs text-[#755B4C] mb-4">
+              From the flyer/QR outreach form -- build a draft from their answers, review it, then activate.
+            </p>
+            {loadingMealPlans ? (
+              <p className="text-sm text-[#755B4C]">Loading...</p>
+            ) : leadsNeedingPlans.length === 0 ? (
+              <p className="text-sm text-[#9A8774]">No leads waiting on a plan.</p>
+            ) : (
+              <div className="space-y-2">
+                {leadsNeedingPlans.map((lead) => (
+                  <div key={lead.form_intake_id} className="flex items-center justify-between gap-3 rounded-xl border border-[#D8CDBE] bg-white/60 p-3">
+                    <div>
+                      <p className="font-bold text-[#4B2B1D]">
+                        {lead.name}
+                        {lead.needs_review && (
+                          <span className="ml-2 rounded-full bg-[#FFF4E0] px-2 py-0.5 text-[10px] font-bold text-[#A66A00]">NEEDS REVIEW</span>
+                        )}
+                      </p>
+                      <p className="text-xs text-[#755B4C]">
+                        {lead.source_location || 'Unknown source'} · {lead.requested_meals_per_week || '?'} meals/week, {lead.requested_portion || '?'} · Goal: {lead.primary_goal || 'not given'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => buildDraftFromLead(lead)}
+                      className="flex-shrink-0 rounded-lg bg-[#2E527F] text-white px-3 py-2 text-xs font-bold hover:bg-[#254368] transition"
+                    >
+                      Build Plan
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Review/edit panel -- shared by both "Build Plan" from a lead
+              and "Edit"/"Assign" from the roster below. Nothing is saved
+              until Save Draft or Save & Activate is clicked. */}
+          {editingPlan && (
+            <div className="rounded-2xl border-2 border-[#2E527F] bg-[rgba(234,240,247,0.9)] p-5">
+              <h3 className="text-base font-extrabold text-[#4B2B1D] mb-3">
+                {editingPlan.id ? 'Review plan' : 'New plan'} for {editingPlan.customer_name}
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-[#755B4C] mb-1">Meals/week</label>
+                  <input
+                    value={editingPlanInputs.meals_per_week}
+                    onChange={(e) => setEditingPlanInputs((p) => ({ ...p, meals_per_week: e.target.value }))}
+                    className="w-full rounded-lg border border-[#B9A88F] bg-white px-2 py-1.5 text-sm text-[#4B2B1D]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-[#755B4C] mb-1">Portion</label>
+                  <input
+                    value={editingPlanInputs.portion}
+                    onChange={(e) => setEditingPlanInputs((p) => ({ ...p, portion: e.target.value }))}
+                    className="w-full rounded-lg border border-[#B9A88F] bg-white px-2 py-1.5 text-sm text-[#4B2B1D]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-[#755B4C] mb-1">Price ($)</label>
+                  <input
+                    type="number" min={0.01} step="0.01"
+                    value={editingPlanInputs.price}
+                    onChange={(e) => setEditingPlanInputs((p) => ({ ...p, price: e.target.value }))}
+                    className="w-full rounded-lg border border-[#B9A88F] bg-white px-2 py-1.5 text-sm text-[#4B2B1D]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-[#755B4C] mb-1">Dietary preference</label>
+                  <input
+                    value={editingPlanInputs.dietary_preference}
+                    onChange={(e) => setEditingPlanInputs((p) => ({ ...p, dietary_preference: e.target.value }))}
+                    className="w-full rounded-lg border border-[#B9A88F] bg-white px-2 py-1.5 text-sm text-[#4B2B1D]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-[#755B4C] mb-1">Protein preference</label>
+                  <input
+                    value={editingPlanInputs.protein_preference}
+                    onChange={(e) => setEditingPlanInputs((p) => ({ ...p, protein_preference: e.target.value }))}
+                    className="w-full rounded-lg border border-[#B9A88F] bg-white px-2 py-1.5 text-sm text-[#4B2B1D]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wide text-[#755B4C] mb-1">Fulfillment</label>
+                  <input
+                    value={editingPlanInputs.fulfillment_method}
+                    onChange={(e) => setEditingPlanInputs((p) => ({ ...p, fulfillment_method: e.target.value }))}
+                    className="w-full rounded-lg border border-[#B9A88F] bg-white px-2 py-1.5 text-sm text-[#4B2B1D]"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  disabled={savingPlan}
+                  onClick={() => saveEditingPlan(false)}
+                  className="rounded-lg border border-[#2E527F] text-[#2E527F] px-4 py-2 text-sm font-bold hover:bg-[#EAF0F7] transition disabled:opacity-50"
+                >
+                  Save Draft
+                </button>
+                <button
+                  disabled={savingPlan}
+                  onClick={() => saveEditingPlan(true)}
+                  className="rounded-lg bg-[#2E527F] text-white px-4 py-2 text-sm font-bold hover:bg-[#254368] transition disabled:opacity-50"
+                >
+                  {savingPlan ? 'Saving...' : 'Save & Activate'}
+                </button>
+                <button
+                  disabled={savingPlan}
+                  onClick={() => setEditingPlan(null)}
+                  className="rounded-lg px-4 py-2 text-sm font-bold text-[#755B4C] hover:bg-white/60 transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Client roster -- only clients who actually have a plan on
+              file. The other ~50 prospects with nothing assigned yet stay
+              out of this list on purpose (they're not "clients" in the
+              sense this table is for) -- use "Leads needing a plan" above,
+              or the picker here, to add someone. */}
+          <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-5">
+            <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
+              <h3 className="text-base font-extrabold text-[#4B2B1D]">Client roster</h3>
+              <div className="flex items-center gap-2">
+                <select
+                  value={addPlanCustomerId}
+                  onChange={(e) => {
+                    const id = e.target.value ? Number(e.target.value) : ''
+                    setAddPlanCustomerId('')
+                    if (id) {
+                      const c = customers.find((cust) => cust.id === id)
+                      if (c) startPlanForCustomer({ customer_id: c.id, name: c.name, plan_id: null })
+                    }
+                  }}
+                  className="rounded-lg border border-[#B9A88F] bg-white px-2 py-1.5 text-xs font-semibold text-[#4B2B1D]"
+                >
+                  <option value="">+ Assign a plan...</option>
+                  {customers
+                    .filter((c) => !mealPlans.some((p) => p.customer_id === c.id && p.plan_id))
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                </select>
+              </div>
+            </div>
+            <p className="text-xs text-[#755B4C] mb-4">Clients with a plan on file ({mealPlans.filter((r) => r.plan_id).length}).</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[780px]">
+                <thead>
+                  <tr className="text-left text-[11px] font-bold uppercase tracking-wide text-[#755B4C] border-b border-[#D8CDBE]">
+                    <th className="py-2 pr-3">Client</th>
+                    <th className="py-2 px-3">Meals/wk</th>
+                    <th className="py-2 px-3">Portion</th>
+                    <th className="py-2 px-3">Dietary</th>
+                    <th className="py-2 px-3">Fulfillment</th>
+                    <th className="py-2 px-3">Price</th>
+                    <th className="py-2 px-3">Status</th>
+                    <th className="py-2 pl-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {mealPlans.length > 0 && mealPlans.filter((r) => r.plan_id).length === 0 && (
+                    <tr><td colSpan={8} className="py-4 text-center text-sm text-[#9A8774]">No clients have a plan yet -- build one from a lead above, or use "+ Assign a plan" to start one manually.</td></tr>
+                  )}
+                  {mealPlans.filter((r) => r.plan_id).map((row) => (
+                    <tr key={row.customer_id} className="border-b border-[#EFE8DB] last:border-0">
+                      <td className="py-2.5 pr-3 font-bold text-[#4B2B1D] whitespace-nowrap">{row.name}</td>
+                      <td className="py-2.5 px-3">{row.meals_per_week || '—'}</td>
+                      <td className="py-2.5 px-3">{row.portion || '—'}</td>
+                      <td className="py-2.5 px-3">{row.dietary_preference || '—'}</td>
+                      <td className="py-2.5 px-3">{row.fulfillment_method || '—'}</td>
+                      <td className="py-2.5 px-3">{row.price_cents != null ? `$${(row.price_cents / 100).toFixed(2)}` : '—'}</td>
+                      <td className="py-2.5 px-3">
+                        {row.status ? (
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${row.status === 'active' ? 'bg-[#E8F3E8] text-[#2E7D32]' : 'bg-[#F3ECDE] text-[#9A8774]'}`}>
+                            {row.status.toUpperCase()}
+                          </span>
+                        ) : (
+                          <span className="text-[#C9BBA8]">No plan</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 pl-3 text-right">
+                        <button
+                          onClick={() => startPlanForCustomer(row)}
+                          className="rounded-lg border border-[#2E527F] text-[#2E527F] px-3 py-1.5 text-xs font-bold hover:bg-[#EAF0F7] transition"
+                        >
+                          {row.plan_id ? 'Edit' : 'Assign'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       ) : null}
