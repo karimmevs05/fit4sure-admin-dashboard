@@ -122,7 +122,7 @@ type CustomerCategory = 'all' | 'active' | 'prospect' | 'churned'
 // API and will show up in the real Sales Pipeline page too.
 // ---------------------------------------------------------------------------
 
-type LeadSource = 'ambassador' | 'outreach_visit' | 'grab_and_go' | 'social_funnel' | 'referral' | 'organic'
+type LeadSource = 'ambassador' | 'outreach_visit' | 'grab_and_go' | 'social_funnel' | 'referral' | 'organic' | 'qr_form'
 type AccountType = 'individual' | 'business'
 type LossReason = 'price' | 'timing' | 'competitor' | 'unresponsive' | 'moved_relocated' | 'other'
 
@@ -382,6 +382,7 @@ const LEAD_SOURCE_LABEL: Record<LeadSource, string> = {
   social_funnel: 'Social / Funnel',
   referral: 'Referral',
   organic: 'Organic',
+  qr_form: 'QR / Forms',
 }
 
 // Alex Hormozi's "Core Four" ($100M Leads): every lead you get is either
@@ -401,6 +402,10 @@ const CORE_FOUR_LABEL: Record<LeadSource, string> = {
   social_funnel: 'Cold Content',
   grab_and_go: 'Physical Touchpoint',
   organic: 'Unattributed Baseline',
+  // Like Grab & Go, this is a physical-to-digital trial touchpoint, not a
+  // lead-gen method in Hormozi's sense -- its own bucket rather than a
+  // forced fit.
+  qr_form: 'Flyer/QR Intake',
 }
 
 // Reuses the exact palette already established by the pipeline-stage badges
@@ -412,6 +417,7 @@ const LEAD_SOURCE_COLORS: Record<LeadSource, { bg: string; border: string; text:
   social_funnel: { bg: '#E0F2FE', border: '#BAE6FD', text: '#0369A1' },
   referral: { bg: '#FBF6EC', border: '#E9D9BF', text: '#9A6D34' },
   organic: { bg: '#F5F5F5', border: '#D4D4D4', text: '#666666' },
+  qr_form: { bg: '#F3E8FF', border: '#E0C3FF', text: '#7C3AED' },
 }
 
 const STAGE_ORDER: NonNullable<Customer['sales_pipeline_stage']>[] = ['prospect', 'engaged', 'trial', 'active', 'at_risk', 'churned']
@@ -1240,6 +1246,19 @@ export default function CustomersPage() {
 
   // ---- new: lead metadata (localStorage-backed), view mode, filters ----
   const [leadMeta, setLeadMeta] = useState<Record<number, LeadMeta>>(() => readLeadMeta())
+  // Real, backend-driven lead source (see GET /intake-customer-ids) --
+  // every customer who actually submitted the flyer/QR form, regardless of
+  // what's happened to their plan since. Unlike every other LeadSource
+  // value (manual, localStorage-only via leadMeta above), this one has
+  // real evidence behind it -- but a manual leadMeta override still wins,
+  // same "human judgment beats automated inference" rule used elsewhere.
+  const [formIntakeCustomerIds, setFormIntakeCustomerIds] = useState<Set<number>>(new Set())
+  // The "resume" -- this customer's most recent form submission, fetched
+  // fresh whenever the Customer Detail modal opens for someone. null (not
+  // just absent) once loaded means confirmed no submission on file, vs.
+  // undefined meaning "haven't checked yet" -- keeps the section from
+  // flashing before settling on "nothing to show".
+  const [resumeIntake, setResumeIntake] = useState<any | null | undefined>(undefined)
   const [pipelineView, setPipelineView] = useState<'list' | 'board'>('board')
   const [sourceFilter, setSourceFilter] = useState<LeadSource | 'all'>('all')
   const [staleOnly, setStaleOnly] = useState(false)
@@ -1776,6 +1795,25 @@ export default function CustomersPage() {
   }, [])
 
   useEffect(() => {
+    axios.get(`${apiUrl}/api/admin/customer-plans/intake-customer-ids`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => setFormIntakeCustomerIds(new Set(res.data.data || [])))
+      .catch((error) => console.error('Error fetching form-intake customer ids:', error))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!showCustomerDetail || !selectedCustomer) {
+      setResumeIntake(undefined)
+      return
+    }
+    setResumeIntake(undefined)
+    axios.get(`${apiUrl}/api/admin/customer-plans/${selectedCustomer.id}/intake`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => setResumeIntake(res.data.data))
+      .catch((error) => { console.error('Error fetching customer resume:', error); setResumeIntake(null) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCustomerDetail, selectedCustomer?.id])
+
+  useEffect(() => {
     const openId = searchParams.get('openId')
     if (!openId || customers.length === 0) return
     const match = customers.find((c) => c.id === Number(openId))
@@ -1949,8 +1987,13 @@ export default function CustomersPage() {
   // every downstream list/board/filter/export reads from this, never from
   // raw `customers`, so the two data sources never have to be reconciled twice.
   const enriched = useMemo(
-    () => customers.map((c) => ({ ...c, ...(leadMeta[c.id] || {}) })),
-    [customers, leadMeta]
+    () =>
+      customers.map((c) => {
+        const manual = leadMeta[c.id] || {}
+        const real = formIntakeCustomerIds.has(c.id) && !manual.lead_source ? { lead_source: 'qr_form' as LeadSource } : {}
+        return { ...c, ...real, ...manual }
+      }),
+    [customers, leadMeta, formIntakeCustomerIds]
   )
 
   // A same-phone or same-email match anywhere in the list -- surfaced as a
@@ -3569,12 +3612,19 @@ export default function CustomersPage() {
                 {leadsNeedingPlans.map((lead) => (
                   <div key={lead.form_intake_id} className="flex items-center justify-between gap-3 rounded-xl border border-[#D8CDBE] bg-white/60 p-3">
                     <div>
-                      <p className="font-bold text-[#4B2B1D]">
+                      <button
+                        onClick={() => {
+                          const full = customers.find((c) => c.id === lead.customer_id)
+                          setSelectedCustomer(full || { id: lead.customer_id, name: lead.name, phone: lead.phone })
+                          setShowCustomerDetail(true)
+                        }}
+                        className="font-bold text-[#4B2B1D] hover:text-[#2E527F] hover:underline transition"
+                      >
                         {lead.name}
-                        {lead.needs_review && (
-                          <span className="ml-2 rounded-full bg-[#FFF4E0] px-2 py-0.5 text-[10px] font-bold text-[#A66A00]">NEEDS REVIEW</span>
-                        )}
-                      </p>
+                      </button>
+                      {lead.needs_review && (
+                        <span className="ml-2 rounded-full bg-[#FFF4E0] px-2 py-0.5 text-[10px] font-bold text-[#A66A00]">NEEDS REVIEW</span>
+                      )}
                       <p className="text-xs text-[#755B4C]">
                         {lead.source_location || 'Unknown source'} · {lead.requested_meals_per_week || '?'} meals/week, {lead.requested_portion || '?'} · Goal: {lead.primary_goal || 'not given'}
                       </p>
@@ -3727,7 +3777,18 @@ export default function CustomersPage() {
                   )}
                   {mealPlans.filter((r) => r.plan_id).map((row) => (
                     <tr key={row.customer_id} className="border-b border-[#EFE8DB] last:border-0">
-                      <td className="py-2.5 pr-3 font-bold text-[#4B2B1D] whitespace-nowrap">{row.name}</td>
+                      <td className="py-2.5 pr-3 font-bold whitespace-nowrap">
+                        <button
+                          onClick={() => {
+                            const full = customers.find((c) => c.id === row.customer_id)
+                            setSelectedCustomer(full || { id: row.customer_id, name: row.name, phone: row.phone, email: row.email })
+                            setShowCustomerDetail(true)
+                          }}
+                          className="text-[#4B2B1D] hover:text-[#2E527F] hover:underline transition"
+                        >
+                          {row.name}
+                        </button>
+                      </td>
                       <td className="py-2.5 px-3">{row.meals_per_week || '—'}</td>
                       <td className="py-2.5 px-3">{row.portion || '—'}</td>
                       <td className="py-2.5 px-3">{row.dietary_preference || '—'}</td>
@@ -4438,7 +4499,7 @@ export default function CustomersPage() {
                 {/* Always shown, same as the list/board cards -- defaults to
                     Organic so every profile carries this tag, not just the
                     ones we've explicitly tagged so far. */}
-                <LeadSourceBadge source={leadMeta[selectedCustomer.id]?.lead_source} />
+                <LeadSourceBadge source={leadMeta[selectedCustomer.id]?.lead_source || (formIntakeCustomerIds.has(selectedCustomer.id) ? 'qr_form' : undefined)} />
               </div>
               <button onClick={() => setShowCustomerDetail(false)} className="text-[#755B4C] hover:text-[#4B2B1D]">
                 <X className="h-6 w-6" />
@@ -4446,6 +4507,35 @@ export default function CustomersPage() {
             </div>
 
             <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(90vh-100px)]">
+              {/* "Resume" -- their original flyer/QR form submission, real
+                  backend data (not a localStorage tag like the section
+                  below). Only renders once resumeIntake has settled on an
+                  actual row -- undefined (still loading) and null
+                  (confirmed no submission) both render nothing, so a
+                  customer with no form history never sees an empty box. */}
+              {resumeIntake && (
+                <div className="rounded-xl border-2 border-[#7C3AED] bg-[#FAF5FF] p-4">
+                  <h3 className="text-lg font-extrabold text-[#4B2B1D] mb-1">📝 Form Submission</h3>
+                  <p className="text-xs text-[#755B4C] mb-4">
+                    Submitted {new Date(resumeIntake.created_at).toLocaleDateString()} via {resumeIntake.source_location || 'the flyer/QR form'}
+                    {resumeIntake.needs_review && (
+                      <span className="ml-2 rounded-full bg-[#FFF4E0] px-2 py-0.5 text-[10px] font-bold text-[#A66A00]">NEEDS REVIEW</span>
+                    )}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div><p className="text-xs font-bold text-[#755B4C]">Heard about us via</p><p className="text-[#4B2B1D] mt-0.5">{resumeIntake.lead_source || '—'}</p></div>
+                    <div><p className="text-xs font-bold text-[#755B4C]">Referral/promo code</p><p className="text-[#4B2B1D] mt-0.5">{resumeIntake.referral_code || '—'}</p></div>
+                    <div><p className="text-xs font-bold text-[#755B4C]">Requested meals/week</p><p className="text-[#4B2B1D] mt-0.5">{resumeIntake.requested_meals_per_week || '—'}</p></div>
+                    <div><p className="text-xs font-bold text-[#755B4C]">Requested portion</p><p className="text-[#4B2B1D] mt-0.5">{resumeIntake.requested_portion || '—'}</p></div>
+                    <div><p className="text-xs font-bold text-[#755B4C]">Fulfillment</p><p className="text-[#4B2B1D] mt-0.5">{resumeIntake.fulfillment_method || '—'}{resumeIntake.delivery_zip ? ` (ZIP ${resumeIntake.delivery_zip})` : ''}</p></div>
+                    <div><p className="text-xs font-bold text-[#755B4C]">Start timing</p><p className="text-[#4B2B1D] mt-0.5">{resumeIntake.start_timing || '—'}</p></div>
+                    {resumeIntake.allergies_raw && (
+                      <div className="col-span-2"><p className="text-xs font-bold text-[#755B4C]">Allergies (as submitted, not yet structured)</p><p className="text-[#4B2B1D] mt-0.5">{resumeIntake.allergies_raw}</p></div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* NEW: lead source / account type -- always shown, since every
                   profile carries a source tag now, and reassignable right
                   here without a trip to the Lead Sources tab. */}
@@ -4454,7 +4544,7 @@ export default function CustomersPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="rounded-lg bg-white p-4">
                     <p className="text-xs font-bold text-[#755B4C]">Source</p>
-                    <div className="mt-1"><LeadSourceBadge source={leadMeta[selectedCustomer.id]?.lead_source} /></div>
+                    <div className="mt-1"><LeadSourceBadge source={leadMeta[selectedCustomer.id]?.lead_source || (formIntakeCustomerIds.has(selectedCustomer.id) ? 'qr_form' : undefined)} /></div>
                     {(() => {
                       const meta = leadMeta[selectedCustomer.id]
                       const named = managedSources.find((s) => s.id === meta?.source_id)
