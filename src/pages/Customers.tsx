@@ -10,6 +10,7 @@ import {
 import { CustomerActivityPanel } from '../components/CustomerActivityPanel'
 import { AutomationBuilder } from '../components/AutomationBuilder'
 import { ALL_ALLERGENS, allergenLabel } from '../utils/allergens'
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 type Customer = {
   id: number
@@ -1858,6 +1859,20 @@ export default function CustomersPage() {
   })
   const [savingPlan, setSavingPlan] = useState(false)
   const [addPlanCustomerId, setAddPlanCustomerId] = useState<number | ''>('')
+  const [campaignStats, setCampaignStats] = useState<any | null>(null)
+  const [loadingCampaignStats, setLoadingCampaignStats] = useState(false)
+
+  const fetchCampaignStats = async () => {
+    setLoadingCampaignStats(true)
+    try {
+      const res = await axios.get(`${apiUrl}/api/admin/customer-plans/campaign-stats`, { headers: { Authorization: `Bearer ${token}` } })
+      setCampaignStats(res.data.data)
+    } catch (error) {
+      console.error('Error fetching campaign stats:', error)
+    } finally {
+      setLoadingCampaignStats(false)
+    }
+  }
 
   const fetchMealPlans = async () => {
     setLoadingMealPlans(true)
@@ -1878,7 +1893,7 @@ export default function CustomersPage() {
   }
 
   useEffect(() => {
-    if (activeTab === 'plans') fetchMealPlans()
+    if (activeTab === 'plans') { fetchMealPlans(); fetchCampaignStats() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab])
 
@@ -3594,6 +3609,94 @@ export default function CustomersPage() {
       ) : activeTab === 'plans' ? (
         <div className="space-y-4">
           {mealPlansError && <p className="text-sm font-bold text-[#D62F3D]">{mealPlansError}</p>}
+
+          {/* Campaign Performance -- real KPIs computed live from
+              form_intakes/customer_plans/orders (GET /campaign-stats), not
+              hand-maintained spreadsheet formulas that can drift from what
+              actually happened. */}
+          <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-5">
+            <h3 className="text-base font-extrabold text-[#4B2B1D] mb-1">📈 Campaign Performance</h3>
+            <p className="text-xs text-[#755B4C] mb-4">Real numbers from the flyer/QR outreach form -- submissions through first order.</p>
+            {loadingCampaignStats ? (
+              <p className="text-sm text-[#755B4C]">Loading...</p>
+            ) : !campaignStats || Number(campaignStats.total_submissions) === 0 ? (
+              <p className="text-sm text-[#9A8774]">No submissions yet.</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-5">
+                  {[
+                    ['Submissions', campaignStats.total_submissions],
+                    ['Contactable', campaignStats.contactable],
+                    ['Plans Built', campaignStats.plans_built],
+                    ['Plans Activated', campaignStats.plans_activated],
+                    ['First Orders', campaignStats.first_orders],
+                    ['Needs Review', campaignStats.needs_review],
+                  ].map(([label, value]) => (
+                    <div key={label as string} className="rounded-lg bg-white p-3 text-center">
+                      <p className="text-xl font-extrabold text-[#2E527F]">{value}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-[#755B4C] mt-0.5">{label}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="rounded-lg bg-white p-4">
+                    <p className="text-xs font-bold text-[#755B4C] mb-2">Submissions by partner location</p>
+                    <div style={{ height: 180 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={campaignStats.byLocation} margin={{ top: 4, right: 8, left: -20, bottom: 4 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#EFE8DB" />
+                          <XAxis dataKey="source_location" tick={{ fontSize: 10, fill: '#755B4C' }} interval={0} angle={-15} textAnchor="end" height={50} />
+                          <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#755B4C' }} />
+                          <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                          <Bar dataKey="submissions" fill="#2E527F" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-white p-4">
+                    <p className="text-xs font-bold text-[#755B4C] mb-2">Submissions over time</p>
+                    <div style={{ height: 180 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={campaignStats.byDay} margin={{ top: 4, right: 8, left: -20, bottom: 4 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#EFE8DB" />
+                          <XAxis dataKey="day" tickFormatter={(d) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fill: '#755B4C' }} />
+                          <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#755B4C' }} />
+                          <Tooltip labelFormatter={(d) => new Date(d).toLocaleDateString()} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                          <Line type="monotone" dataKey="count" stroke="#CE711B" strokeWidth={2} dot={{ r: 3 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                </div>
+                <div className="overflow-x-auto mt-4">
+                  <table className="w-full text-xs min-w-[600px]">
+                    <thead>
+                      <tr className="text-left font-bold uppercase tracking-wide text-[#755B4C] border-b border-[#D8CDBE]">
+                        <th className="py-2 pr-3">Location</th>
+                        <th className="py-2 px-3">Submissions</th>
+                        <th className="py-2 px-3">Contactable</th>
+                        <th className="py-2 px-3">Plans Built</th>
+                        <th className="py-2 px-3">Plans Activated</th>
+                        <th className="py-2 pl-3">First Orders</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {campaignStats.byLocation.map((row: any) => (
+                        <tr key={row.source_location} className="border-b border-[#EFE8DB] last:border-0">
+                          <td className="py-2 pr-3 font-bold text-[#4B2B1D]">{row.source_location}</td>
+                          <td className="py-2 px-3">{row.submissions}</td>
+                          <td className="py-2 px-3">{row.contactable}</td>
+                          <td className="py-2 px-3">{row.plans_built}</td>
+                          <td className="py-2 px-3">{row.plans_activated}</td>
+                          <td className="py-2 pl-3">{row.first_orders}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Leads needing a plan -- full inquiries from the flyer/QR form
               intake with no assigned plan yet (excludes grab-and-go, same
