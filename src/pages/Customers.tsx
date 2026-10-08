@@ -3648,7 +3648,7 @@ export default function CustomersPage() {
                           <XAxis dataKey="promo_code" tick={{ fontSize: 10, fill: '#755B4C' }} interval={0} angle={-15} textAnchor="end" height={50} />
                           <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#755B4C' }} />
                           <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                          <Bar dataKey="submissions" fill="#2E527F" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="submissions" fill="#2E527F" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -3662,7 +3662,7 @@ export default function CustomersPage() {
                           <XAxis dataKey="day" tickFormatter={(d) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} tick={{ fontSize: 10, fill: '#755B4C' }} />
                           <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#755B4C' }} />
                           <Tooltip labelFormatter={(d) => new Date(d).toLocaleDateString()} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                          <Line type="monotone" dataKey="count" stroke="#CE711B" strokeWidth={2} dot={{ r: 3 }} />
+                          <Line type="monotone" dataKey="count" stroke="#CE711B" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
