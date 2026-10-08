@@ -443,7 +443,7 @@ function CreatePieceMenu({
       const res = await axios.post(`${apiUrl}/api/admin/marketing/resolve-drive-link`, { url: driveUrl.trim() }, authHeaders);
       onPick(res.data.data.file_id);
     } catch (err: any) {
-      console.error("Error resolving Drive link:", err);
+      console.error("Error resolving link:", err);
       setLinkError(err?.response?.data?.error || "Couldn't resolve that link -- try again.");
     } finally {
       setResolvingLink(false);
@@ -452,7 +452,7 @@ function CreatePieceMenu({
 
   const TABS: { key: CreateTab; label: string; icon: React.ReactNode }[] = [
     { key: "upload", label: "Upload", icon: <Upload className="h-3.5 w-3.5" /> },
-    { key: "drive_link", label: "Link from Drive", icon: <Link2 className="h-3.5 w-3.5" /> },
+    { key: "drive_link", label: "Link", icon: <Link2 className="h-3.5 w-3.5" /> },
     { key: "folder", label: "From Uploads Folder", icon: <FolderSearch className="h-3.5 w-3.5" /> },
   ];
 
@@ -502,7 +502,7 @@ function CreatePieceMenu({
             value={driveUrl}
             onChange={(e) => setDriveUrl(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleResolveLink()}
-            placeholder="Paste a Google Drive share link..."
+            placeholder="Paste a Google Drive share link, or a direct image URL (e.g. a Canva download link)..."
             className="h-9 flex-1 rounded-lg border border-[#D7C9B7] bg-white px-3 text-xs text-[#4B2B1D] placeholder:text-[#B9A88F]"
           />
           <button
