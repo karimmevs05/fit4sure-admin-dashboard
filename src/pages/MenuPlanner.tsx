@@ -381,16 +381,13 @@ export default function MenuPlannerPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-[#4B2B1D]">Menu Planner</h1>
-          <p className="mt-1 text-sm text-[#755B4C]">
-            Building here creates the real menu for {planWeekStart ? new Date(planWeekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'next week'} delivery
-          </p>
           <div className="mt-2 flex items-center gap-2">
-            <label className="text-xs font-bold text-[#2E527F]">Planning week:</label>
+            <label className="text-sm font-bold text-[#2E527F]">Save menu for week of:</label>
             <input
               type="date"
               value={targetWeekStart || planWeekStart || ''}
               onChange={(e) => setTargetWeekStart(e.target.value || undefined)}
-              className="h-7 rounded border border-[#B9A88F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
+              className="h-8 rounded border border-[#B9A88F] bg-white px-2 text-sm text-[#4B2B1D] outline-none"
             />
             {targetWeekStart && (
               <button
@@ -401,6 +398,9 @@ export default function MenuPlannerPage() {
               </button>
             )}
           </div>
+          <p className="mt-1 text-sm text-[#755B4C]">
+            Everything below saves to the week of {planWeekStart ? new Date(planWeekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'next week'} -- Block 1 delivers Monday, Block 2 delivers Thursday, that week.
+          </p>
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">

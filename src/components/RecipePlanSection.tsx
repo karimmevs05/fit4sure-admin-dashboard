@@ -74,14 +74,14 @@ export default function RecipePlanSection({
   // recipes with no mapping (sauces, beverages, custom combos) get no
   // servings estimate rather than a meaningless one.
   const regularFormat = plateFormats?.find((f) => f.structure === 'Regular')
-  const regularServingsFor = (row: PlanRecipeRow): number | null => {
+  const regularServingsFor = (row: PlanRecipeRow): { count: number; servingG: number } | null => {
     if (!regularFormat || row.isCustom) return null
     const component = plateComponentFor(row.category)
     if (!component) return null
     const servingG = servingGramsFor(regularFormat, component)
     if (!servingG) return null
     const availableG = (row.expected_volume || 0) * 453.592
-    return Math.floor(availableG / servingG)
+    return { count: Math.floor(availableG / servingG), servingG }
   }
 
   return (
@@ -186,9 +186,9 @@ export default function RecipePlanSection({
                         return (
                           <span
                             className="flex-shrink-0 rounded-full bg-[#EAF0F7] px-1.5 py-[1px] text-[9px] font-bold text-[#2E527F] whitespace-nowrap"
-                            title="Regular-size servings this lb amount covers"
+                            title="Regular-size servings this lb amount covers, and the Regular serving size itself"
                           >
-                            ≈{servings} reg
+                            {servings.count}({Math.round(servings.servingG)}g)
                           </span>
                         )
                       })()}
