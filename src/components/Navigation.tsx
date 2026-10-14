@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import {
   BarChart3,
   PieChart,
-  ShoppingCart,
+  ChefHat,
   Users,
   Calendar,
   UtensilsCrossed,
@@ -21,7 +21,7 @@ export function Navigation() {
   const tabs = [
     { path: '/operational-optimization', label: 'Operational Optimization', icon: BarChart3 },
     { path: '/dashboard', label: 'Dashboard', icon: PieChart },
-    { path: '/orders', label: 'Orders', icon: ShoppingCart },
+    { path: '/orders', label: 'Meal Prep', icon: ChefHat },
     { path: '/customers', label: 'Customers', icon: Users },
     { path: '/menu-planner', label: 'Menu Planner', icon: Calendar },
     { path: '/recipes', label: 'Recipes', icon: UtensilsCrossed },

@@ -66,7 +66,13 @@ function formatWeekLabel(iso: string) {
   return `Week of ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
 }
 
-export default function WeeklyPrepPage({ week: initialWeek, onBack, focusBlock }: { week: string; onBack: () => void; focusBlock?: 'monday' | 'thursday' }) {
+// Embeddable content -- no outer <main>, no back button, no page title.
+// Used directly as the "Prep Progress" tab on the Meal Prep page (Orders.tsx),
+// where the page chrome (title, tab bar) is already provided by the parent.
+// WeeklyPrepPage below wraps this with that chrome for the one place that
+// still needs a standalone full-page view (Menu Planner's block-isolated
+// "View Weekly Prep" shortcut).
+export function PrepProgressPanel({ week: initialWeek, focusBlock }: { week: string; focusBlock?: 'monday' | 'thursday' }) {
   const [currentWeek, setCurrentWeek] = useState(initialWeek)
   const [allWeeks, setAllWeeks] = useState<Array<{ week: string }>>([])
   const [prepData, setPrepData] = useState<PrepData | null>(null)
@@ -165,11 +171,8 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack, focusBlock }
 
   if (!prepData) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen gap-3">
+      <div className="flex items-center justify-center gap-3 p-10">
         <p className="text-[#D62F3D] font-bold">{loadError || 'Failed to load prep data'}</p>
-        <button onClick={onBack} className="text-sm text-[#2E527F] underline">
-          Back to Orders
-        </button>
       </div>
     )
   }
@@ -177,30 +180,22 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack, focusBlock }
   const noOrdersThisWeek = prepData.summary.total_servings === 0
 
   return (
-    <main className="flex-1 space-y-6 p-8">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={onBack}
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#B9A88F] bg-[#FBF6EE] text-[#2E527F] transition hover:border-[#3E6594] hover:bg-[#EDF2F7]"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-          <div>
-            <h1 className="text-3xl font-extrabold text-[#4B2B1D]">
-              Weekly Prep: {formatWeekLabel(prepData.week)}
-              {focusBlock && (
-                <span
-                  className="ml-2 align-middle rounded-full px-2.5 py-1 text-xs font-bold text-white"
-                  style={{ backgroundColor: focusBlock === 'monday' ? '#16A34A' : '#D97706' }}
-                >
-                  {focusBlock === 'monday' ? 'Block 1' : 'Block 2'} only
-                </span>
-              )}
-            </h1>
-            <p className="mt-1 text-sm text-[#755B4C]">What's actually been ordered this week, and what it takes to fulfill it</p>
-          </div>
+        <div>
+          <p className="text-sm font-extrabold text-[#4B2B1D]">
+            {formatWeekLabel(prepData.week)}
+            {focusBlock && (
+              <span
+                className="ml-2 align-middle rounded-full px-2.5 py-1 text-xs font-bold text-white"
+                style={{ backgroundColor: focusBlock === 'monday' ? '#16A34A' : '#D97706' }}
+              >
+                {focusBlock === 'monday' ? 'Block 1' : 'Block 2'} only
+              </span>
+            )}
+          </p>
+          <p className="mt-0.5 text-xs text-[#755B4C]">What's actually been ordered this week, and what it takes to fulfill it</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -591,6 +586,30 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack, focusBlock }
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Standalone full-page wrapper around PrepProgressPanel -- still used by
+// Menu Planner's "View Weekly Prep" shortcut, which needs a dedicated page
+// (with a back button) since Menu Planner itself has no Prep Progress tab
+// to switch to the way Orders/Meal Prep does.
+export default function WeeklyPrepPage({ week, onBack, focusBlock }: { week: string; onBack: () => void; focusBlock?: 'monday' | 'thursday' }) {
+  return (
+    <main className="flex-1 space-y-6 p-8">
+      <div className="flex items-center gap-4">
+        <button
+          onClick={onBack}
+          className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#B9A88F] bg-[#FBF6EE] text-[#2E527F] transition hover:border-[#3E6594] hover:bg-[#EDF2F7]"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+        <div>
+          <h1 className="text-3xl font-extrabold text-[#4B2B1D]">Weekly Prep</h1>
+          <p className="mt-1 text-sm text-[#755B4C]">What's actually been ordered this week, and what it takes to fulfill it</p>
+        </div>
+      </div>
+      <PrepProgressPanel week={week} focusBlock={focusBlock} />
     </main>
   )
 }

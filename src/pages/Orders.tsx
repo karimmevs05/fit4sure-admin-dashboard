@@ -18,7 +18,7 @@ import {
   ChevronUp,
   ChevronDown,
 } from 'lucide-react'
-import WeeklyPrepPage from './WeeklyPrep'
+import { PrepProgressPanel } from './WeeklyPrep'
 import { formatIngredientWeight } from '../utils/unitConversion'
 import { sideCategoriesFor, PLATE_STRUCTURE_SERVINGS, FORMAT_LABEL_TO_STRUCTURE, plateComponentFor, servingGramsFor, fetchPlateConfig, type AddonConfig } from '../utils/plateStructure'
 
@@ -92,7 +92,7 @@ type InsightsData = {
   topCustomers: Array<{ id: number; name: string; weeks_active: number; total_meals_ordered: number }>
 }
 
-type Tab = 'this-week' | 'packing-sheet' | 'history' | 'insights'
+type Tab = 'this-week' | 'prep-progress' | 'packing-sheet' | 'history' | 'insights'
 
 // Fixed route origin for the delivery map -- every customer pin is plotted
 // relative to this, since deliveries all originate from here.
@@ -191,7 +191,6 @@ export default function OrdersPage() {
   const [historyData, setHistoryData] = useState<HistoryData>([])
   const [insightsData, setInsightsData] = useState<InsightsData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [showPrepPage, setShowPrepPage] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [showAddOrderModal, setShowAddOrderModal] = useState(false)
   const [prefillCustomer, setPrefillCustomer] = useState<NonResponder | null>(null)
@@ -297,22 +296,11 @@ export default function OrdersPage() {
     }
   }
 
-  if (showPrepPage) {
-    return <WeeklyPrepPage week={currentWeekStart} onBack={() => setShowPrepPage(false)} />
-  }
-
   return (
     <main className="flex-1 space-y-6 p-8">
       <Header />
 
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          onClick={() => setShowPrepPage(true)}
-          className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#16813D] px-6 text-sm font-bold text-white shadow-[0_8px_18px_rgba(22,129,61,0.18)] transition hover:bg-[#0d6a2d] active:scale-[0.98]"
-        >
-          <UtensilsCrossed className="h-5 w-5" />
-          View Weekly Prep
-        </button>
         <button
           onClick={syncNow}
           disabled={syncing}
@@ -372,6 +360,14 @@ export default function OrdersPage() {
             This Week's Orders
           </button>
           <button
+            onClick={() => setActiveTab('prep-progress')}
+            className={`px-4 py-3 text-sm font-extrabold transition ${
+              activeTab === 'prep-progress' ? 'border-b-2 border-[#2E527F] text-[#2E527F]' : 'text-[#755B4C] hover:text-[#4B2B1D]'
+            }`}
+          >
+            Prep Progress
+          </button>
+          <button
             onClick={() => setActiveTab('packing-sheet')}
             className={`px-4 py-3 text-sm font-extrabold transition ${
               activeTab === 'packing-sheet' ? 'border-b-2 border-[#2E527F] text-[#2E527F]' : 'text-[#755B4C] hover:text-[#4B2B1D]'
@@ -418,6 +414,7 @@ export default function OrdersPage() {
                 token={token}
               />
             )}
+            {activeTab === 'prep-progress' && <PrepProgressPanel week={currentWeekStart} />}
             {activeTab === 'packing-sheet' && thisWeekData && <PackingSheetTab orders={thisWeekData.orders} />}
             {activeTab === 'history' && <HistoryTab history={historyData} />}
             {activeTab === 'insights' && insightsData && <InsightsTab insights={insightsData} />}
@@ -472,9 +469,9 @@ function Header() {
         <UtensilsCrossed className="h-6 w-6" />
       </div>
       <div>
-        <h1 className="text-3xl font-extrabold tracking-[-0.03em] text-[#4B2B1D]">Orders</h1>
+        <h1 className="text-3xl font-extrabold tracking-[-0.03em] text-[#4B2B1D]">Meal Prep</h1>
         <p className="mt-1 text-sm text-[#755B4C]">
-          Every order lives here, whether the client filled the form or staff entered it after a text.
+          Every order lives here, whether the client filled the form or staff entered it after a text -- plus what it takes to fulfill it.
         </p>
       </div>
     </header>
