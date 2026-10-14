@@ -73,15 +73,6 @@ export default function MenuPlannerPage() {
   const [rows, setRows] = useState<Record<Block, PlanRecipeRow[]>>({ monday: [], thursday: [] })
   const [dirty, setDirty] = useState<Record<Block, boolean>>({ monday: false, thursday: false })
   const [savingBlock, setSavingBlock] = useState<Block | null>(null)
-  // undefined = the default "next week" window (same as before this existed).
-  // Any date picked here is normalized server-side to that week's Sunday, so
-  // picking any day inside the intended week works the same.
-  const [targetWeekStart, setTargetWeekStart] = useState<string | undefined>(undefined)
-  // Owned here, not inside RecipePlanSection, so isolating to one block
-  // also filters This Week's Menu / Shopping List / Financials below --
-  // not just that section's own two cards.
-  const [blockView, setBlockView] = useState<'both' | Block>('both')
-  const [plateFormats, setPlateFormats] = useState<PlateFormatConfig[]>([])
 
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
@@ -99,6 +90,23 @@ export default function MenuPlannerPage() {
     const d = String(sunday.getDate()).padStart(2, '0')
     return `${y}-${m}-${d}`
   }, [])
+
+  const nextWeekStart = useMemo(() => {
+    const [y, m, d] = currentWeekStart.split('-').map(Number)
+    const sunday = new Date(y, m - 1, d + 7)
+    return `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`
+  }, [currentWeekStart])
+
+  // Defaults to the ongoing week (what's actually live right now) rather
+  // than next week's blank draft -- landing on an empty "Nothing added yet"
+  // screen read as broken. Next week is still one click away via the
+  // "Next week" quick-jump below, for planning ahead.
+  const [targetWeekStart, setTargetWeekStart] = useState<string>(currentWeekStart)
+  // Owned here, not inside RecipePlanSection, so isolating to one block
+  // also filters This Week's Menu / Shopping List / Financials below --
+  // not just that section's own two cards.
+  const [blockView, setBlockView] = useState<'both' | Block>('both')
+  const [plateFormats, setPlateFormats] = useState<PlateFormatConfig[]>([])
 
   useEffect(() => {
     fetchAll()
@@ -234,10 +242,10 @@ export default function MenuPlannerPage() {
 
   // weekStart is always explicit, never defaulted from targetWeekStart here
   // -- undefined vs. "not passed" can't be told apart through a single `??`
-  // fallback, which silently broke Reset to next week (it passes undefined
-  // on purpose, to mean "the default week", but `??` was coalescing that
-  // back to the stale week still sitting in state). Callers that want the
-  // currently-selected week pass targetWeekStart themselves.
+  // fallback (bit us once: a quick-jump button passing a deliberate value
+  // got silently coalesced back to the stale week still sitting in state).
+  // Callers that want the currently-selected week pass targetWeekStart
+  // themselves.
   const fetchPlan = async (ws?: string) => {
     try {
       const headers = { Authorization: `Bearer ${token}` }
@@ -390,7 +398,7 @@ export default function MenuPlannerPage() {
         { block, selections, week_start: newWeekStart },
         { headers: { Authorization: `Bearer ${token}` } }
       )
-      if (newWeekStart !== (targetWeekStart || planWeekStart)) {
+      if (newWeekStart !== targetWeekStart) {
         await axios.post(
           `${apiUrl}/api/admin/menu-planner/recipe-plan`,
           { block, selections: [], week_start: targetWeekStart },
@@ -463,15 +471,23 @@ export default function MenuPlannerPage() {
             <input
               type="date"
               value={targetWeekStart || planWeekStart || ''}
-              onChange={(e) => setTargetWeekStart(e.target.value || undefined)}
+              onChange={(e) => e.target.value && setTargetWeekStart(e.target.value)}
               className="h-8 rounded border border-[#B9A88F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
             />
-            {targetWeekStart && (
+            {targetWeekStart !== currentWeekStart && (
               <button
-                onClick={() => setTargetWeekStart(undefined)}
+                onClick={() => setTargetWeekStart(currentWeekStart)}
                 className="text-xs font-bold text-[#2E527F] hover:underline"
               >
-                Reset to next week
+                This week
+              </button>
+            )}
+            {targetWeekStart !== nextWeekStart && (
+              <button
+                onClick={() => setTargetWeekStart(nextWeekStart)}
+                className="text-xs font-bold text-[#2E527F] hover:underline"
+              >
+                Next week
               </button>
             )}
           </div>
