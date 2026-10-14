@@ -101,8 +101,13 @@ export default function MenuPlannerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Re-fetches both the draft plan and the publish status together
+  // whenever the target week changes -- Submit Menu's label/status live
+  // next to this picker, so they need to update together, not just the
+  // block cards below.
   useEffect(() => {
     fetchPlan()
+    fetchPublishStatus(targetWeekStart)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetWeekStart])
 
@@ -110,11 +115,10 @@ export default function MenuPlannerPage() {
     setLoading(true)
     const headers = { Authorization: `Bearer ${token}` }
     try {
-      const [currentWeekRes, nextWeekRes, prepFinancialsRes, publishStatusRes] = await Promise.all([
+      const [currentWeekRes, nextWeekRes, prepFinancialsRes] = await Promise.all([
         axios.get(`${apiUrl}/api/admin/menu-planner/current-week`, { headers }),
         axios.get(`${apiUrl}/api/admin/menu-planner/next-week`, { headers }),
         axios.get(`${apiUrl}/api/admin/menu-planner/prep-and-financials`, { headers }),
-        axios.get(`${apiUrl}/api/admin/menu-planner/publish-status`, { headers }),
       ])
 
       setCurrentWeekMenu(currentWeekRes.data.data || { monday: [], thursday: [] })
@@ -125,13 +129,26 @@ export default function MenuPlannerPage() {
           financials: { monday: { costCents: 0, lb: 0, recipeCount: 0 }, thursday: { costCents: 0, lb: 0, recipeCount: 0 }, combined: { costCents: 0, lb: 0, recipeCount: 0 } },
         }
       )
-      setPublishStatus(publishStatusRes.data.data || null)
     } catch (error) {
       console.error('Error fetching menu planner data:', error)
     } finally {
       setLoading(false)
     }
     fetchRecipeCompletion()
+  }
+
+  // weekStart omitted = the default "next week" check, same as before this
+  // picker existed.
+  const fetchPublishStatus = async (weekStart?: string) => {
+    try {
+      const res = await axios.get(`${apiUrl}/api/admin/menu-planner/publish-status`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: weekStart ? { week_start: weekStart } : undefined,
+      })
+      setPublishStatus(res.data.data || null)
+    } catch (error) {
+      console.error('Error fetching publish status:', error)
+    }
   }
 
   // Real completion, from the exact same Kitchen batch/production tasks
@@ -197,7 +214,7 @@ export default function MenuPlannerPage() {
     try {
       const res = await axios.post(
         `${apiUrl}/api/admin/menu-planner/publish`,
-        {},
+        { week_start: targetWeekStart },
         { headers: { Authorization: `Bearer ${token}` } }
       )
       setPublishStatus(res.data.data)
@@ -381,13 +398,19 @@ export default function MenuPlannerPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-[#4B2B1D]">Menu Planner</h1>
-          <div className="mt-2 flex items-center gap-2">
-            <label className="text-sm font-bold text-[#2E527F]">Save menu for week of:</label>
+          <p className="mt-1 text-sm text-[#755B4C]">
+            Building here creates the real menu for the week of {planWeekStart ? new Date(planWeekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'next week'} -- Block 1 delivers Monday, Block 2 delivers Thursday, that week.
+          </p>
+        </div>
+
+        <div className="flex flex-col items-end gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-[#2E527F]">Week of:</label>
             <input
               type="date"
               value={targetWeekStart || planWeekStart || ''}
               onChange={(e) => setTargetWeekStart(e.target.value || undefined)}
-              className="h-8 rounded border border-[#B9A88F] bg-white px-2 text-sm text-[#4B2B1D] outline-none"
+              className="h-8 rounded border border-[#B9A88F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
             />
             {targetWeekStart && (
               <button
@@ -398,37 +421,32 @@ export default function MenuPlannerPage() {
               </button>
             )}
           </div>
-          <p className="mt-1 text-sm text-[#755B4C]">
-            Everything below saves to the week of {planWeekStart ? new Date(planWeekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'next week'} -- Block 1 delivers Monday, Block 2 delivers Thursday, that week.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <a
-            href="https://fit4sure-admin-dashboard.pages.dev/order/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#2E527F] px-3 text-xs font-bold text-[#2E527F] hover:bg-[#EAF0F7] transition"
-          >
-            <ExternalLink className="h-3.5 w-3.5" /> View customer order page
-          </a>
-          <button
-            onClick={() => setShowPublishConfirm(true)}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#16A34A] px-3 text-xs font-bold text-white hover:bg-[#15873F] transition"
-          >
-            <Send className="h-3.5 w-3.5" />
-            {publishStatus?.published ? 'Re-submit Menu' : 'Submit Menu'}
-          </button>
+          <div className="flex items-center gap-2">
+            <a
+              href="https://fit4sure-admin-dashboard.pages.dev/order/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#2E527F] px-3 text-xs font-bold text-[#2E527F] hover:bg-[#EAF0F7] transition"
+            >
+              <ExternalLink className="h-3.5 w-3.5" /> View customer order page
+            </a>
+            <button
+              onClick={() => setShowPublishConfirm(true)}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#16A34A] px-3 text-xs font-bold text-white hover:bg-[#15873F] transition"
+            >
+              <Send className="h-3.5 w-3.5" />
+              {publishStatus?.published ? 'Re-submit Menu' : 'Submit Menu'}
+            </button>
+          </div>
+          {publishStatus && (
+            <p className={`text-xs font-medium text-right ${publishStatus.published ? 'text-[#16A34A]' : 'text-[#D97706]'}`}>
+              {publishStatus.published
+                ? `Live to customers for the week of ${new Date(publishStatus.weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}${publishStatus.publishedAt ? ` since ${new Date(publishStatus.publishedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''} — further block edits go live immediately.`
+                : `Draft for the week of ${new Date(publishStatus.weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })} — customers see "menu isn't posted yet" until you press Submit Menu.`}
+            </p>
+          )}
         </div>
       </div>
-
-      {publishStatus && (
-        <p className={`text-xs font-medium ${publishStatus.published ? 'text-[#16A34A]' : 'text-[#D97706]'}`}>
-          {publishStatus.published
-            ? `Live to customers${publishStatus.publishedAt ? ` since ${new Date(publishStatus.publishedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''} — further block edits go live immediately.`
-            : "Draft — customers see \"menu isn't posted yet\" until you press Submit Menu."}
-        </p>
-      )}
 
       <PlateCostSimulator onAddToBlock={addComboToBlock} />
 
