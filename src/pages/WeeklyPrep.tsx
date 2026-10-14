@@ -66,7 +66,7 @@ function formatWeekLabel(iso: string) {
   return `Week of ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
 }
 
-export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: string; onBack: () => void }) {
+export default function WeeklyPrepPage({ week: initialWeek, onBack, focusBlock }: { week: string; onBack: () => void; focusBlock?: 'monday' | 'thursday' }) {
   const [currentWeek, setCurrentWeek] = useState(initialWeek)
   const [allWeeks, setAllWeeks] = useState<Array<{ week: string }>>([])
   const [prepData, setPrepData] = useState<PrepData | null>(null)
@@ -188,7 +188,17 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
             <ChevronLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-3xl font-extrabold text-[#4B2B1D]">Weekly Prep: {formatWeekLabel(prepData.week)}</h1>
+            <h1 className="text-3xl font-extrabold text-[#4B2B1D]">
+              Weekly Prep: {formatWeekLabel(prepData.week)}
+              {focusBlock && (
+                <span
+                  className="ml-2 align-middle rounded-full px-2.5 py-1 text-xs font-bold text-white"
+                  style={{ backgroundColor: focusBlock === 'monday' ? '#16A34A' : '#D97706' }}
+                >
+                  {focusBlock === 'monday' ? 'Block 1' : 'Block 2'} only
+                </span>
+              )}
+            </h1>
             <p className="mt-1 text-sm text-[#755B4C]">What's actually been ordered this week, and what it takes to fulfill it</p>
           </div>
         </div>
@@ -242,11 +252,19 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
         <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-[#755B4C]">Total Meals</p>
-              <p className="text-3xl font-extrabold text-[#2E527F]">{prepData.summary.total_servings}</p>
-              <p className="mt-1 text-[11px] text-[#2E527F]">
-                Mon {prepData.summary.monday_meals} · Thu {prepData.summary.thursday_meals} · Breakfast {prepData.summary.breakfast_meals}
+              <p className="text-xs text-[#755B4C]">{focusBlock ? `${focusBlock === 'monday' ? 'Block 1' : 'Block 2'} Meals` : 'Total Meals'}</p>
+              <p className="text-3xl font-extrabold text-[#2E527F]">
+                {focusBlock === 'monday'
+                  ? prepData.summary.monday_meals
+                  : focusBlock === 'thursday'
+                    ? prepData.summary.thursday_meals
+                    : prepData.summary.total_servings}
               </p>
+              {!focusBlock && (
+                <p className="mt-1 text-[11px] text-[#2E527F]">
+                  Mon {prepData.summary.monday_meals} · Thu {prepData.summary.thursday_meals} · Breakfast {prepData.summary.breakfast_meals}
+                </p>
+              )}
             </div>
             <TrendingUp className="h-8 w-8 text-[#16813D]" />
           </div>
@@ -258,7 +276,7 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-[#755B4C]">Kitchen Prep Progress</p>
+              <p className="text-xs text-[#755B4C]">Kitchen Prep Progress{focusBlock ? ' (whole week)' : ''}</p>
               {kitchenProgress && kitchenProgress.tasksTotal > 0 ? (
                 <>
                   <p className="text-3xl font-extrabold text-[#2E527F]">
@@ -279,7 +297,7 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
         <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-[#755B4C]">Known COGS</p>
+              <p className="text-xs text-[#755B4C]">Known COGS{focusBlock ? ' (whole week)' : ''}</p>
               <p className="text-3xl font-extrabold text-[#2E527F]">
                 ${(prepData.summary.total_cost_cents / 100).toFixed(2)}
               </p>
@@ -291,7 +309,7 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
         <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-[#755B4C]">Cost Per Meal</p>
+              <p className="text-xs text-[#755B4C]">Cost Per Meal{focusBlock ? ' (whole week)' : ''}</p>
               <p className="text-3xl font-extrabold text-[#2E527F]">
                 {prepData.summary.total_servings > 0
                   ? `$${((prepData.summary.total_cost_cents / prepData.summary.total_servings) / 100).toFixed(2)}`
@@ -315,7 +333,9 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
           <p className="text-sm text-[#2E527F]">No menu items ordered this week.</p>
         ) : (
           <div className="space-y-5">
-            {(['monday', 'thursday', 'other'] as const).map((dayKey) => {
+            {(['monday', 'thursday', 'other'] as const)
+              .filter((dayKey) => !focusBlock || dayKey === focusBlock)
+              .map((dayKey) => {
               const dayColor = dayKey === 'monday' ? '#16A34A' : dayKey === 'thursday' ? '#D97706' : '#0EA5E9'
               const dayLabel = dayKey === 'monday' ? 'Monday' : dayKey === 'thursday' ? 'Thursday' : 'Breakfast / Other'
               const dayItems = prepData.recipes.filter((r) => {
@@ -431,7 +451,12 @@ export default function WeeklyPrepPage({ week: initialWeek, onBack }: { week: st
               </tr>
             </thead>
             <tbody>
-              {prepData.orders.map((order) => (
+              {prepData.orders
+                .filter((order) => {
+                  if (!focusBlock) return true
+                  return focusBlock === 'monday' ? order.total_meals_monday > 0 : order.total_meals_thursday > 0
+                })
+                .map((order) => (
                 <tr key={order.id} className="border-b border-[#E4D8C9] hover:bg-[#F8F2E8] transition">
                   <td className="px-4 py-3 font-medium text-[#4B2B1D]">{order.name}</td>
                   <td className="px-4 py-3 text-center">

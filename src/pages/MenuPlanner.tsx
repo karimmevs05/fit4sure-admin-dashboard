@@ -33,6 +33,7 @@ type PrepIngredient = {
   name: string
   category: string
   neededG: number
+  neededGByBlock: { monday: number; thursday: number }
   shortfallG: number
   unitPriceCents: number
   currentStockG: number
@@ -76,6 +77,10 @@ export default function MenuPlannerPage() {
   // Any date picked here is normalized server-side to that week's Sunday, so
   // picking any day inside the intended week works the same.
   const [targetWeekStart, setTargetWeekStart] = useState<string | undefined>(undefined)
+  // Owned here, not inside RecipePlanSection, so isolating to one block
+  // also filters This Week's Menu / Shopping List / Financials below --
+  // not just that section's own two cards.
+  const [blockView, setBlockView] = useState<'both' | Block>('both')
   const [plateFormats, setPlateFormats] = useState<PlateFormatConfig[]>([])
 
   const token = localStorage.getItem('token')
@@ -108,6 +113,7 @@ export default function MenuPlannerPage() {
   useEffect(() => {
     fetchPlan()
     fetchPublishStatus(targetWeekStart)
+    fetchPrepFinancials()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetWeekStart])
 
@@ -115,20 +121,13 @@ export default function MenuPlannerPage() {
     setLoading(true)
     const headers = { Authorization: `Bearer ${token}` }
     try {
-      const [currentWeekRes, nextWeekRes, prepFinancialsRes] = await Promise.all([
+      const [currentWeekRes, nextWeekRes] = await Promise.all([
         axios.get(`${apiUrl}/api/admin/menu-planner/current-week`, { headers }),
         axios.get(`${apiUrl}/api/admin/menu-planner/next-week`, { headers }),
-        axios.get(`${apiUrl}/api/admin/menu-planner/prep-and-financials`, { headers }),
       ])
 
       setCurrentWeekMenu(currentWeekRes.data.data || { monday: [], thursday: [] })
       setWeekStart(nextWeekRes.data.data || {})
-      setPrepFinancials(
-        prepFinancialsRes.data.data || {
-          ingredients: [],
-          financials: { monday: { costCents: 0, lb: 0, recipeCount: 0 }, thursday: { costCents: 0, lb: 0, recipeCount: 0 }, combined: { costCents: 0, lb: 0, recipeCount: 0 } },
-        }
-      )
     } catch (error) {
       console.error('Error fetching menu planner data:', error)
     } finally {
@@ -366,6 +365,7 @@ export default function MenuPlannerPage() {
     try {
       const res = await axios.get(`${apiUrl}/api/admin/menu-planner/prep-and-financials`, {
         headers: { Authorization: `Bearer ${token}` },
+        params: targetWeekStart ? { week_start: targetWeekStart } : undefined,
       })
       setPrepFinancials(
         res.data.data || {
@@ -379,7 +379,13 @@ export default function MenuPlannerPage() {
   }
 
   if (showPrepPage) {
-    return <WeeklyPrepPage week={currentWeekStart} onBack={() => setShowPrepPage(false)} />
+    return (
+      <WeeklyPrepPage
+        week={currentWeekStart}
+        onBack={() => setShowPrepPage(false)}
+        focusBlock={blockView !== 'both' ? blockView : undefined}
+      />
+    )
   }
 
   if (loading) {
@@ -456,6 +462,8 @@ export default function MenuPlannerPage() {
         dirty={dirty}
         savingBlock={savingBlock}
         plateFormats={plateFormats}
+        blockView={blockView}
+        onBlockViewChange={setBlockView}
         onAddRecipe={addRecipe}
         onRemoveRow={removeRow}
         onUpdateVolume={updateVolume}
@@ -490,7 +498,10 @@ export default function MenuPlannerPage() {
               The whole point of this section existing before Submit Menu
               is knowing both before it's live, not after. */}
           {(() => {
-            const allItems = [...currentWeekMenu.monday, ...currentWeekMenu.thursday]
+            const allItems = [
+              ...(blockView !== 'thursday' ? currentWeekMenu.monday : []),
+              ...(blockView !== 'monday' ? currentWeekMenu.thursday : []),
+            ]
             const weekPrepMinutes = allItems.reduce((sum, i) => sum + (i.prepMinutes || 0), 0)
             const withCompletion = allItems.map((i) => recipeCompletion[i.name]).filter((c): c is RecipeCompletion => !!c && c.total > 0)
             const doneTotal = withCompletion.reduce((sum, c) => sum + c.done, 0)
@@ -523,7 +534,9 @@ export default function MenuPlannerPage() {
             {([
               { label: 'Monday', color: '#16A34A', items: currentWeekMenu.monday },
               { label: 'Thursday', color: '#D97706', items: currentWeekMenu.thursday },
-            ] as const).map((day) => {
+            ] as const)
+              .filter((day) => blockView === 'both' || (blockView === 'monday' ? day.label === 'Monday' : day.label === 'Thursday'))
+              .map((day) => {
               const totalLb = day.items.reduce((sum, i) => sum + (i.expectedVolume || 0), 0)
               const totalPrepMinutes = day.items.reduce((sum, i) => sum + (i.prepMinutes || 0), 0)
               const dayCompletion = day.items.reduce(
@@ -670,9 +683,21 @@ export default function MenuPlannerPage() {
           </div>
         </div>
 
-        <ShoppingListColumn ingredients={prepFinancials.ingredients} onStoreUpdated={fetchAll} />
+        <ShoppingListColumn
+          ingredients={
+            blockView === 'both'
+              ? prepFinancials.ingredients
+              : prepFinancials.ingredients
+                  .map((ing) => {
+                    const neededG = ing.neededGByBlock[blockView]
+                    return { ...ing, neededG, shortfallG: Math.max(0, Math.round(neededG - ing.currentStockG)) }
+                  })
+                  .filter((ing) => ing.neededG > 0)
+          }
+          onStoreUpdated={fetchPrepFinancials}
+        />
 
-        <FinancialsColumn financials={prepFinancials.financials} />
+        <FinancialsColumn financials={prepFinancials.financials} blockView={blockView} />
       </div>
     </main>
 
@@ -967,11 +992,11 @@ function ShoppingListColumn({ ingredients, onStoreUpdated }: { ingredients: Prep
 
 // Cost rollup for the same recipe plan, split by block so the chef can see
 // what Mon-Wed vs Thu-Sun is actually going to cost before it's committed.
-function FinancialsColumn({ financials }: { financials: PrepAndFinancials['financials'] }) {
+function FinancialsColumn({ financials, blockView }: { financials: PrepAndFinancials['financials']; blockView: 'both' | Block }) {
   const rows: { label: string; color: string; data: BlockFinancials }[] = [
     { label: 'Block 1 (Mon–Wed)', color: '#16A34A', data: financials.monday },
     { label: 'Block 2 (Thu–Sun)', color: '#D97706', data: financials.thursday },
-  ]
+  ].filter((row) => blockView === 'both' || (blockView === 'monday' ? row.label.startsWith('Block 1') : row.label.startsWith('Block 2')))
   const combinedCents = financials.combined.costCents
   // Share of combined cost, for the split bar below -- guards the
   // div-by-zero case (nothing planned yet) by just showing an even split
@@ -1004,7 +1029,7 @@ function FinancialsColumn({ financials }: { financials: PrepAndFinancials['finan
           )
         })}
 
-        {combinedCents > 0 && (
+        {blockView === 'both' && combinedCents > 0 && (
           <div>
             <div className="h-2 w-full rounded-full overflow-hidden flex bg-[#F1EAE0]">
               <div className="h-full" style={{ width: `${monPct}%`, backgroundColor: '#16A34A' }}></div>
@@ -1014,18 +1039,20 @@ function FinancialsColumn({ financials }: { financials: PrepAndFinancials['finan
           </div>
         )}
 
-        <div className="rounded-lg bg-[#4B2B1D] px-3 py-2.5">
-          <p className="text-xs font-bold text-[#E9DFD0] mb-1">Combined</p>
-          <div className="flex items-center justify-between">
-            <p className="text-xl font-extrabold text-white">${(financials.combined.costCents / 100).toFixed(2)}</p>
-            <div className="text-right">
-              <p className="text-xs text-[#2E527F]">{financials.combined.recipeCount} recipes · {financials.combined.lb} lb</p>
-              {costPerLb(financials.combined) != null && (
-                <p className="text-[10px] text-[#9A6D34]">${(costPerLb(financials.combined) as number).toFixed(2)}/lb</p>
-              )}
+        {blockView === 'both' && (
+          <div className="rounded-lg bg-[#4B2B1D] px-3 py-2.5">
+            <p className="text-xs font-bold text-[#E9DFD0] mb-1">Combined</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xl font-extrabold text-white">${(financials.combined.costCents / 100).toFixed(2)}</p>
+              <div className="text-right">
+                <p className="text-xs text-[#2E527F]">{financials.combined.recipeCount} recipes · {financials.combined.lb} lb</p>
+                {costPerLb(financials.combined) != null && (
+                  <p className="text-[10px] text-[#9A6D34]">${(costPerLb(financials.combined) as number).toFixed(2)}/lb</p>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
