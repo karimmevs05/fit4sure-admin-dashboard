@@ -46,25 +46,36 @@ export default function RecipePlanSection({
   dirty,
   savingBlock,
   plateFormats,
+  blockView,
+  onBlockViewChange,
   onAddRecipe,
   onRemoveRow,
   onUpdateVolume,
   onSaveBlock,
+  onMoveBlock,
 }: {
   rows: Record<Block, PlanRecipeRow[]>
   weekStart?: string
   dirty: Record<Block, boolean>
   savingBlock: Block | null
   plateFormats?: PlateFormatConfig[]
+  // 'both' (default, side by side) or one block alone, full width --
+  // controlled by the parent page so the rest of the page (This Week's
+  // Menu, Shopping List, Financials) can isolate to the same block too,
+  // not just this section's own cards.
+  blockView: 'both' | Block
+  onBlockViewChange: (view: 'both' | Block) => void
   onAddRecipe: (block: Block, recipeId: number) => void
   onRemoveRow: (block: Block, row: PlanRecipeRow) => void
   onUpdateVolume: (block: Block, row: PlanRecipeRow, volume: number) => void
   onSaveBlock: (block: Block) => void
+  // Re-homes this block's already-built content to a different date,
+  // instead of having to tear it down and rebuild it at the new week.
+  onMoveBlock: (block: Block, newWeekStart: string) => void
 }) {
   const [addOpen, setAddOpen] = useState<Record<Block, boolean>>({ monday: false, thursday: false })
-  // 'both' (default, side by side) or one block alone, full width -- for
-  // focusing on one block's list without the other one's rows in the way.
-  const [blockView, setBlockView] = useState<'both' | Block>('both')
+  const [movingOpen, setMovingOpen] = useState<Block | null>(null)
+  const [moveDate, setMoveDate] = useState('')
 
   // "Regular" is the standing default serving size every other plate
   // format (Large, Low Carb, etc.) is defined relative to -- same reason
@@ -102,7 +113,7 @@ export default function RecipePlanSection({
           ] as const).map(([key, label]) => (
             <button
               key={key}
-              onClick={() => setBlockView(key)}
+              onClick={() => onBlockViewChange(key)}
               className={`rounded-full px-3 py-1 text-xs font-bold transition ${
                 blockView === key ? 'bg-[#2E527F] text-white' : 'bg-white text-[#4B2B1D] border border-[#D7C9B7] hover:bg-[#F5F0E8]'
               }`}
@@ -138,15 +149,53 @@ export default function RecipePlanSection({
                   <h3 className="text-sm font-extrabold" style={{ color: cfg.color }}>{cfg.label}</h3>
                   <span className="text-xs text-[#2E527F]">{cfg.sub}</span>
                 </div>
-                <button
-                  onClick={() => onSaveBlock(block)}
-                  disabled={!dirty[block] || savingBlock === block}
-                  className="rounded-lg text-white px-3 py-1.5 text-xs font-bold transition disabled:opacity-40"
-                  style={{ backgroundColor: cfg.color }}
-                >
-                  {savingBlock === block ? 'Saving...' : dirty[block] ? 'Save Block' : 'Saved'}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => { setMovingOpen(movingOpen === block ? null : block); setMoveDate('') }}
+                    disabled={savingBlock === block || selected.length === 0}
+                    className="rounded-lg border px-2.5 py-1.5 text-xs font-bold transition disabled:opacity-40"
+                    style={{ borderColor: cfg.color, color: cfg.color }}
+                    title="Move this block's built content to a different date"
+                  >
+                    Move to...
+                  </button>
+                  <button
+                    onClick={() => onSaveBlock(block)}
+                    disabled={!dirty[block] || savingBlock === block}
+                    className="rounded-lg text-white px-3 py-1.5 text-xs font-bold transition disabled:opacity-40"
+                    style={{ backgroundColor: cfg.color }}
+                  >
+                    {savingBlock === block ? 'Saving...' : dirty[block] ? 'Save Block' : 'Saved'}
+                  </button>
+                </div>
               </div>
+
+              {/* Re-home this block's already-built content to a different
+                  date -- distinct from the page-level "Week of" picker
+                  (which is for browsing/building at a chosen week), this
+                  moves what's already here, not what you're about to build. */}
+              {movingOpen === block && (
+                <div className="mb-3 flex items-center gap-2 rounded-lg border border-dashed p-2" style={{ borderColor: cfg.color }}>
+                  <label className="text-xs font-bold" style={{ color: cfg.color }}>Move to week of:</label>
+                  <input
+                    type="date"
+                    value={moveDate}
+                    onChange={(e) => setMoveDate(e.target.value)}
+                    className="h-7 rounded border border-[#B9A88F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
+                  />
+                  <button
+                    onClick={() => { if (moveDate) { onMoveBlock(block, moveDate); setMovingOpen(null) } }}
+                    disabled={!moveDate || savingBlock === block}
+                    className="rounded-lg text-white px-3 py-1.5 text-xs font-bold transition disabled:opacity-40"
+                    style={{ backgroundColor: cfg.color }}
+                  >
+                    Confirm Move
+                  </button>
+                  <button onClick={() => setMovingOpen(null)} className="text-xs font-bold text-[#755B4C] hover:underline">
+                    Cancel
+                  </button>
+                </div>
+              )}
 
               {/* Selected list -- just what's live for this block, nothing to scroll past */}
               <div className="space-y-1.5 mb-2">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
-import { Pencil, Check, X, ExternalLink, Send, UtensilsCrossed } from 'lucide-react'
+import { Pencil, Check, X, ExternalLink, Send, UtensilsCrossed, RefreshCw } from 'lucide-react'
 import RecipePlanSection, { rowKey } from '../components/RecipePlanSection'
 import type { Block, PlanRecipeRow } from '../components/RecipePlanSection'
 import { PlateCostSimulator } from '../components/PlateCostSimulator'
@@ -103,19 +103,22 @@ export default function MenuPlannerPage() {
   useEffect(() => {
     fetchAll()
     fetchPlateConfig(apiUrl, token).then((cfg) => cfg && setPlateFormats(cfg.formats))
+    loadWeek(targetWeekStart)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Re-fetches both the draft plan and the publish status together
-  // whenever the target week changes -- Submit Menu's label/status live
-  // next to this picker, so they need to update together, not just the
-  // block cards below.
-  useEffect(() => {
-    fetchPlan()
-    fetchPublishStatus(targetWeekStart)
-    fetchPrepFinancials()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetWeekStart])
+  // Loads the draft plan, publish status, and prep/financials together for
+  // a given week -- deliberately NOT tied to targetWeekStart via a
+  // useEffect. Changing the "Week of" date used to refetch (and silently
+  // replace whatever was on screen, including unsaved edits) the instant
+  // you picked a new date. Now picking a date only moves the input; nothing
+  // on screen changes until this is called explicitly (Refresh button,
+  // Reset to next week, or after a Move).
+  const loadWeek = (weekStart?: string) => {
+    fetchPlan(weekStart)
+    fetchPublishStatus(weekStart)
+    fetchPrepFinancials(weekStart)
+  }
 
   const fetchAll = async () => {
     setLoading(true)
@@ -225,7 +228,13 @@ export default function MenuPlannerPage() {
     }
   }
 
-  const fetchPlan = async () => {
+  // weekStart is always explicit, never defaulted from targetWeekStart here
+  // -- undefined vs. "not passed" can't be told apart through a single `??`
+  // fallback, which silently broke Reset to next week (it passes undefined
+  // on purpose, to mean "the default week", but `??` was coalescing that
+  // back to the stale week still sitting in state). Callers that want the
+  // currently-selected week pass targetWeekStart themselves.
+  const fetchPlan = async (ws?: string) => {
     try {
       const headers = { Authorization: `Bearer ${token}` }
       // Two calls: the plan endpoint knows what's selected/forecasted, the
@@ -235,7 +244,7 @@ export default function MenuPlannerPage() {
       const [planRes, recipesRes] = await Promise.all([
         axios.get(`${apiUrl}/api/admin/menu-planner/recipe-plan`, {
           headers,
-          params: targetWeekStart ? { week_start: targetWeekStart } : undefined,
+          params: ws ? { week_start: ws } : undefined,
         }),
         axios.get(`${apiUrl}/api/admin/recipes`, { headers }),
       ])
@@ -262,7 +271,9 @@ export default function MenuPlannerPage() {
         monday: withMacros(planRes.data.data?.monday || []),
         thursday: withMacros(planRes.data.data?.thursday || []),
       })
-      setPlanWeekStart(planRes.data.data?.weekStart)
+      // weekStart comes back as a full ISO timestamp; the date <input>
+      // above only accepts a plain YYYY-MM-DD or it silently renders blank.
+      setPlanWeekStart(planRes.data.data?.weekStart?.slice(0, 10))
       setDirty({ monday: false, thursday: false })
     } catch (error) {
       console.error('Error fetching recipe plan:', error)
@@ -324,35 +335,69 @@ export default function MenuPlannerPage() {
     setDirty((d) => ({ ...d, [block]: true }))
   }
 
+  const buildSelections = (block: Block) =>
+    rows[block]
+      .filter((r) => r.selected)
+      .map((r) =>
+        r.isCustom
+          ? {
+              custom_name: r.name,
+              expected_volume: r.expected_volume || 0,
+              custom_calories: r.calories || undefined,
+              custom_protein_g: r.protein_g || undefined,
+              custom_carbs_g: r.carbs_g || undefined,
+              custom_fat_g: r.fat_g || undefined,
+              custom_cost_per_pound_cents: r.costPerPoundCents || undefined,
+            }
+          : { recipe_id: r.recipe_id, expected_volume: r.expected_volume || 0 }
+      )
+
   const saveBlock = async (block: Block) => {
     setSavingBlock(block)
     try {
-      const selections = rows[block]
-        .filter((r) => r.selected)
-        .map((r) =>
-          r.isCustom
-            ? {
-                custom_name: r.name,
-                expected_volume: r.expected_volume || 0,
-                custom_calories: r.calories || undefined,
-                custom_protein_g: r.protein_g || undefined,
-                custom_carbs_g: r.carbs_g || undefined,
-                custom_fat_g: r.fat_g || undefined,
-                custom_cost_per_pound_cents: r.costPerPoundCents || undefined,
-              }
-            : { recipe_id: r.recipe_id, expected_volume: r.expected_volume || 0 }
-        )
-
       await axios.post(
         `${apiUrl}/api/admin/menu-planner/recipe-plan`,
-        { block, selections, week_start: targetWeekStart },
+        { block, selections: buildSelections(block), week_start: targetWeekStart },
         { headers: { Authorization: `Bearer ${token}` } }
       )
       setDirty((d) => ({ ...d, [block]: false }))
-      fetchPrepFinancials()
-      fetchPlan() // custom rows need their server-assigned `id` in place of `tempId`
+      fetchPrepFinancials(targetWeekStart)
+      fetchPlan(targetWeekStart) // custom rows need their server-assigned `id` in place of `tempId`
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to save recipe plan')
+    } finally {
+      setSavingBlock(null)
+    }
+  }
+
+  // Re-homes an already-built block to a different date instead of
+  // requiring it be torn down and rebuilt from scratch at the new week.
+  // Two calls to the same replace-all endpoint: write the block's current
+  // content to the new week, then clear it from the old week (empty
+  // selections = delete-all for that block/week, same semantics Save Block
+  // already relies on) -- a real move, not a copy that leaves a duplicate
+  // behind at the old date.
+  const moveBlockToWeek = async (block: Block, newWeekStart: string) => {
+    setSavingBlock(block)
+    try {
+      const selections = buildSelections(block)
+      await axios.post(
+        `${apiUrl}/api/admin/menu-planner/recipe-plan`,
+        { block, selections, week_start: newWeekStart },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      if (newWeekStart !== (targetWeekStart || planWeekStart)) {
+        await axios.post(
+          `${apiUrl}/api/admin/menu-planner/recipe-plan`,
+          { block, selections: [], week_start: targetWeekStart },
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+      }
+      setDirty((d) => ({ ...d, [block]: false }))
+      setTargetWeekStart(newWeekStart)
+      loadWeek(newWeekStart)
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to move block')
     } finally {
       setSavingBlock(null)
     }
@@ -361,11 +406,11 @@ export default function MenuPlannerPage() {
   // Called after the Weekly Recipe Plan saves a block -- prep/financials are
   // derived from that plan, so they'd otherwise go stale until a full page
   // reload. Refetches just this one endpoint rather than everything.
-  const fetchPrepFinancials = async () => {
+  const fetchPrepFinancials = async (ws?: string) => {
     try {
       const res = await axios.get(`${apiUrl}/api/admin/menu-planner/prep-and-financials`, {
         headers: { Authorization: `Bearer ${token}` },
-        params: targetWeekStart ? { week_start: targetWeekStart } : undefined,
+        params: ws ? { week_start: ws } : undefined,
       })
       setPrepFinancials(
         res.data.data || {
@@ -418,15 +463,33 @@ export default function MenuPlannerPage() {
               onChange={(e) => setTargetWeekStart(e.target.value || undefined)}
               className="h-8 rounded border border-[#B9A88F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
             />
+            {/* Picking a date above only moves this input -- nothing on
+                screen reloads until Refresh is clicked, so an in-progress
+                draft never gets silently replaced by an accidental date
+                change. */}
+            <button
+              onClick={() => loadWeek(targetWeekStart)}
+              title="Load the week shown above"
+              className="inline-flex h-8 items-center gap-1 rounded border border-[#2E527F] px-2 text-xs font-bold text-[#2E527F] hover:bg-[#EAF0F7] transition"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Refresh
+            </button>
             {targetWeekStart && (
               <button
-                onClick={() => setTargetWeekStart(undefined)}
+                onClick={() => {
+                  setTargetWeekStart(undefined)
+                  loadWeek(undefined)
+                }}
                 className="text-xs font-bold text-[#2E527F] hover:underline"
               >
                 Reset to next week
               </button>
             )}
           </div>
+          {targetWeekStart !== undefined && targetWeekStart !== planWeekStart && (
+            <p className="text-right text-[11px] font-bold text-[#D97706]">Showing {planWeekStart ? new Date(planWeekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'next week'} -- click Refresh to load this date</p>
+          )}
           <div className="flex items-center gap-2">
             <a
               href="https://fit4sure-admin-dashboard.pages.dev/order/"
@@ -468,6 +531,7 @@ export default function MenuPlannerPage() {
         onRemoveRow={removeRow}
         onUpdateVolume={updateVolume}
         onSaveBlock={saveBlock}
+        onMoveBlock={moveBlockToWeek}
       />
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -481,10 +545,10 @@ export default function MenuPlannerPage() {
             individual recipes in it. */}
         <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
           <div className="mb-4 flex items-center justify-between gap-2">
-            <h2 className="text-lg font-extrabold text-[#4B2B1D]">This Week's Menu</h2>
+            <h2 className="whitespace-nowrap text-lg font-extrabold text-[#4B2B1D]">This Week's Menu</h2>
             <button
               onClick={() => setShowPrepPage(true)}
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#16813D] px-3 text-xs font-bold text-white shadow-[0_6px_14px_rgba(22,129,61,0.18)] transition hover:bg-[#0d6a2d] active:scale-[0.98]"
+              className="inline-flex h-9 flex-shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[#16813D] px-3 text-xs font-bold text-white shadow-[0_6px_14px_rgba(22,129,61,0.18)] transition hover:bg-[#0d6a2d] active:scale-[0.98]"
             >
               <UtensilsCrossed className="h-3.5 w-3.5" />
               View Weekly Prep
@@ -694,7 +758,7 @@ export default function MenuPlannerPage() {
                   })
                   .filter((ing) => ing.neededG > 0)
           }
-          onStoreUpdated={fetchPrepFinancials}
+          onStoreUpdated={() => fetchPrepFinancials(targetWeekStart)}
         />
 
         <FinancialsColumn financials={prepFinancials.financials} blockView={blockView} />
