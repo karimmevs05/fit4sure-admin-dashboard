@@ -3,6 +3,8 @@ import { AlertCircle, Plus, X } from 'lucide-react'
 import { RecipePicker } from './RecipePicker'
 import type { PickerRecipe } from './RecipePicker'
 import { rowAccentForCategory } from '../utils/categoryColors'
+import { plateComponentFor, servingGramsFor } from '../utils/plateStructure'
+import type { PlateFormatConfig } from '../utils/plateStructure'
 
 export type PlanRecipeRow = {
   recipe_id: number | null
@@ -43,6 +45,7 @@ export default function RecipePlanSection({
   weekStart,
   dirty,
   savingBlock,
+  plateFormats,
   onAddRecipe,
   onRemoveRow,
   onUpdateVolume,
@@ -52,25 +55,66 @@ export default function RecipePlanSection({
   weekStart?: string
   dirty: Record<Block, boolean>
   savingBlock: Block | null
+  plateFormats?: PlateFormatConfig[]
   onAddRecipe: (block: Block, recipeId: number) => void
   onRemoveRow: (block: Block, row: PlanRecipeRow) => void
   onUpdateVolume: (block: Block, row: PlanRecipeRow, volume: number) => void
   onSaveBlock: (block: Block) => void
 }) {
   const [addOpen, setAddOpen] = useState<Record<Block, boolean>>({ monday: false, thursday: false })
+  // 'both' (default, side by side) or one block alone, full width -- for
+  // focusing on one block's list without the other one's rows in the way.
+  const [blockView, setBlockView] = useState<'both' | Block>('both')
+
+  // "Regular" is the standing default serving size every other plate
+  // format (Large, Low Carb, etc.) is defined relative to -- same reason
+  // the public order page and Portions & Pricing both treat it as the
+  // reference size. A recipe's category decides which plate component
+  // (protein/carbs/veggies) its lb figure should be measured against;
+  // recipes with no mapping (sauces, beverages, custom combos) get no
+  // servings estimate rather than a meaningless one.
+  const regularFormat = plateFormats?.find((f) => f.structure === 'Regular')
+  const regularServingsFor = (row: PlanRecipeRow): number | null => {
+    if (!regularFormat || row.isCustom) return null
+    const component = plateComponentFor(row.category)
+    if (!component) return null
+    const servingG = servingGramsFor(regularFormat, component)
+    if (!servingG) return null
+    const availableG = (row.expected_volume || 0) * 453.592
+    return Math.floor(availableG / servingG)
+  }
 
   return (
     <div>
-      <div className="mb-4">
-        <h2 className="text-2xl font-extrabold text-[#4B2B1D]">Weekly Menu Planner</h2>
-        <p className="mt-1 text-sm text-[#755B4C]">
-          What's live for {weekStart ? new Date(weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'next week'} --
-          feeds both delivery orders and counter sales. Forecasts are in lb; macros/cost are per lb (455g).
-        </p>
+      <div className="mb-4 flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-2xl font-extrabold text-[#4B2B1D]">Weekly Menu Planner</h2>
+          <p className="mt-1 text-sm text-[#755B4C]">
+            What's live for {weekStart ? new Date(weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'next week'} --
+            feeds both delivery orders and counter sales. Forecasts are in lb; macros/cost are per lb (455g).
+          </p>
+        </div>
+        <div className="flex gap-1.5 flex-shrink-0">
+          {([
+            ['both', 'Both'],
+            ['monday', BLOCK_CONFIG.monday.label],
+            ['thursday', BLOCK_CONFIG.thursday.label],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setBlockView(key)}
+              className={`rounded-full px-3 py-1 text-xs font-bold transition ${
+                blockView === key ? 'bg-[#2E527F] text-white' : 'bg-white text-[#4B2B1D] border border-[#D7C9B7] hover:bg-[#F5F0E8]'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2 mb-6">
-        {(['monday', 'thursday'] as Block[]).map((block) => {
+      <div className={`grid gap-6 mb-6 ${blockView === 'both' ? 'lg:grid-cols-2' : 'lg:grid-cols-1'}`}>
+        {(blockView === 'both' ? (['monday', 'thursday'] as Block[]) : [blockView]).map((block) => {
           const cfg = BLOCK_CONFIG[block]
           const selected = rows[block].filter((r) => r.selected)
           const totalLb = selected.reduce((sum, r) => sum + (r.expected_volume || 0), 0)
@@ -136,6 +180,18 @@ export default function RecipePlanSection({
                         placeholder="lb"
                         className="w-14 h-7 rounded border border-[#B9A88F] bg-white px-1 text-xs text-center outline-none flex-shrink-0"
                       />
+                      {(() => {
+                        const servings = regularServingsFor(r)
+                        if (servings == null) return null
+                        return (
+                          <span
+                            className="flex-shrink-0 rounded-full bg-[#EAF0F7] px-1.5 py-[1px] text-[9px] font-bold text-[#2E527F] whitespace-nowrap"
+                            title="Regular-size servings this lb amount covers"
+                          >
+                            ≈{servings} reg
+                          </span>
+                        )
+                      })()}
                     </div>
                   ))
                 )}

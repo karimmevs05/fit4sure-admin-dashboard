@@ -6,6 +6,8 @@ import type { Block, PlanRecipeRow } from '../components/RecipePlanSection'
 import { PlateCostSimulator } from '../components/PlateCostSimulator'
 import { formatIngredientWeight } from '../utils/unitConversion'
 import { CATEGORY_GROUP, GROUP_ORDER } from '../utils/categoryGroups'
+import { fetchPlateConfig } from '../utils/plateStructure'
+import type { PlateFormatConfig } from '../utils/plateStructure'
 import WeeklyPrepPage from './WeeklyPrep'
 
 const GRAMS_PER_POUND = 455
@@ -70,6 +72,11 @@ export default function MenuPlannerPage() {
   const [rows, setRows] = useState<Record<Block, PlanRecipeRow[]>>({ monday: [], thursday: [] })
   const [dirty, setDirty] = useState<Record<Block, boolean>>({ monday: false, thursday: false })
   const [savingBlock, setSavingBlock] = useState<Block | null>(null)
+  // undefined = the default "next week" window (same as before this existed).
+  // Any date picked here is normalized server-side to that week's Sunday, so
+  // picking any day inside the intended week works the same.
+  const [targetWeekStart, setTargetWeekStart] = useState<string | undefined>(undefined)
+  const [plateFormats, setPlateFormats] = useState<PlateFormatConfig[]>([])
 
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
@@ -90,8 +97,14 @@ export default function MenuPlannerPage() {
 
   useEffect(() => {
     fetchAll()
-    fetchPlan()
+    fetchPlateConfig(apiUrl, token).then((cfg) => cfg && setPlateFormats(cfg.formats))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    fetchPlan()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetWeekStart])
 
   const fetchAll = async () => {
     setLoading(true)
@@ -204,7 +217,10 @@ export default function MenuPlannerPage() {
       // recipe view in this app already uses -- merge them by recipe_id
       // rather than duplicating that calculation on the backend here too.
       const [planRes, recipesRes] = await Promise.all([
-        axios.get(`${apiUrl}/api/admin/menu-planner/recipe-plan`, { headers }),
+        axios.get(`${apiUrl}/api/admin/menu-planner/recipe-plan`, {
+          headers,
+          params: targetWeekStart ? { week_start: targetWeekStart } : undefined,
+        }),
         axios.get(`${apiUrl}/api/admin/recipes`, { headers }),
       ])
 
@@ -313,7 +329,7 @@ export default function MenuPlannerPage() {
 
       await axios.post(
         `${apiUrl}/api/admin/menu-planner/recipe-plan`,
-        { block, selections },
+        { block, selections, week_start: targetWeekStart },
         { headers: { Authorization: `Bearer ${token}` } }
       )
       setDirty((d) => ({ ...d, [block]: false }))
@@ -366,8 +382,25 @@ export default function MenuPlannerPage() {
         <div>
           <h1 className="text-3xl font-extrabold text-[#4B2B1D]">Menu Planner</h1>
           <p className="mt-1 text-sm text-[#755B4C]">
-            Building here creates the real menu for {weekStart.monday ? new Date(weekStart.monday).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'next week'} delivery
+            Building here creates the real menu for {planWeekStart ? new Date(planWeekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'next week'} delivery
           </p>
+          <div className="mt-2 flex items-center gap-2">
+            <label className="text-xs font-bold text-[#2E527F]">Planning week:</label>
+            <input
+              type="date"
+              value={targetWeekStart || planWeekStart || ''}
+              onChange={(e) => setTargetWeekStart(e.target.value || undefined)}
+              className="h-7 rounded border border-[#B9A88F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
+            />
+            {targetWeekStart && (
+              <button
+                onClick={() => setTargetWeekStart(undefined)}
+                className="text-xs font-bold text-[#2E527F] hover:underline"
+              >
+                Reset to next week
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -404,6 +437,7 @@ export default function MenuPlannerPage() {
         weekStart={planWeekStart}
         dirty={dirty}
         savingBlock={savingBlock}
+        plateFormats={plateFormats}
         onAddRecipe={addRecipe}
         onRemoveRow={removeRow}
         onUpdateVolume={updateVolume}
