@@ -6,7 +6,7 @@ import type { Block, PlanRecipeRow } from '../components/RecipePlanSection'
 import { PlateCostSimulator } from '../components/PlateCostSimulator'
 import { formatIngredientWeight } from '../utils/unitConversion'
 import { CATEGORY_GROUP, GROUP_ORDER } from '../utils/categoryGroups'
-import { fetchPlateConfig } from '../utils/plateStructure'
+import { fetchPlateConfig, plateComponentFor, servingGramsFor } from '../utils/plateStructure'
 import type { PlateFormatConfig } from '../utils/plateStructure'
 import WeeklyPrepPage from './WeeklyPrep'
 
@@ -45,6 +45,38 @@ type BlockFinancials = { costCents: number; lb: number; recipeCount: number }
 type PrepAndFinancials = {
   ingredients: PrepIngredient[]
   financials: { monday: BlockFinancials; thursday: BlockFinancials; combined: BlockFinancials }
+}
+
+// Kitchen + Procurement + Operations tasks for the selected week -- the
+// departments that actually get that week's meals out the door (shopping,
+// prep/production, packing, delivery), as opposed to Sales/Marketing/
+// Finance/etc. Sourced from the same recurring task-template system
+// Operations Hub manages; this is a read + check-off view, not a second
+// place to create or edit tasks.
+const FULFILLMENT_DEPARTMENTS = new Set(['Kitchen', 'Procurement', 'Operations'])
+const OPERATIONAL_DAY_ORDER = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+
+type FulfillmentTask = {
+  id: number
+  title: string
+  department: string
+  status: string
+  operational_day: string | null
+  owner_name: string | null
+  checklist_total: number
+  checklist_done: number
+}
+
+// One row per customer with a real order this week -- who's actually
+// getting what, split Monday/Thursday/Breakfast. Same shape and source
+// (/api/admin/prep/:week) as Weekly Prep's own Customer Orders table.
+type Delivery = {
+  id: number
+  name: string
+  total_meals_monday: number
+  total_meals_thursday: number
+  breakfast_meals: number
+  total_meals: number
 }
 
 export default function MenuPlannerPage() {
@@ -107,6 +139,14 @@ export default function MenuPlannerPage() {
   // not just that section's own two cards.
   const [blockView, setBlockView] = useState<'both' | Block>('both')
   const [plateFormats, setPlateFormats] = useState<PlateFormatConfig[]>([])
+  const [fulfillmentTasks, setFulfillmentTasks] = useState<FulfillmentTask[]>([])
+  const [deliveries, setDeliveries] = useState<Delivery[]>([])
+  // Real ordered quantity per recipe name + day, for the ALWAYS-current
+  // week (not whichever week is being planned above) -- keyed
+  // "name|day" since /api/admin/prep's recipes array is keyed by menu_id,
+  // not recipe_id, and name is the one thing both sides share. Same
+  // name-based matching This Week's Menu already uses for prep completion.
+  const [currentWeekOrderedByRecipe, setCurrentWeekOrderedByRecipe] = useState<Record<string, number>>({})
 
   useEffect(() => {
     fetchAll()
@@ -130,6 +170,61 @@ export default function MenuPlannerPage() {
     fetchPlan(weekStart)
     fetchPublishStatus(weekStart)
     fetchPrepFinancials(weekStart)
+    fetchFulfillmentTasks(weekStart || currentWeekStart)
+    fetchDeliveries(weekStart || currentWeekStart)
+  }
+
+  const fetchDeliveries = async (weekStart: string) => {
+    try {
+      const res = await axios.get(`${apiUrl}/api/admin/prep/${weekStart}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      setDeliveries(res.data.data?.orders || [])
+    } catch (error) {
+      console.error('Error fetching deliveries:', error)
+    }
+  }
+
+  const fetchFulfillmentTasks = async (weekStart: string) => {
+    try {
+      const res = await axios.get(`${apiUrl}/api/admin/tasks/week/${weekStart}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const days: Record<string, any[]> = res.data.data?.days || {}
+      const tasks = Object.values(days)
+        .flat()
+        .filter((t: any) => FULFILLMENT_DEPARTMENTS.has(t.department))
+        .map((t: any) => ({
+          id: t.id,
+          title: t.title,
+          department: t.department,
+          status: t.status,
+          operational_day: t.operational_day,
+          owner_name: t.owner_name,
+          checklist_total: parseInt(t.checklist_total, 10) || 0,
+          checklist_done: parseInt(t.checklist_done, 10) || 0,
+        }))
+      setFulfillmentTasks(tasks)
+    } catch (error) {
+      console.error('Error fetching fulfillment tasks:', error)
+    }
+  }
+
+  const toggleFulfillmentTask = async (task: FulfillmentTask) => {
+    const completed = task.status !== 'completed'
+    setFulfillmentTasks((current) =>
+      current.map((t) => (t.id === task.id ? { ...t, status: completed ? 'completed' : 'not_started' } : t))
+    )
+    try {
+      await axios.post(
+        `${apiUrl}/api/admin/tasks/${task.id}/complete`,
+        { completed },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+    } catch (error) {
+      console.error('Error toggling fulfillment task:', error)
+      setFulfillmentTasks((current) => current.map((t) => (t.id === task.id ? task : t)))
+    }
   }
 
   const fetchAll = async () => {
@@ -149,6 +244,28 @@ export default function MenuPlannerPage() {
       setLoading(false)
     }
     fetchRecipeCompletion()
+    fetchCurrentWeekOrdered()
+  }
+
+  // Real ordered quantity per menu item this week, matched back onto This
+  // Week's Menu by name (same name-based join fetchRecipeCompletion
+  // already relies on) -- lets a recipe row show how much of its
+  // forecasted lb customers have actually committed to, not just the
+  // forecast itself.
+  const fetchCurrentWeekOrdered = async () => {
+    try {
+      const res = await axios.get(`${apiUrl}/api/admin/prep/${currentWeekStart}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const byRecipe: Record<string, number> = {}
+      for (const r of res.data.data?.recipes || []) {
+        const key = `${(r.name || '').toLowerCase()}|${(r.day_of_week || '').toLowerCase()}`
+        byRecipe[key] = (byRecipe[key] || 0) + (parseFloat(r.quantity) || 0)
+      }
+      setCurrentWeekOrderedByRecipe(byRecipe)
+    } catch (error) {
+      console.error('Error fetching current week ordered quantities:', error)
+    }
   }
 
   // weekStart omitted = the default "next week" check, same as before this
@@ -189,6 +306,26 @@ export default function MenuPlannerPage() {
   const startEditVolume = (item: MenuItem) => {
     setEditingPlanItemId(item.id)
     setEditVolumeValue(String(item.expectedVolume))
+  }
+
+  // How much of a This Week's Menu row's forecasted lb real customer
+  // orders have already claimed -- grams committed (at the Regular
+  // serving size, the same approximation the rest of the app uses for
+  // "how many servings does this lb support") and that as a % of the
+  // forecast. Null when there's nothing to compare (no orders yet, no
+  // category mapping, or regular format config not loaded).
+  const committedFor = (item: MenuItem, dayLabel: string) => {
+    const regularFormat = plateFormats?.find((f) => f.structure === 'Regular')
+    if (!regularFormat) return null
+    const orderedQty = currentWeekOrderedByRecipe[`${item.name.toLowerCase()}|${dayLabel.toLowerCase()}`] || 0
+    if (orderedQty === 0) return null
+    const component = plateComponentFor(item.category)
+    if (!component) return null
+    const servingG = servingGramsFor(regularFormat, component)
+    if (!servingG) return null
+    const committedG = Math.round(orderedQty * servingG)
+    const forecastG = (item.expectedVolume || 0) * 453.592
+    return { committedG, forecastG: Math.round(forecastG), pct: forecastG > 0 ? Math.round((committedG / forecastG) * 100) : null }
   }
 
   // Corrects a single row's forecasted lb after the fact -- see the
@@ -676,10 +813,25 @@ export default function MenuPlannerPage() {
                               <div className="border-t border-[#E4D8C9] divide-y divide-[#F0EAE0]">
                                 {items.map((item) => {
                                   const c = recipeCompletion[item.name]
+                                  const committed = committedFor(item, day.label)
                                   return (
                                   <div key={item.id} className="flex items-center gap-2 px-3 py-2">
                                     <div className="flex-1 min-w-0">
-                                      <p className="truncate text-xs font-medium text-[#4B2B1D]">{item.name}</p>
+                                      <span className="flex items-center gap-1.5">
+                                        <p className="truncate text-xs font-medium text-[#4B2B1D]">{item.name}</p>
+                                        {committed && committed.pct != null && (
+                                          <span
+                                            title={`${committed.committedG}g / ${committed.forecastG}g assigned`}
+                                            className="flex-shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold"
+                                            style={{
+                                              color: committed.pct >= 90 ? '#16A34A' : committed.pct >= 40 ? '#D97706' : '#D62F3D',
+                                              backgroundColor: committed.pct >= 90 ? '#E8F5E9' : committed.pct >= 40 ? '#FEF3E2' : '#FDEAEA',
+                                            }}
+                                          >
+                                            {committed.pct}% committed
+                                          </span>
+                                        )}
+                                      </span>
                                       <p className="text-[9px] text-[#9A7E6F] flex items-center gap-1.5">
                                         {item.prepMinutes != null && item.prepMinutes > 0 && <span>~{formatMinutes(item.prepMinutes)} prep</span>}
                                         {c && c.total > 0 && (
@@ -748,21 +900,22 @@ export default function MenuPlannerPage() {
           </div>
         </div>
 
-        <ShoppingListColumn
-          ingredients={
+        <FulfillmentChecklistColumn
+          tasks={blockView === 'both' ? fulfillmentTasks : fulfillmentTasks.filter((t) => t.operational_day === blockView)}
+          onToggle={toggleFulfillmentTask}
+          deliveries={
             blockView === 'both'
-              ? prepFinancials.ingredients
-              : prepFinancials.ingredients
-                  .map((ing) => {
-                    const neededG = ing.neededGByBlock[blockView]
-                    return { ...ing, neededG, shortfallG: Math.max(0, Math.round(neededG - ing.currentStockG)) }
-                  })
-                  .filter((ing) => ing.neededG > 0)
+              ? deliveries
+              : deliveries.filter((d) => (blockView === 'monday' ? d.total_meals_monday > 0 : d.total_meals_thursday > 0))
           }
-          onStoreUpdated={() => fetchPrepFinancials(targetWeekStart)}
         />
 
-        <FinancialsColumn financials={prepFinancials.financials} blockView={blockView} />
+        <FinancialsColumn
+          financials={prepFinancials.financials}
+          ingredients={prepFinancials.ingredients}
+          blockView={blockView}
+          onStoreUpdated={() => fetchPrepFinancials(targetWeekStart)}
+        />
       </div>
     </main>
 
@@ -885,8 +1038,160 @@ function PublishConfirmModal({
 // corrected inline -- PATCHes only the store column (not the full PUT
 // used by Inventory's edit modal, which would also re-run allergen
 // tagging/USDA lookup), then refetches so the item regroups immediately.
-function ShoppingListColumn({ ingredients, onStoreUpdated }: { ingredients: PrepIngredient[]; onStoreUpdated: () => void }) {
-  const [openStore, setOpenStore] = useState<string | null>(null)
+// Kitchen + Operations tasks for the selected week, grouped by day -- the
+// recurring prep-through-delivery checklist, generated the same way
+// Operations Hub's weekly task templates always have been. Read + check-off
+// only; creating/editing tasks or their templates stays in Operations Hub
+// so there's one place that actually owns the task system.
+function FulfillmentChecklistColumn({
+  tasks,
+  onToggle,
+  deliveries,
+}: {
+  tasks: FulfillmentTask[]
+  onToggle: (task: FulfillmentTask) => void
+  deliveries: Delivery[]
+}) {
+  const [openDay, setOpenDay] = useState<string | null>(null)
+  const [showDeliveries, setShowDeliveries] = useState(false)
+
+  const byDay = useMemo(() => {
+    const map = new Map<string, FulfillmentTask[]>()
+    for (const t of tasks) {
+      const key = t.operational_day || 'unscheduled'
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(t)
+    }
+    return OPERATIONAL_DAY_ORDER.filter((d) => map.has(d)).map((d) => ({ day: d, tasks: map.get(d)! }))
+  }, [tasks])
+
+  const doneCount = tasks.filter((t) => t.status === 'completed').length
+
+  return (
+    <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
+      <h2 className="mb-1 text-lg font-extrabold text-[#4B2B1D]">Fulfillment Checklist</h2>
+      <div className="mb-4 flex items-start justify-between gap-2">
+        <p className="text-xs text-[#755B4C]">This week's recurring prep-through-delivery process</p>
+        {tasks.length > 0 && (
+          <span className="flex-shrink-0 rounded-full bg-[#F1EAE0] px-2 py-0.5 text-[10px] font-bold text-[#755B4C]">
+            {doneCount}/{tasks.length} done
+          </span>
+        )}
+      </div>
+
+      {byDay.length === 0 ? (
+        <p className="text-xs text-[#755B4C] italic">No fulfillment tasks generated for this week yet — set them up in Operational Optimization.</p>
+      ) : (
+        <div className="max-h-[420px] overflow-y-auto space-y-2">
+          {byDay.map(({ day, tasks: dayTasks }) => {
+            const isOpen = openDay === day
+            const dayDone = dayTasks.filter((t) => t.status === 'completed').length
+            return (
+              <div key={day} className="rounded-lg border border-[#E4D8C9] bg-white overflow-hidden">
+                <button
+                  onClick={() => setOpenDay(isOpen ? null : day)}
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+                >
+                  <span className="text-sm font-bold capitalize text-[#4B2B1D]">{day}</span>
+                  <span className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-xs font-bold" style={{ color: dayDone === dayTasks.length ? '#16A34A' : '#D97706' }}>
+                      {dayDone}/{dayTasks.length}
+                    </span>
+                    <span className="text-xs text-[#2E527F]">{isOpen ? '▲' : '▼'}</span>
+                  </span>
+                </button>
+                {isOpen && (
+                  <div className="border-t border-[#E4D8C9] divide-y divide-[#F0EAE0]">
+                    {dayTasks.map((task) => {
+                      const completed = task.status === 'completed'
+                      return (
+                        <label key={task.id} className="flex cursor-pointer items-center gap-2.5 px-3 py-2 hover:bg-[#FBF7F0]">
+                          <input
+                            type="checkbox"
+                            checked={completed}
+                            onChange={() => onToggle(task)}
+                            className="h-4 w-4 flex-shrink-0 accent-[#16A34A]"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <p className={`truncate text-xs font-medium ${completed ? 'text-[#9A7E6F] line-through' : 'text-[#4B2B1D]'}`}>{task.title}</p>
+                            <span className="flex items-center gap-1.5">
+                              <span className="rounded-full bg-[#F1EAE0] px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">{task.department}</span>
+                              {task.owner_name && <span className="text-[9px] text-[#9A7E6F]">{task.owner_name}</span>}
+                              {task.checklist_total > 0 && (
+                                <span className="text-[9px] text-[#9A7E6F]">{task.checklist_done}/{task.checklist_total} items</span>
+                              )}
+                            </span>
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {deliveries.length > 0 && (
+        <div className="mt-4 border-t border-[#E4D8C9] pt-4">
+          <button
+            onClick={() => setShowDeliveries((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 text-left"
+          >
+            <span className="text-sm font-extrabold text-[#4B2B1D]">Deliveries</span>
+            <span className="flex items-center gap-2 flex-shrink-0">
+              <span className="rounded-full bg-[#F1EAE0] px-2 py-0.5 text-[10px] font-bold text-[#755B4C]">
+                {deliveries.length} customer{deliveries.length === 1 ? '' : 's'}
+              </span>
+              <span className="text-xs text-[#2E527F]">{showDeliveries ? '▲' : '▼'}</span>
+            </span>
+          </button>
+          {showDeliveries && (
+            <div className="mt-2 max-h-[260px] overflow-y-auto rounded-lg border border-[#E4D8C9] bg-white divide-y divide-[#F0EAE0]">
+              {deliveries.map((d) => (
+                <div key={d.id} className="flex items-center gap-2 px-3 py-2">
+                  <p className="min-w-0 flex-1 truncate text-xs font-medium text-[#4B2B1D]">{d.name}</p>
+                  <span className="flex flex-shrink-0 items-center gap-1.5">
+                    {d.total_meals_monday > 0 && (
+                      <span className="rounded bg-[#E8F5E9] px-1.5 py-[1px] text-[10px] font-bold text-[#16A34A]">Mon {d.total_meals_monday}</span>
+                    )}
+                    {d.total_meals_thursday > 0 && (
+                      <span className="rounded bg-[#FEF3E2] px-1.5 py-[1px] text-[10px] font-bold text-[#D97706]">Thu {d.total_meals_thursday}</span>
+                    )}
+                    {d.breakfast_meals > 0 && (
+                      <span className="rounded bg-[#E0F2FE] px-1.5 py-[1px] text-[10px] font-bold text-[#0EA5E9]">AM {d.breakfast_meals}</span>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Cost and what's left to buy, all per day -- one place for every
+// cost-adjacent number instead of a separate Shopping List column. Per-day
+// shortfall is approximated against the same total current stock for both
+// days (the same approximation the Block 1/Block 2 isolation view already
+// makes elsewhere); the Combined total at the bottom uses the real,
+// un-split shortfall instead, so it never double-counts an ingredient
+// needed both days.
+function FinancialsColumn({
+  financials,
+  ingredients,
+  blockView,
+  onStoreUpdated,
+}: {
+  financials: PrepAndFinancials['financials']
+  ingredients: PrepIngredient[]
+  blockView: 'both' | Block
+  onStoreUpdated: () => void
+}) {
+  const [openDay, setOpenDay] = useState<Block | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editValue, setEditValue] = useState('')
   const [saving, setSaving] = useState(false)
@@ -896,11 +1201,11 @@ function ShoppingListColumn({ ingredients, onStoreUpdated }: { ingredients: Prep
   const formatLb = (g: number) => (g / GRAMS_PER_POUND).toFixed(1)
   const formatNeeded = (ing: PrepIngredient, g: number) =>
     ing.category?.toLowerCase() === 'protein' ? formatIngredientWeight(g, ing.category) : `${formatLb(g)} lb`
-
   // Real $/lb from inventory -- null (not 0) when the price isn't on file,
-  // so a store total can honestly say "some prices unknown" instead of
-  // silently undercounting those items as free.
-  const estCostCents = (ing: PrepIngredient) => (ing.unitPriceCents ? (ing.unitPriceCents / 453.592) * ing.shortfallG : null)
+  // so a total can honestly say "some prices unknown" instead of silently
+  // undercounting those items as free.
+  const estCostCents = (ing: PrepIngredient, shortfallG: number) =>
+    ing.unitPriceCents ? (ing.unitPriceCents / 453.592) * shortfallG : null
 
   const knownStores = useMemo(
     () => Array.from(new Set(ingredients.map((i) => i.store).filter((s): s is string => !!s))).sort(),
@@ -929,139 +1234,11 @@ function ShoppingListColumn({ ingredients, onStoreUpdated }: { ingredients: Prep
     }
   }
 
-  const byStore = useMemo(() => {
-    const toBuy = ingredients.filter((ing) => ing.shortfallG > 0)
-    const map = new Map<string, PrepIngredient[]>()
-    for (const ing of toBuy) {
-      const key = ing.store || 'Store not on file'
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(ing)
-    }
-    return Array.from(map.entries())
-      .map(([store, items]) => {
-        const sorted = items.sort((a, b) => b.shortfallG - a.shortfallG)
-        const costs = sorted.map(estCostCents)
-        return {
-          store,
-          items: sorted,
-          costCents: costs.reduce((sum: number, c) => sum + (c || 0), 0),
-          hasUnknownCost: costs.some((c) => c == null),
-        }
-      })
-      .sort((a, b) => b.items.length - a.items.length)
-  }, [ingredients])
+  const dayRows: { block: Block; label: string; color: string; data: BlockFinancials }[] = [
+    { block: 'monday', label: 'Block 1 (Mon–Wed)', color: '#16A34A', data: financials.monday },
+    { block: 'thursday', label: 'Block 2 (Thu–Sun)', color: '#D97706', data: financials.thursday },
+  ].filter((row) => blockView === 'both' || row.block === blockView)
 
-  const grandTotalCents = byStore.reduce((sum, s) => sum + s.costCents, 0)
-  const anyUnknownCost = byStore.some((s) => s.hasUnknownCost)
-
-  return (
-    <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
-      <h2 className="mb-1 text-lg font-extrabold text-[#4B2B1D]">Shopping List</h2>
-      <div className="mb-4 flex items-start justify-between gap-2">
-        <p className="text-xs text-[#755B4C]">What's short vs. current stock, grouped by where you last bought it</p>
-        {byStore.length > 0 && (
-          <div className="flex-shrink-0 text-right">
-            <p className="text-lg font-extrabold text-[#2E527F] leading-none">${(grandTotalCents / 100).toFixed(2)}</p>
-            <p className="text-[9px] text-[#9A7E6F]">est. total{anyUnknownCost ? ' · some unpriced' : ''}</p>
-          </div>
-        )}
-      </div>
-      <datalist id="shopping-list-known-stores">
-        {knownStores.map((s) => (
-          <option key={s} value={s} />
-        ))}
-      </datalist>
-
-      {byStore.length === 0 ? (
-        <p className="text-xs text-[#755B4C] italic">Nothing to buy — current stock covers this week's plan</p>
-      ) : (
-        <div className="max-h-[420px] overflow-y-auto space-y-2">
-          {byStore.map(({ store, items, costCents, hasUnknownCost }) => {
-            const isOpen = openStore === store
-            return (
-              <div key={store} className="rounded-lg border border-[#E4D8C9] bg-white overflow-hidden">
-                <button
-                  onClick={() => setOpenStore(isOpen ? null : store)}
-                  className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
-                >
-                  <span className="text-sm font-bold text-[#4B2B1D]">{store}</span>
-                  <span className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-xs font-bold text-[#16A34A]">
-                      {costCents > 0 ? `~$${(costCents / 100).toFixed(2)}` : ''}{hasUnknownCost ? '+' : ''}
-                    </span>
-                    <span className="rounded-full bg-[#F1EAE0] px-2 py-0.5 text-[10px] font-bold text-[#755B4C]">
-                      {items.length} item{items.length === 1 ? '' : 's'}
-                    </span>
-                    <span className="text-xs text-[#2E527F]">{isOpen ? '▲' : '▼'}</span>
-                  </span>
-                </button>
-                {isOpen && (
-                  <div className="border-t border-[#E4D8C9] divide-y divide-[#F0EAE0]">
-                    {items.map((ing) =>
-                      editingId === ing.inventoryId ? (
-                        <div key={ing.name} className="flex items-center gap-1.5 px-3 py-2">
-                          <input
-                            autoFocus
-                            list="shopping-list-known-stores"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && saveStore(ing.inventoryId)}
-                            placeholder="Store name..."
-                            className="h-7 flex-1 min-w-0 rounded border border-[#2E527F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
-                          />
-                          <button
-                            onClick={() => saveStore(ing.inventoryId)}
-                            disabled={saving}
-                            className="flex-shrink-0 text-[#16A34A] hover:text-[#15873F] disabled:opacity-40"
-                            aria-label="Save store"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={() => setEditingId(null)}
-                            className="flex-shrink-0 text-[#9A7E6F] hover:text-[#D62F3D]"
-                            aria-label="Cancel"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div key={ing.name} className="group flex items-center gap-2 px-3 py-2">
-                          <p className="flex-1 truncate text-xs font-medium text-[#4B2B1D]">{ing.name}</p>
-                          <button
-                            onClick={() => startEdit(ing)}
-                            className="flex-shrink-0 text-[#C9BBA8] opacity-0 transition group-hover:opacity-100 hover:text-[#2E527F]"
-                            aria-label={`Assign store for ${ing.name}`}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </button>
-                          <span className="flex-shrink-0 text-right">
-                            <p className="text-xs font-bold text-[#D62F3D]">{formatNeeded(ing, ing.shortfallG)}</p>
-                            {estCostCents(ing) != null && (
-                              <p className="text-[9px] text-[#9A7E6F]">~${((estCostCents(ing) as number) / 100).toFixed(2)}</p>
-                            )}
-                          </span>
-                        </div>
-                      )
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Cost rollup for the same recipe plan, split by block so the chef can see
-// what Mon-Wed vs Thu-Sun is actually going to cost before it's committed.
-function FinancialsColumn({ financials, blockView }: { financials: PrepAndFinancials['financials']; blockView: 'both' | Block }) {
-  const rows: { label: string; color: string; data: BlockFinancials }[] = [
-    { label: 'Block 1 (Mon–Wed)', color: '#16A34A', data: financials.monday },
-    { label: 'Block 2 (Thu–Sun)', color: '#D97706', data: financials.thursday },
-  ].filter((row) => blockView === 'both' || (blockView === 'monday' ? row.label.startsWith('Block 1') : row.label.startsWith('Block 2')))
   const combinedCents = financials.combined.costCents
   // Share of combined cost, for the split bar below -- guards the
   // div-by-zero case (nothing planned yet) by just showing an even split
@@ -1069,14 +1246,29 @@ function FinancialsColumn({ financials, blockView }: { financials: PrepAndFinanc
   const monPct = combinedCents > 0 ? (financials.monday.costCents / combinedCents) * 100 : 50
   const costPerLb = (data: BlockFinancials) => (data.lb > 0 ? data.costCents / data.lb / 100 : null)
 
+  const combinedShoppingCents = ingredients.reduce((sum, ing) => sum + (estCostCents(ing, ing.shortfallG) || 0), 0)
+  const combinedUnknownCost = ingredients.some((ing) => ing.shortfallG > 0 && !ing.unitPriceCents)
+
   return (
     <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
       <h2 className="mb-1 text-lg font-extrabold text-[#4B2B1D]">Financials</h2>
-      <p className="mb-4 text-xs text-[#755B4C]">Forecasted ingredient cost, from this week's recipe plan</p>
+      <p className="mb-4 text-xs text-[#755B4C]">Cost and what's left to buy — from this week's recipe plan</p>
+      <datalist id="financials-known-stores">
+        {knownStores.map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
 
       <div className="space-y-3">
-        {rows.map((row) => {
+        {dayRows.map((row) => {
           const perLb = costPerLb(row.data)
+          const dayShortfall = ingredients
+            .map((ing) => ({ ing, shortfallG: Math.max(0, Math.round(ing.neededGByBlock[row.block] - ing.currentStockG)) }))
+            .filter((x) => x.shortfallG > 0)
+            .sort((a, b) => b.shortfallG - a.shortfallG)
+          const dayShoppingCents = dayShortfall.reduce((sum, { ing, shortfallG }) => sum + (estCostCents(ing, shortfallG) || 0), 0)
+          const isOpen = openDay === row.block
+
           return (
             <div key={row.label} className="rounded-lg border border-[#E4D8C9] bg-white px-3 py-2.5">
               <div className="flex items-center gap-2 mb-1">
@@ -1090,6 +1282,66 @@ function FinancialsColumn({ financials, blockView }: { financials: PrepAndFinanc
                   {perLb != null && <p className="text-[10px] text-[#9A7E6F]">${perLb.toFixed(2)}/lb</p>}
                 </div>
               </div>
+              <button
+                onClick={() => setOpenDay(isOpen ? null : row.block)}
+                className="mt-2 flex w-full items-center justify-between gap-2 border-t border-[#F0EAE0] pt-2 text-left"
+              >
+                <span className="text-[10.5px] font-bold text-[#755B4C]">
+                  {dayShortfall.length === 0 ? 'Nothing to buy for this block' : `${dayShortfall.length} item${dayShortfall.length === 1 ? '' : 's'} to buy`}
+                </span>
+                <span className="flex flex-shrink-0 items-center gap-2">
+                  {dayShoppingCents > 0 && <span className="text-[10.5px] font-bold text-[#D62F3D]">~${(dayShoppingCents / 100).toFixed(2)}</span>}
+                  {dayShortfall.length > 0 && <span className="text-[10px] text-[#2E527F]">{isOpen ? '▲' : '▼'}</span>}
+                </span>
+              </button>
+
+              {isOpen && dayShortfall.length > 0 && (
+                <div className="mt-1.5 max-h-[220px] overflow-y-auto divide-y divide-[#F0EAE0]">
+                  {dayShortfall.map(({ ing, shortfallG }) =>
+                    editingId === ing.inventoryId ? (
+                      <div key={ing.inventoryId} className="flex items-center gap-1.5 py-1.5">
+                        <input
+                          autoFocus
+                          list="financials-known-stores"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && saveStore(ing.inventoryId)}
+                          placeholder="Store name..."
+                          className="h-6 flex-1 min-w-0 rounded border border-[#2E527F] bg-white px-1.5 text-[10.5px] text-[#4B2B1D] outline-none"
+                        />
+                        <button
+                          onClick={() => saveStore(ing.inventoryId)}
+                          disabled={saving}
+                          className="flex-shrink-0 text-[#16A34A] hover:text-[#15873F] disabled:opacity-40"
+                          aria-label="Save store"
+                        >
+                          <Check className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="flex-shrink-0 text-[#9A7E6F] hover:text-[#D62F3D]"
+                          aria-label="Cancel"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div key={ing.inventoryId} className="group flex items-center gap-1.5 py-1.5">
+                        <p className="min-w-0 flex-1 truncate text-[10.5px] font-medium text-[#4B2B1D]">{ing.name}</p>
+                        <button
+                          onClick={() => startEdit(ing)}
+                          className="flex-shrink-0 text-[#D9CBB8] opacity-0 transition group-hover:opacity-100 hover:text-[#2E527F]"
+                          aria-label={`Assign store for ${ing.name}`}
+                        >
+                          <Pencil className="h-2.5 w-2.5" />
+                        </button>
+                        <span className="flex-shrink-0 rounded-full bg-[#F1EAE0] px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">{ing.store || 'no store'}</span>
+                        <span className="w-14 flex-shrink-0 text-right text-[10.5px] font-bold text-[#D62F3D]">{formatNeeded(ing, shortfallG)}</span>
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
             </div>
           )
         })}
@@ -1116,6 +1368,11 @@ function FinancialsColumn({ financials, blockView }: { financials: PrepAndFinanc
                 )}
               </div>
             </div>
+            {combinedShoppingCents > 0 && (
+              <p className="mt-1.5 text-[10.5px] font-bold text-[#E9DFD0]">
+                Shopping: ~${(combinedShoppingCents / 100).toFixed(2)}{combinedUnknownCost ? '+' : ''} grand total
+              </p>
+            )}
           </div>
         )}
       </div>
