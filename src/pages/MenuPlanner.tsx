@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
-import { Pencil, Check, X, ExternalLink, Send, UtensilsCrossed, RefreshCw } from 'lucide-react'
+import { Pencil, Check, X, ExternalLink, Send, UtensilsCrossed } from 'lucide-react'
 import RecipePlanSection, { rowKey } from '../components/RecipePlanSection'
 import type { Block, PlanRecipeRow } from '../components/RecipePlanSection'
 import { PlateCostSimulator } from '../components/PlateCostSimulator'
@@ -103,17 +103,21 @@ export default function MenuPlannerPage() {
   useEffect(() => {
     fetchAll()
     fetchPlateConfig(apiUrl, token).then((cfg) => cfg && setPlateFormats(cfg.formats))
-    loadWeek(targetWeekStart)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Loads the draft plan, publish status, and prep/financials together for
-  // a given week -- deliberately NOT tied to targetWeekStart via a
-  // useEffect. Changing the "Week of" date used to refetch (and silently
-  // replace whatever was on screen, including unsaved edits) the instant
-  // you picked a new date. Now picking a date only moves the input; nothing
-  // on screen changes until this is called explicitly (Refresh button,
-  // Reset to next week, or after a Move).
+  // Re-fetches the draft plan, publish status, and prep/financials together
+  // whenever the target week changes -- Submit Menu's label/status live
+  // next to this picker, so they need to update together, not just the
+  // block cards below.
+  useEffect(() => {
+    loadWeek(targetWeekStart)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetWeekStart])
+
+  // weekStart is always explicit (never defaulted from targetWeekStart
+  // inside fetchPlan/fetchPrepFinancials) -- undefined here means "the
+  // default week", same as the backend's own default-when-omitted.
   const loadWeek = (weekStart?: string) => {
     fetchPlan(weekStart)
     fetchPublishStatus(weekStart)
@@ -395,7 +399,6 @@ export default function MenuPlannerPage() {
       }
       setDirty((d) => ({ ...d, [block]: false }))
       setTargetWeekStart(newWeekStart)
-      loadWeek(newWeekStart)
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to move block')
     } finally {
@@ -463,33 +466,15 @@ export default function MenuPlannerPage() {
               onChange={(e) => setTargetWeekStart(e.target.value || undefined)}
               className="h-8 rounded border border-[#B9A88F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
             />
-            {/* Picking a date above only moves this input -- nothing on
-                screen reloads until Refresh is clicked, so an in-progress
-                draft never gets silently replaced by an accidental date
-                change. */}
-            <button
-              onClick={() => loadWeek(targetWeekStart)}
-              title="Load the week shown above"
-              className="inline-flex h-8 items-center gap-1 rounded border border-[#2E527F] px-2 text-xs font-bold text-[#2E527F] hover:bg-[#EAF0F7] transition"
-            >
-              <RefreshCw className="h-3 w-3" />
-              Refresh
-            </button>
             {targetWeekStart && (
               <button
-                onClick={() => {
-                  setTargetWeekStart(undefined)
-                  loadWeek(undefined)
-                }}
+                onClick={() => setTargetWeekStart(undefined)}
                 className="text-xs font-bold text-[#2E527F] hover:underline"
               >
                 Reset to next week
               </button>
             )}
           </div>
-          {targetWeekStart !== undefined && targetWeekStart !== planWeekStart && (
-            <p className="text-right text-[11px] font-bold text-[#D97706]">Showing {planWeekStart ? new Date(planWeekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'next week'} -- click Refresh to load this date</p>
-          )}
           <div className="flex items-center gap-2">
             <a
               href="https://fit4sure-admin-dashboard.pages.dev/order/"
