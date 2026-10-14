@@ -26,6 +26,18 @@ export type PlanRecipeRow = {
 
 export type Block = 'monday' | 'thursday'
 
+// A staff-curated protein + default-sides combo for a block, surfaced on
+// the ordering page as a featured, still-customizable recommendation --
+// see POST /api/admin/menu-planner/plate-options.
+export type PlateOption = {
+  id: number
+  block: Block
+  name: string | null
+  proteinRecipeId: number
+  proteinName: string
+  sides: { recipeId: number; name: string }[]
+}
+
 export const BLOCK_CONFIG: Record<Block, { label: string; sub: string; color: string }> = {
   monday: { label: 'Block 1', sub: 'Mon – Wed', color: '#16A34A' },
   thursday: { label: 'Block 2', sub: 'Thu – Sun', color: '#D97706' },
@@ -53,6 +65,9 @@ export default function RecipePlanSection({
   onUpdateVolume,
   onSaveBlock,
   onMoveBlock,
+  plateOptions,
+  onCreatePlate,
+  onDeletePlate,
 }: {
   rows: Record<Block, PlanRecipeRow[]>
   weekStart?: string
@@ -72,10 +87,28 @@ export default function RecipePlanSection({
   // Re-homes this block's already-built content to a different date,
   // instead of having to tear it down and rebuild it at the new week.
   onMoveBlock: (block: Block, newWeekStart: string) => void
+  plateOptions: PlateOption[]
+  onCreatePlate: (block: Block, proteinRecipeId: number, sideRecipeIds: number[], name: string) => void
+  onDeletePlate: (id: number) => void
 }) {
   const [addOpen, setAddOpen] = useState<Record<Block, boolean>>({ monday: false, thursday: false })
   const [movingOpen, setMovingOpen] = useState<Block | null>(null)
   const [moveDate, setMoveDate] = useState('')
+  // Drag-and-drop plate builder: drag a recipe row from the selected list
+  // above straight onto this block's drop zone -- a protein becomes the
+  // plate's main, anything else becomes a side. No separate picker UI, so
+  // building a plate reuses the exact same rows already on screen.
+  const [plateDraft, setPlateDraft] = useState<Record<Block, { proteinId: number | null; sideIds: number[]; name: string; nameEdited: boolean }>>({
+    monday: { proteinId: null, sideIds: [], name: '', nameEdited: false },
+    thursday: { proteinId: null, sideIds: [], name: '', nameEdited: false },
+  })
+  const [plateDropActive, setPlateDropActive] = useState<Block | null>(null)
+
+  // "{Protein} with {side, side}" -- a reasonable starting point, not a
+  // final answer. Only applied while the name field hasn't been hand-
+  // edited, so typing a real name sticks even as sides keep changing.
+  const suggestPlateName = (proteinName: string, sideNames: string[]) =>
+    sideNames.length > 0 ? `${proteinName} with ${sideNames.join(', ')}` : proteinName
 
   // "Regular" is the standing default serving size every other plate
   // format (Large, Low Carb, etc.) is defined relative to -- same reason
@@ -93,6 +126,82 @@ export default function RecipePlanSection({
     if (!servingG) return null
     const availableG = (row.expected_volume || 0) * 453.592
     return { count: Math.floor(availableG / servingG), servingG }
+  }
+
+  // Real per-plate cost/macros at the Regular serving size -- what a
+  // customer actually gets, not the per-lb forecast figures the rest of
+  // the block shows. Items with no Regular-format mapping (sauces) are
+  // silently skipped, matching how sauces price as separate add-ons
+  // everywhere else in the app rather than part of the base plate.
+  const regularFormatStatsFor = (items: PlanRecipeRow[]) => {
+    if (!regularFormat) return null
+    const sized = items
+      .map((r) => {
+        const component = plateComponentFor(r.category)
+        const servingG = component ? servingGramsFor(regularFormat, component) : null
+        return servingG ? { r, servingG } : null
+      })
+      .filter((x): x is { r: PlanRecipeRow; servingG: number } => !!x)
+    if (sized.length === 0) return null
+    return sized.reduce(
+      (acc, { r, servingG }) => {
+        const frac = servingG / 453.592
+        return {
+          costCents: acc.costCents + r.costPerPoundCents * frac,
+          calories: acc.calories + r.calories * frac,
+          protein_g: acc.protein_g + r.protein_g * frac,
+          carbs_g: acc.carbs_g + r.carbs_g * frac,
+          fat_g: acc.fat_g + r.fat_g * frac,
+        }
+      },
+      { costCents: 0, calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+    )
+  }
+
+  const nameFor = (block: Block, recipeId: number | null) =>
+    recipeId == null ? null : rows[block].find((r) => r.recipe_id === recipeId)?.name ?? null
+
+  const withSuggestedName = (block: Block, draft: { proteinId: number | null; sideIds: number[]; name: string; nameEdited: boolean }) => {
+    if (draft.nameEdited) return draft
+    const proteinName = nameFor(block, draft.proteinId)
+    if (!proteinName) return { ...draft, name: '' }
+    const sideNames = draft.sideIds.map((id) => nameFor(block, id)).filter((n): n is string => !!n)
+    return { ...draft, name: suggestPlateName(proteinName, sideNames) }
+  }
+
+  const dropOnPlate = (block: Block, recipeId: number, category: string) => {
+    const isProtein = plateComponentFor(category) === 'protein'
+    setPlateDraft((current) => {
+      const draft = current[block]
+      if (isProtein) {
+        return { ...current, [block]: withSuggestedName(block, { ...draft, proteinId: recipeId }) }
+      }
+      if (draft.sideIds.includes(recipeId)) return current
+      return { ...current, [block]: withSuggestedName(block, { ...draft, sideIds: [...draft.sideIds, recipeId] }) }
+    })
+  }
+
+  const removeFromPlateDraft = (block: Block, recipeId: number) => {
+    setPlateDraft((current) => {
+      const draft = current[block]
+      const next = {
+        ...draft,
+        proteinId: draft.proteinId === recipeId ? null : draft.proteinId,
+        sideIds: draft.sideIds.filter((id) => id !== recipeId),
+      }
+      return { ...current, [block]: withSuggestedName(block, next) }
+    })
+  }
+
+  const setPlateDraftName = (block: Block, name: string) => {
+    setPlateDraft((current) => ({ ...current, [block]: { ...current[block], name, nameEdited: true } }))
+  }
+
+  const submitPlate = (block: Block) => {
+    const draft = plateDraft[block]
+    if (!draft.proteinId) return
+    onCreatePlate(block, draft.proteinId, draft.sideIds, draft.name.trim())
+    setPlateDraft((current) => ({ ...current, [block]: { proteinId: null, sideIds: [], name: '', nameEdited: false } }))
   }
 
   return (
@@ -203,7 +312,13 @@ export default function RecipePlanSection({
                   <p className="text-xs text-[#755B4C] italic px-1 py-2">Nothing added yet</p>
                 ) : (
                   selected.map((r) => (
-                    <div key={rowKey(r)} className={`flex items-center gap-2 rounded-lg ${rowAccentForCategory(r.category)} border border-[#E4D8C9] px-2.5 py-1.5`}>
+                    <div
+                      key={rowKey(r)}
+                      draggable={!r.isCustom}
+                      onDragStart={(e) => !r.isCustom && e.dataTransfer.setData('text/plain', String(r.recipe_id))}
+                      className={`flex items-center gap-2 rounded-lg ${rowAccentForCategory(r.category)} border border-[#E4D8C9] px-2.5 py-1.5 ${!r.isCustom ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                      title={!r.isCustom ? 'Drag onto "Build a plate" below to use in a plate' : undefined}
+                    >
                       <button
                         onClick={() => onRemoveRow(block, r)}
                         className="flex-shrink-0 text-[#9A7E6F] hover:text-[#D62F3D] transition"
@@ -256,6 +371,168 @@ export default function RecipePlanSection({
               {addOpen[block] && (
                 <RecipePicker recipes={pickerRecipes} excludeIds={excludeIds} onAdd={(r) => onAddRecipe(block, r.recipe_id)} />
               )}
+
+              {/* Plates -- a protein paired with default sides, featured
+                  (but still customizable) on the ordering page. Built from
+                  whatever's already selected above, not a separate recipe
+                  pool, so a plate can only ever reference what's actually
+                  live for this block. */}
+              {(() => {
+                const blockPlates = plateOptions.filter((p) => p.block === block)
+                const draft = plateDraft[block]
+                const draftProtein = draft.proteinId ? selected.find((r) => r.recipe_id === draft.proteinId) : null
+                const draftSides = draft.sideIds.map((id) => selected.find((r) => r.recipe_id === id)).filter((r): r is PlanRecipeRow => !!r)
+                const isDropActive = plateDropActive === block
+                const rowById = (id: number) => selected.find((r) => r.recipe_id === id)
+                const macroLine = (r: PlanRecipeRow) =>
+                  `${r.calories} cal · ${r.protein_g.toFixed(0)}g P · ${r.carbs_g.toFixed(0)}g C · ${r.fat_g.toFixed(0)}g F`
+                // Same Regular-format stats as the draft above, resolved
+                // from whatever ingredients are still live in this block --
+                // a side pulled out of the block after the plate was saved
+                // just drops out of the total rather than erroring.
+                const plateRegularStats = (plate: PlateOption) => {
+                  const ids = [plate.proteinRecipeId, ...plate.sides.map((s) => s.recipeId)]
+                  const matched = ids.map((id) => selected.find((r) => r.recipe_id === id)).filter((r): r is PlanRecipeRow => !!r)
+                  return regularFormatStatsFor(matched)
+                }
+
+                return (
+                  <div className="mt-2 border-t border-[#E4D8C9] pt-2">
+                    {blockPlates.length > 0 && (
+                      <div className="mb-1.5 space-y-1">
+                        {blockPlates.map((plate) => {
+                          const stats = plateRegularStats(plate)
+                          return (
+                            <div key={plate.id} className="flex items-center gap-2 rounded-lg border border-[#E4D8C9] bg-white px-2.5 py-1.5">
+                              <button
+                                onClick={() => onDeletePlate(plate.id)}
+                                className="flex-shrink-0 text-[#9A7E6F] hover:text-[#D62F3D] transition"
+                                aria-label={`Remove plate ${plate.name || plate.proteinName}`}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs">
+                                  <span className="font-bold text-[#4B2B1D]">{plate.name || plate.proteinName}</span>
+                                  {plate.sides.length > 0 && (
+                                    <span className="text-[#755B4C]"> · {plate.sides.map((s) => s.name).join(', ')}</span>
+                                  )}
+                                </p>
+                                {stats && (
+                                  <p className="truncate text-[10px] text-[#2E527F]">
+                                    Regular: ${(stats.costCents / 100).toFixed(2)} · {Math.round(stats.calories)} cal · {stats.protein_g.toFixed(0)}g P · {stats.carbs_g.toFixed(0)}g C · {stats.fat_g.toFixed(0)}g F
+                                  </p>
+                                )}
+                              </div>
+                              <span className="flex-shrink-0 rounded-full bg-[#F1EAE0] px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">plate</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); setPlateDropActive(block) }}
+                      onDragLeave={() => setPlateDropActive((b) => (b === block ? null : b))}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        setPlateDropActive(null)
+                        const recipeId = parseInt(e.dataTransfer.getData('text/plain'), 10)
+                        const row = rowById(recipeId)
+                        if (row) dropOnPlate(block, recipeId, row.category)
+                      }}
+                      className="rounded-lg border border-dashed p-2.5 transition"
+                      style={{ borderColor: isDropActive ? cfg.color : '#9A7E6F', backgroundColor: isDropActive ? '#F1EAE0' : 'transparent' }}
+                    >
+                      {!draftProtein && draftSides.length === 0 ? (
+                        <p className="text-center text-[10.5px] font-bold text-[#755B4C]">
+                          Drag a protein + sides from above to build a plate
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {/* All dragged items in one wrapping row -- still
+                              category-colored, still showing per-lb macros,
+                              just not a full-width stack. */}
+                          <div className="flex flex-wrap gap-1.5">
+                            {draftProtein && (
+                              <div className={`flex items-center gap-1.5 rounded-lg ${rowAccentForCategory(draftProtein.category)} border border-[#E4D8C9] px-2 py-1`}>
+                                <div className="min-w-0">
+                                  <p className="truncate text-[11px] font-bold text-[#4B2B1D]">{draftProtein.name}</p>
+                                  <p className="truncate text-[9.5px] text-[#2E527F]">{macroLine(draftProtein)}</p>
+                                </div>
+                                <button onClick={() => removeFromPlateDraft(block, draftProtein.recipe_id!)} className="flex-shrink-0 text-[#9A7E6F] hover:text-[#D62F3D]" aria-label={`Remove ${draftProtein.name} from plate`}>
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
+                            )}
+                            {draftSides.map((side) => (
+                              <div key={side.recipe_id} className={`flex items-center gap-1.5 rounded-lg ${rowAccentForCategory(side.category)} border border-[#E4D8C9] px-2 py-1`}>
+                                <div className="min-w-0">
+                                  <p className="truncate text-[11px] font-bold text-[#4B2B1D]">{side.name}</p>
+                                  <p className="truncate text-[9.5px] text-[#2E527F]">{macroLine(side)}</p>
+                                </div>
+                                <button onClick={() => removeFromPlateDraft(block, side.recipe_id!)} className="flex-shrink-0 text-[#9A7E6F] hover:text-[#D62F3D]" aria-label={`Remove ${side.name} from plate`}>
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          {!draftProtein && (
+                            <p className="text-[10px] font-bold text-[#D97706]">Drag a protein in too -- a plate needs one</p>
+                          )}
+
+                          {/* What a customer actually gets at the Regular
+                              format -- real per-serving cost/macros, not the
+                              per-lb forecast figures shown on the chips
+                              above. Items with no Regular-format mapping
+                              (sauces) show on the chips but don't count here,
+                              matching how sauces price as separate add-ons
+                              everywhere else in the app. */}
+                          {(() => {
+                            const items = [draftProtein, ...draftSides].filter((r): r is PlanRecipeRow => !!r)
+                            const totals = regularFormatStatsFor(items)
+                            if (!totals) return null
+                            return (
+                              <div className="rounded-lg bg-[#F1EAE0] px-2.5 py-1.5">
+                                <p className="text-[9px] font-bold uppercase tracking-wide text-[#755B4C]">Plate stats · Regular format</p>
+                                <div className="flex items-center justify-between">
+                                  <p className="text-sm font-extrabold" style={{ color: cfg.color }}>${(totals.costCents / 100).toFixed(2)}</p>
+                                  <p className="text-[10.5px] font-bold text-[#2E527F]">
+                                    {Math.round(totals.calories)} cal · {totals.protein_g.toFixed(0)}g P · {totals.carbs_g.toFixed(0)}g C · {totals.fat_g.toFixed(0)}g F
+                                  </p>
+                                </div>
+                              </div>
+                            )
+                          })()}
+
+                          <input
+                            value={draft.name}
+                            onChange={(e) => setPlateDraftName(block, e.target.value)}
+                            placeholder="Plate name..."
+                            className="h-7 w-full rounded border border-[#B9A88F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
+                          />
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => submitPlate(block)}
+                              disabled={!draftProtein}
+                              className="h-7 flex-1 rounded-lg text-white px-3 text-xs font-bold transition disabled:opacity-40"
+                              style={{ backgroundColor: cfg.color }}
+                            >
+                              Create Plate
+                            </button>
+                            <button
+                              onClick={() => setPlateDraft((c) => ({ ...c, [block]: { proteinId: null, sideIds: [], name: '', nameEdited: false } }))}
+                              className="text-xs font-bold text-[#755B4C] hover:underline"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Stats footer -- summarizes what's actually been chosen above */}
               <div className="mt-3 pt-3 border-t border-[#E4D8C9] flex items-center justify-between">

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
-import { Pencil, Check, X, ExternalLink, Send, UtensilsCrossed } from 'lucide-react'
+import { Pencil, Check, X, ExternalLink, Send, UtensilsCrossed, Printer } from 'lucide-react'
 import RecipePlanSection, { rowKey } from '../components/RecipePlanSection'
-import type { Block, PlanRecipeRow } from '../components/RecipePlanSection'
+import type { Block, PlanRecipeRow, PlateOption } from '../components/RecipePlanSection'
 import { PlateCostSimulator } from '../components/PlateCostSimulator'
 import { formatIngredientWeight } from '../utils/unitConversion'
 import { CATEGORY_GROUP, GROUP_ORDER } from '../utils/categoryGroups'
@@ -38,6 +38,7 @@ type PrepIngredient = {
   unitPriceCents: number
   currentStockG: number
   store: string | null
+  grade: string | null
 }
 
 type BlockFinancials = { costCents: number; lb: number; recipeCount: number }
@@ -147,12 +148,44 @@ export default function MenuPlannerPage() {
   // not recipe_id, and name is the one thing both sides share. Same
   // name-based matching This Week's Menu already uses for prep completion.
   const [currentWeekOrderedByRecipe, setCurrentWeekOrderedByRecipe] = useState<Record<string, number>>({})
+  const [plateOptions, setPlateOptions] = useState<PlateOption[]>([])
+  const [storeAddresses, setStoreAddresses] = useState<Record<string, string>>({})
 
   useEffect(() => {
     fetchAll()
     fetchPlateConfig(apiUrl, token).then((cfg) => cfg && setPlateFormats(cfg.formats))
+    fetchStoreAddresses()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const fetchStoreAddresses = async () => {
+    try {
+      const res = await axios.get(`${apiUrl}/api/admin/menu-planner/store-addresses`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const byStore: Record<string, string> = {}
+      for (const s of res.data.data || []) {
+        if (s.address) byStore[s.store] = s.address
+      }
+      setStoreAddresses(byStore)
+    } catch (error) {
+      console.error('Error fetching store addresses:', error)
+    }
+  }
+
+  const saveStoreAddress = async (store: string, address: string) => {
+    try {
+      await axios.put(
+        `${apiUrl}/api/admin/menu-planner/store-addresses/${encodeURIComponent(store)}`,
+        { address },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      setStoreAddresses((current) => ({ ...current, [store]: address }))
+    } catch (error) {
+      console.error('Error saving store address:', error)
+      alert('Failed to save store address')
+    }
+  }
 
   // Re-fetches the draft plan, publish status, and prep/financials together
   // whenever the target week changes -- Submit Menu's label/status live
@@ -172,6 +205,7 @@ export default function MenuPlannerPage() {
     fetchPrepFinancials(weekStart)
     fetchFulfillmentTasks(weekStart || currentWeekStart)
     fetchDeliveries(weekStart || currentWeekStart)
+    fetchPlateOptions(weekStart)
   }
 
   const fetchDeliveries = async (weekStart: string) => {
@@ -182,6 +216,45 @@ export default function MenuPlannerPage() {
       setDeliveries(res.data.data?.orders || [])
     } catch (error) {
       console.error('Error fetching deliveries:', error)
+    }
+  }
+
+  const fetchPlateOptions = async (weekStart?: string) => {
+    try {
+      const res = await axios.get(`${apiUrl}/api/admin/menu-planner/plate-options`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: weekStart ? { week_start: weekStart } : undefined,
+      })
+      setPlateOptions(res.data.data || [])
+    } catch (error) {
+      console.error('Error fetching plate options:', error)
+    }
+  }
+
+  const createPlateOption = async (block: Block, proteinRecipeId: number, sideRecipeIds: number[], name: string) => {
+    try {
+      await axios.post(
+        `${apiUrl}/api/admin/menu-planner/plate-options`,
+        { block, protein_recipe_id: proteinRecipeId, side_recipe_ids: sideRecipeIds, name: name || null, week_start: targetWeekStart },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      fetchPlateOptions(targetWeekStart)
+    } catch (error: any) {
+      console.error('Error creating plate option:', error)
+      alert(error.response?.data?.error || 'Failed to create plate')
+    }
+  }
+
+  const deletePlateOption = async (id: number) => {
+    const previous = plateOptions
+    setPlateOptions((current) => current.filter((p) => p.id !== id))
+    try {
+      await axios.delete(`${apiUrl}/api/admin/menu-planner/plate-options/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    } catch (error) {
+      console.error('Error deleting plate option:', error)
+      setPlateOptions(previous)
     }
   }
 
@@ -224,6 +297,52 @@ export default function MenuPlannerPage() {
     } catch (error) {
       console.error('Error toggling fulfillment task:', error)
       setFulfillmentTasks((current) => current.map((t) => (t.id === task.id ? task : t)))
+    }
+  }
+
+  const createFulfillmentTask = async (title: string, department: string, operationalDay: string) => {
+    try {
+      const res = await axios.post(
+        `${apiUrl}/api/admin/tasks`,
+        { title, department, operational_day: operationalDay, week_start: targetWeekStart },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      const t = res.data.data
+      setFulfillmentTasks((current) => [
+        ...current,
+        {
+          id: t.id,
+          title: t.title,
+          department: t.department,
+          status: t.status,
+          operational_day: t.operational_day,
+          owner_name: null,
+          checklist_total: 0,
+          checklist_done: 0,
+        },
+      ])
+    } catch (error: any) {
+      console.error('Error creating fulfillment task:', error)
+      alert(error.response?.data?.error || 'Failed to create task')
+    }
+  }
+
+  // Drag-and-drop between day accordions -- re-homes a task to a
+  // different operational_day, same field Operations Hub's own task
+  // editor writes. Optimistic update with rollback on failure, same
+  // pattern as the checkbox toggle above.
+  const moveFulfillmentTaskToDay = async (taskId: number, operationalDay: string) => {
+    const previous = fulfillmentTasks
+    setFulfillmentTasks((current) => current.map((t) => (t.id === taskId ? { ...t, operational_day: operationalDay } : t)))
+    try {
+      await axios.patch(
+        `${apiUrl}/api/admin/tasks/${taskId}`,
+        { operational_day: operationalDay },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+    } catch (error) {
+      console.error('Error moving fulfillment task:', error)
+      setFulfillmentTasks(previous)
     }
   }
 
@@ -670,6 +789,9 @@ export default function MenuPlannerPage() {
         onUpdateVolume={updateVolume}
         onSaveBlock={saveBlock}
         onMoveBlock={moveBlockToWeek}
+        plateOptions={plateOptions}
+        onCreatePlate={createPlateOption}
+        onDeletePlate={deletePlateOption}
       />
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -903,6 +1025,8 @@ export default function MenuPlannerPage() {
         <FulfillmentChecklistColumn
           tasks={blockView === 'both' ? fulfillmentTasks : fulfillmentTasks.filter((t) => t.operational_day === blockView)}
           onToggle={toggleFulfillmentTask}
+          onCreateTask={createFulfillmentTask}
+          onMoveToDay={moveFulfillmentTaskToDay}
           deliveries={
             blockView === 'both'
               ? deliveries
@@ -915,6 +1039,8 @@ export default function MenuPlannerPage() {
           ingredients={prepFinancials.ingredients}
           blockView={blockView}
           onStoreUpdated={() => fetchPrepFinancials(targetWeekStart)}
+          storeAddresses={storeAddresses}
+          onSaveStoreAddress={saveStoreAddress}
         />
       </div>
     </main>
@@ -1043,18 +1169,32 @@ function PublishConfirmModal({
 // Operations Hub's weekly task templates always have been. Read + check-off
 // only; creating/editing tasks or their templates stays in Operations Hub
 // so there's one place that actually owns the task system.
+const FULFILLMENT_TASK_DEPARTMENTS = ['Kitchen', 'Procurement', 'Operations']
+
 function FulfillmentChecklistColumn({
   tasks,
   onToggle,
+  onCreateTask,
+  onMoveToDay,
   deliveries,
 }: {
   tasks: FulfillmentTask[]
   onToggle: (task: FulfillmentTask) => void
+  onCreateTask: (title: string, department: string, operationalDay: string) => void
+  onMoveToDay: (taskId: number, operationalDay: string) => void
   deliveries: Delivery[]
 }) {
   const [openDay, setOpenDay] = useState<string | null>(null)
-  const [showDeliveries, setShowDeliveries] = useState(false)
+  const [openDeliveryDay, setOpenDeliveryDay] = useState<'monday' | 'thursday' | null>(null)
+  const [dragOverDay, setDragOverDay] = useState<string | null>(null)
+  const [showAddTask, setShowAddTask] = useState(false)
+  const [newTaskTitle, setNewTaskTitle] = useState('')
+  const [newTaskDepartment, setNewTaskDepartment] = useState('Kitchen')
+  const [newTaskDay, setNewTaskDay] = useState('monday')
 
+  // Every operational day, not just ones with tasks already -- an empty
+  // day still needs to render so it's a valid drag-and-drop target, not
+  // just something you can only reach through the Add Task form.
   const byDay = useMemo(() => {
     const map = new Map<string, FulfillmentTask[]>()
     for (const t of tasks) {
@@ -1062,16 +1202,33 @@ function FulfillmentChecklistColumn({
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(t)
     }
-    return OPERATIONAL_DAY_ORDER.filter((d) => map.has(d)).map((d) => ({ day: d, tasks: map.get(d)! }))
+    return OPERATIONAL_DAY_ORDER.map((d) => ({ day: d, tasks: map.get(d) || [] }))
   }, [tasks])
 
   const doneCount = tasks.filter((t) => t.status === 'completed').length
 
+  const submitNewTask = () => {
+    const title = newTaskTitle.trim()
+    if (!title) return
+    onCreateTask(title, newTaskDepartment, newTaskDay)
+    setNewTaskTitle('')
+    setShowAddTask(false)
+    setOpenDay(newTaskDay)
+  }
+
   return (
     <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
-      <h2 className="mb-1 text-lg font-extrabold text-[#4B2B1D]">Fulfillment Checklist</h2>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <h2 className="text-lg font-extrabold text-[#4B2B1D]">Fulfillment Checklist</h2>
+        <button
+          onClick={() => setShowAddTask((v) => !v)}
+          className="flex-shrink-0 rounded-lg border border-[#2E527F] px-2 py-1 text-[10.5px] font-bold text-[#2E527F] hover:bg-[#EAF0F7] transition"
+        >
+          + Add task
+        </button>
+      </div>
       <div className="mb-4 flex items-start justify-between gap-2">
-        <p className="text-xs text-[#755B4C]">This week's recurring prep-through-delivery process</p>
+        <p className="text-xs text-[#755B4C]">This week's recurring prep-through-delivery process -- drag a task onto a day to move it</p>
         {tasks.length > 0 && (
           <span className="flex-shrink-0 rounded-full bg-[#F1EAE0] px-2 py-0.5 text-[10px] font-bold text-[#755B4C]">
             {doneCount}/{tasks.length} done
@@ -1079,52 +1236,118 @@ function FulfillmentChecklistColumn({
         )}
       </div>
 
-      {byDay.length === 0 ? (
-        <p className="text-xs text-[#755B4C] italic">No fulfillment tasks generated for this week yet — set them up in Operational Optimization.</p>
+      {showAddTask && (
+        <div className="mb-3 space-y-2 rounded-lg border border-dashed border-[#2E527F] p-2.5">
+          <input
+            autoFocus
+            value={newTaskTitle}
+            onChange={(e) => setNewTaskTitle(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && submitNewTask()}
+            placeholder="Task title..."
+            className="h-8 w-full rounded border border-[#B9A88F] bg-white px-2 text-xs text-[#4B2B1D] outline-none"
+          />
+          <div className="flex items-center gap-1.5">
+            <select
+              value={newTaskDepartment}
+              onChange={(e) => setNewTaskDepartment(e.target.value)}
+              className="h-8 flex-1 rounded border border-[#B9A88F] bg-white px-1.5 text-xs text-[#4B2B1D] outline-none"
+            >
+              {FULFILLMENT_TASK_DEPARTMENTS.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+            <select
+              value={newTaskDay}
+              onChange={(e) => setNewTaskDay(e.target.value)}
+              className="h-8 flex-1 rounded border border-[#B9A88F] bg-white px-1.5 text-xs capitalize text-[#4B2B1D] outline-none"
+            >
+              {OPERATIONAL_DAY_ORDER.map((d) => (
+                <option key={d} value={d} className="capitalize">{d}</option>
+              ))}
+            </select>
+            <button
+              onClick={submitNewTask}
+              disabled={!newTaskTitle.trim()}
+              className="h-8 flex-shrink-0 rounded-lg bg-[#16A34A] px-3 text-xs font-bold text-white transition disabled:opacity-40"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      )}
+
+      {tasks.length === 0 ? (
+        <p className="text-xs text-[#755B4C] italic">No fulfillment tasks generated for this week yet — add one above, or set up a recurring template in Operational Optimization.</p>
       ) : (
         <div className="max-h-[420px] overflow-y-auto space-y-2">
           {byDay.map(({ day, tasks: dayTasks }) => {
             const isOpen = openDay === day
             const dayDone = dayTasks.filter((t) => t.status === 'completed').length
+            const isDragOver = dragOverDay === day
             return (
-              <div key={day} className="rounded-lg border border-[#E4D8C9] bg-white overflow-hidden">
+              <div
+                key={day}
+                className="rounded-lg border bg-white overflow-hidden transition"
+                style={{ borderColor: isDragOver ? '#2E527F' : '#E4D8C9', boxShadow: isDragOver ? '0 0 0 2px #2E527F33' : undefined }}
+                onDragOver={(e) => { e.preventDefault(); setDragOverDay(day) }}
+                onDragLeave={() => setDragOverDay((d) => (d === day ? null : d))}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setDragOverDay(null)
+                  const taskId = parseInt(e.dataTransfer.getData('text/plain'), 10)
+                  if (Number.isFinite(taskId)) onMoveToDay(taskId, day)
+                }}
+              >
                 <button
                   onClick={() => setOpenDay(isOpen ? null : day)}
                   className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
                 >
                   <span className="text-sm font-bold capitalize text-[#4B2B1D]">{day}</span>
                   <span className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-xs font-bold" style={{ color: dayDone === dayTasks.length ? '#16A34A' : '#D97706' }}>
-                      {dayDone}/{dayTasks.length}
-                    </span>
+                    {dayTasks.length === 0 ? (
+                      <span className="text-[10px] text-[#9A7E6F]">no tasks</span>
+                    ) : (
+                      <span className="text-xs font-bold" style={{ color: dayDone === dayTasks.length ? '#16A34A' : '#D97706' }}>
+                        {dayDone}/{dayTasks.length}
+                      </span>
+                    )}
                     <span className="text-xs text-[#2E527F]">{isOpen ? '▲' : '▼'}</span>
                   </span>
                 </button>
                 {isOpen && (
                   <div className="border-t border-[#E4D8C9] divide-y divide-[#F0EAE0]">
-                    {dayTasks.map((task) => {
-                      const completed = task.status === 'completed'
-                      return (
-                        <label key={task.id} className="flex cursor-pointer items-center gap-2.5 px-3 py-2 hover:bg-[#FBF7F0]">
-                          <input
-                            type="checkbox"
-                            checked={completed}
-                            onChange={() => onToggle(task)}
-                            className="h-4 w-4 flex-shrink-0 accent-[#16A34A]"
-                          />
-                          <span className="min-w-0 flex-1">
-                            <p className={`truncate text-xs font-medium ${completed ? 'text-[#9A7E6F] line-through' : 'text-[#4B2B1D]'}`}>{task.title}</p>
-                            <span className="flex items-center gap-1.5">
-                              <span className="rounded-full bg-[#F1EAE0] px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">{task.department}</span>
-                              {task.owner_name && <span className="text-[9px] text-[#9A7E6F]">{task.owner_name}</span>}
-                              {task.checklist_total > 0 && (
-                                <span className="text-[9px] text-[#9A7E6F]">{task.checklist_done}/{task.checklist_total} items</span>
-                              )}
+                    {dayTasks.length === 0 ? (
+                      <p className="px-3 py-2 text-[10.5px] italic text-[#9A7E6F]">Drag a task here, or add one for {day}.</p>
+                    ) : (
+                      dayTasks.map((task) => {
+                        const completed = task.status === 'completed'
+                        return (
+                          <label
+                            key={task.id}
+                            draggable
+                            onDragStart={(e) => e.dataTransfer.setData('text/plain', String(task.id))}
+                            className="flex cursor-grab items-center gap-2.5 px-3 py-2 hover:bg-[#FBF7F0] active:cursor-grabbing"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={completed}
+                              onChange={() => onToggle(task)}
+                              className="h-4 w-4 flex-shrink-0 accent-[#16A34A]"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <p className={`truncate text-xs font-medium ${completed ? 'text-[#9A7E6F] line-through' : 'text-[#4B2B1D]'}`}>{task.title}</p>
+                              <span className="flex items-center gap-1.5">
+                                <span className="rounded-full bg-[#F1EAE0] px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">{task.department}</span>
+                                {task.owner_name && <span className="text-[9px] text-[#9A7E6F]">{task.owner_name}</span>}
+                                {task.checklist_total > 0 && (
+                                  <span className="text-[9px] text-[#9A7E6F]">{task.checklist_done}/{task.checklist_total} items</span>
+                                )}
+                              </span>
                             </span>
-                          </span>
-                        </label>
-                      )
-                    })}
+                          </label>
+                        )
+                      })
+                    )}
                   </div>
                 )}
               </div>
@@ -1134,39 +1357,52 @@ function FulfillmentChecklistColumn({
       )}
 
       {deliveries.length > 0 && (
-        <div className="mt-4 border-t border-[#E4D8C9] pt-4">
-          <button
-            onClick={() => setShowDeliveries((v) => !v)}
-            className="flex w-full items-center justify-between gap-2 text-left"
-          >
-            <span className="text-sm font-extrabold text-[#4B2B1D]">Deliveries</span>
-            <span className="flex items-center gap-2 flex-shrink-0">
-              <span className="rounded-full bg-[#F1EAE0] px-2 py-0.5 text-[10px] font-bold text-[#755B4C]">
-                {deliveries.length} customer{deliveries.length === 1 ? '' : 's'}
-              </span>
-              <span className="text-xs text-[#2E527F]">{showDeliveries ? '▲' : '▼'}</span>
-            </span>
-          </button>
-          {showDeliveries && (
-            <div className="mt-2 max-h-[260px] overflow-y-auto rounded-lg border border-[#E4D8C9] bg-white divide-y divide-[#F0EAE0]">
-              {deliveries.map((d) => (
-                <div key={d.id} className="flex items-center gap-2 px-3 py-2">
-                  <p className="min-w-0 flex-1 truncate text-xs font-medium text-[#4B2B1D]">{d.name}</p>
-                  <span className="flex flex-shrink-0 items-center gap-1.5">
-                    {d.total_meals_monday > 0 && (
-                      <span className="rounded bg-[#E8F5E9] px-1.5 py-[1px] text-[10px] font-bold text-[#16A34A]">Mon {d.total_meals_monday}</span>
-                    )}
-                    {d.total_meals_thursday > 0 && (
-                      <span className="rounded bg-[#FEF3E2] px-1.5 py-[1px] text-[10px] font-bold text-[#D97706]">Thu {d.total_meals_thursday}</span>
-                    )}
-                    {d.breakfast_meals > 0 && (
-                      <span className="rounded bg-[#E0F2FE] px-1.5 py-[1px] text-[10px] font-bold text-[#0EA5E9]">AM {d.breakfast_meals}</span>
-                    )}
-                  </span>
+        <div className="mt-4 space-y-2 border-t border-[#E4D8C9] pt-4">
+          <p className="text-sm font-extrabold text-[#4B2B1D]">Deliveries</p>
+          {([
+            { day: 'monday' as const, label: 'Monday', color: '#16A34A', customers: deliveries.filter((d) => d.total_meals_monday > 0) },
+            { day: 'thursday' as const, label: 'Thursday', color: '#D97706', customers: deliveries.filter((d) => d.total_meals_thursday > 0) },
+          ])
+            .filter((g) => g.customers.length > 0)
+            .map((group) => {
+              const isOpen = openDeliveryDay === group.day
+              return (
+                <div key={group.day} className="rounded-lg border border-[#E4D8C9] bg-white overflow-hidden">
+                  <button
+                    onClick={() => setOpenDeliveryDay(isOpen ? null : group.day)}
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+                  >
+                    <span className="text-sm font-bold" style={{ color: group.color }}>{group.label}</span>
+                    <span className="flex items-center gap-2 flex-shrink-0">
+                      <span className="rounded-full bg-[#F1EAE0] px-2 py-0.5 text-[10px] font-bold text-[#755B4C]">
+                        {group.customers.length} customer{group.customers.length === 1 ? '' : 's'}
+                      </span>
+                      <span className="text-xs text-[#2E527F]">{isOpen ? '▲' : '▼'}</span>
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div className="border-t border-[#E4D8C9] divide-y divide-[#F0EAE0]">
+                      {group.customers.map((d) => (
+                        <div key={d.id} className="flex items-center gap-2 px-3 py-2">
+                          <p className="min-w-0 flex-1 truncate text-xs font-medium text-[#4B2B1D]">{d.name}</p>
+                          <span className="flex flex-shrink-0 items-center gap-1.5">
+                            <span
+                              className="rounded px-1.5 py-[1px] text-[10px] font-bold"
+                              style={{ color: group.color, backgroundColor: group.color === '#16A34A' ? '#E8F5E9' : '#FEF3E2' }}
+                            >
+                              ×{group.day === 'monday' ? d.total_meals_monday : d.total_meals_thursday}
+                            </span>
+                            {d.breakfast_meals > 0 && (
+                              <span className="rounded bg-[#E0F2FE] px-1.5 py-[1px] text-[10px] font-bold text-[#0EA5E9]">AM {d.breakfast_meals}</span>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
+              )
+            })}
         </div>
       )}
     </div>
@@ -1185,11 +1421,15 @@ function FinancialsColumn({
   ingredients,
   blockView,
   onStoreUpdated,
+  storeAddresses,
+  onSaveStoreAddress,
 }: {
   financials: PrepAndFinancials['financials']
   ingredients: PrepIngredient[]
   blockView: 'both' | Block
   onStoreUpdated: () => void
+  storeAddresses: Record<string, string>
+  onSaveStoreAddress: (store: string, address: string) => void
 }) {
   const [openDay, setOpenDay] = useState<Block | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -1206,6 +1446,82 @@ function FinancialsColumn({
   // undercounting those items as free.
   const estCostCents = (ing: PrepIngredient, shortfallG: number) =>
     ing.unitPriceCents ? (ing.unitPriceCents / 453.592) * shortfallG : null
+
+  const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+  // Opens a clean, checkbox-per-item printable page grouped by store --
+  // what an employee actually carries into a store, not a screenshot of
+  // this app's own UI chrome. A new window rather than this page's own
+  // print styles, so it isn't constrained by whatever else is on screen.
+  // Grade/price/address make it something a staffer can actually shop
+  // from, not just a reminder of names -- "Print" in the toolbar is a
+  // real PDF export via the browser's own Save as PDF destination.
+  const exportShoppingList = (title: string, items: { ing: PrepIngredient; shortfallG: number }[]) => {
+    const byStore = new Map<string, { ing: PrepIngredient; shortfallG: number }[]>()
+    for (const item of items) {
+      const key = item.ing.store || 'Store not on file'
+      if (!byStore.has(key)) byStore.set(key, [])
+      byStore.get(key)!.push(item)
+    }
+    let grandTotalCents = 0
+    const sections = Array.from(byStore.entries())
+      .sort((a, b) => b[1].length - a[1].length)
+      .map(([store, storeItems]) => {
+        const address = storeAddresses[store]
+        return `
+          <h2>${escapeHtml(store)}${address ? `<span class="addr">${escapeHtml(address)}</span>` : ''}</h2>
+          <ul>
+            ${storeItems
+              .sort((a, b) => a.ing.name.localeCompare(b.ing.name))
+              .map(({ ing, shortfallG }) => {
+                const costCents = estCostCents(ing, shortfallG)
+                if (costCents != null) grandTotalCents += costCents
+                return `<li><input type="checkbox"><span class="name">${escapeHtml(ing.name)}${ing.grade ? `<span class="grade">${escapeHtml(ing.grade)}</span>` : ''}${ing.unitPriceCents ? `<span class="unit">$${(ing.unitPriceCents / 100).toFixed(2)}/lb</span>` : ''}</span><span class="qty">${formatNeeded(ing, shortfallG)}${costCents != null ? ` · $${(costCents / 100).toFixed(2)}` : ''}</span></li>`
+              })
+              .join('')}
+          </ul>`
+      })
+      .join('')
+
+    const html = `<!doctype html>
+<html>
+<head>
+<title>${title}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: -apple-system, Helvetica, Arial, sans-serif; color: #2B2016; max-width: 640px; margin: 0 auto; padding: 24px; }
+  .toolbar { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+  .toolbar button { font: inherit; font-weight: 700; color: #2E527F; border: 1px solid #2E527F; background: white; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .date { color: #755B4C; font-size: 13px; margin: 0 0 4px; }
+  .total { color: #2E527F; font-size: 14px; font-weight: 700; margin: 0 0 24px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; border-bottom: 2px solid #2E527F; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .addr { font-size: 11px; font-weight: 400; color: #755B4C; text-align: right; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #E4D8C9; font-size: 15px; }
+  input[type=checkbox] { width: 20px; height: 20px; flex-shrink: 0; }
+  .name { flex: 1; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .grade { font-size: 10px; font-weight: 700; color: #16A34A; background: #E8F5E9; border-radius: 999px; padding: 2px 7px; }
+  .unit { font-size: 11px; font-weight: 400; color: #755B4C; }
+  .qty { font-weight: 700; color: #D62F3D; text-align: right; white-space: nowrap; }
+  @media print { .toolbar { display: none; } }
+</style>
+</head>
+<body>
+<div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button></div>
+<h1>${title}</h1>
+<p class="date">${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+${sections ? `<p class="total">Estimated total: $${(grandTotalCents / 100).toFixed(2)}</p>` : ''}
+${sections || '<p>Nothing to buy.</p>'}
+</body>
+</html>`
+
+    // Blob URL rather than document.write into a window.open('') handle --
+    // a real, navigable URL the browser treats as an actual page (title,
+    // print, back/forward all work normally), not an opaque about:blank.
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
+    window.open(url, '_blank')
+  }
 
   const knownStores = useMemo(
     () => Array.from(new Set(ingredients.map((i) => i.store).filter((s): s is string => !!s))).sort(),
@@ -1282,18 +1598,30 @@ function FinancialsColumn({
                   {perLb != null && <p className="text-[10px] text-[#9A7E6F]">${perLb.toFixed(2)}/lb</p>}
                 </div>
               </div>
-              <button
-                onClick={() => setOpenDay(isOpen ? null : row.block)}
-                className="mt-2 flex w-full items-center justify-between gap-2 border-t border-[#F0EAE0] pt-2 text-left"
-              >
-                <span className="text-[10.5px] font-bold text-[#755B4C]">
-                  {dayShortfall.length === 0 ? 'Nothing to buy for this block' : `${dayShortfall.length} item${dayShortfall.length === 1 ? '' : 's'} to buy`}
-                </span>
-                <span className="flex flex-shrink-0 items-center gap-2">
-                  {dayShoppingCents > 0 && <span className="text-[10.5px] font-bold text-[#D62F3D]">~${(dayShoppingCents / 100).toFixed(2)}</span>}
-                  {dayShortfall.length > 0 && <span className="text-[10px] text-[#2E527F]">{isOpen ? '▲' : '▼'}</span>}
-                </span>
-              </button>
+              <div className="mt-2 flex items-center gap-1.5 border-t border-[#F0EAE0] pt-2">
+                <button
+                  onClick={() => setOpenDay(isOpen ? null : row.block)}
+                  className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
+                >
+                  <span className="text-[10.5px] font-bold text-[#755B4C]">
+                    {dayShortfall.length === 0 ? 'Nothing to buy for this block' : `${dayShortfall.length} item${dayShortfall.length === 1 ? '' : 's'} to buy`}
+                  </span>
+                  <span className="flex flex-shrink-0 items-center gap-2">
+                    {dayShoppingCents > 0 && <span className="text-[10.5px] font-bold text-[#D62F3D]">~${(dayShoppingCents / 100).toFixed(2)}</span>}
+                    {dayShortfall.length > 0 && <span className="text-[10px] text-[#2E527F]">{isOpen ? '▲' : '▼'}</span>}
+                  </span>
+                </button>
+                {dayShortfall.length > 0 && (
+                  <button
+                    onClick={() => exportShoppingList(`Shopping List — ${row.label}`, dayShortfall)}
+                    title="Export shopping list for employees"
+                    className="flex-shrink-0 text-[#755B4C] hover:text-[#2E527F]"
+                    aria-label={`Export shopping list for ${row.label}`}
+                  >
+                    <Printer className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
 
               {isOpen && dayShortfall.length > 0 && (
                 <div className="mt-1.5 max-h-[220px] overflow-y-auto divide-y divide-[#F0EAE0]">
@@ -1369,13 +1697,91 @@ function FinancialsColumn({
               </div>
             </div>
             {combinedShoppingCents > 0 && (
-              <p className="mt-1.5 text-[10.5px] font-bold text-[#E9DFD0]">
-                Shopping: ~${(combinedShoppingCents / 100).toFixed(2)}{combinedUnknownCost ? '+' : ''} grand total
-              </p>
+              <div className="mt-1.5 flex items-center justify-between gap-2">
+                <p className="text-[10.5px] font-bold text-[#E9DFD0]">
+                  Shopping: ~${(combinedShoppingCents / 100).toFixed(2)}{combinedUnknownCost ? '+' : ''} grand total
+                </p>
+                <button
+                  onClick={() => exportShoppingList('Shopping List — Combined', ingredients.filter((ing) => ing.shortfallG > 0).map((ing) => ({ ing, shortfallG: ing.shortfallG })))}
+                  title="Export combined shopping list for employees"
+                  className="flex-shrink-0 text-[#E9DFD0] hover:text-white"
+                  aria-label="Export combined shopping list"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                </button>
+              </div>
             )}
           </div>
         )}
+
+        {knownStores.length > 0 && (
+          <StoreAddressEditor stores={knownStores} addresses={storeAddresses} onSave={onSaveStoreAddress} />
+        )}
       </div>
+    </div>
+  )
+}
+
+// Addresses feed the shopping-list export's store headers -- set once per
+// store here, reused on every future export instead of typed out each
+// time. Collapsed by default since it's a setup task, not something
+// checked every week.
+function StoreAddressEditor({
+  stores,
+  addresses,
+  onSave,
+}: {
+  stores: string[]
+  addresses: Record<string, string>
+  onSave: (store: string, address: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [editingStore, setEditingStore] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
+
+  return (
+    <div className="border-t border-[#E4D8C9] pt-2">
+      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between gap-2 text-left">
+        <span className="text-[10.5px] font-bold text-[#755B4C]">Store addresses</span>
+        <span className="text-[10px] text-[#2E527F]">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-1">
+          {stores.map((store) =>
+            editingStore === store ? (
+              <div key={store} className="flex items-center gap-1.5">
+                <span className="w-24 flex-shrink-0 truncate text-[10.5px] font-bold text-[#4B2B1D]">{store}</span>
+                <input
+                  autoFocus
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { onSave(store, editValue.trim()); setEditingStore(null) }
+                  }}
+                  placeholder="Street address..."
+                  className="h-6 flex-1 min-w-0 rounded border border-[#2E527F] bg-white px-1.5 text-[10.5px] text-[#4B2B1D] outline-none"
+                />
+                <button onClick={() => { onSave(store, editValue.trim()); setEditingStore(null) }} className="flex-shrink-0 text-[#16A34A] hover:text-[#15873F]" aria-label="Save address">
+                  <Check className="h-3 w-3" />
+                </button>
+                <button onClick={() => setEditingStore(null)} className="flex-shrink-0 text-[#9A7E6F] hover:text-[#D62F3D]" aria-label="Cancel">
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ) : (
+              <button
+                key={store}
+                onClick={() => { setEditingStore(store); setEditValue(addresses[store] || '') }}
+                className="group flex w-full items-center gap-1.5 text-left"
+              >
+                <span className="w-24 flex-shrink-0 truncate text-[10.5px] font-bold text-[#4B2B1D]">{store}</span>
+                <span className="flex-1 min-w-0 truncate text-[10.5px] text-[#755B4C]">{addresses[store] || 'No address set'}</span>
+                <Pencil className="h-2.5 w-2.5 flex-shrink-0 text-[#C9BBA8] opacity-0 transition group-hover:opacity-100" />
+              </button>
+            )
+          )}
+        </div>
+      )}
     </div>
   )
 }
