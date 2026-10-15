@@ -109,7 +109,8 @@
   .protein-status{font-size:11px;color:var(--ink-muted);margin-top:3px;font-weight:500;}
   .protein-status.added{color:var(--green);font-weight:600;}
   .protein-status.added::before{content:'✓ ';}
-  .featured-badge{display:inline-flex;align-items:center;gap:3px;margin-left:7px;font-size:10px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--orange);background:#FCEFD9;border-radius:999px;padding:2px 8px;vertical-align:middle;}
+  .featured-eyebrow{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;text-transform:none;letter-spacing:.02em;color:var(--orange);background:#FCEFD9;border-radius:999px;padding:2px 8px;margin-bottom:5px;}
+  .protein-name--plate{text-transform:none;font-weight:700;line-height:1.3;}
   .protein-chevron{font-size:20px;color:var(--navy);transition:transform .2s ease;flex-shrink:0;}
   .protein-chevron.open{transform:rotate(90deg);}
   .protein-detail{display:none;padding:0 16px 16px;}
@@ -518,8 +519,9 @@ function buildProteinItem(dayKey, recipe, sides, sauces, siblingsContainer){
   item.innerHTML = `
     <div class="protein-row">
       <div>
-        <div class="protein-name">${escapeHtml(recipe.name)}${featured ? `<span class="featured-badge">&#11088; Staff pick</span>` : ''}</div>
-        <div class="protein-status">${featured ? `Tap for our recommended plate${featured.defaultSideNames && featured.defaultSideNames.length ? ' -- ' + escapeHtml(featured.defaultSideNames.join(', ')) : ''}` : 'Tap to choose format'}</div>
+        ${featured ? `<div class="featured-eyebrow">&#11088; Staff pick</div>` : ''}
+        <div class="protein-name${featured ? ' protein-name--plate' : ''}">${featured ? escapeHtml(featured.name || recipe.name) : escapeHtml(recipe.name)}</div>
+        <div class="protein-status">${featured ? `${escapeHtml(recipe.name)} &middot; tap to customize` : 'Tap to choose format'}</div>
       </div>
       <div class="protein-chevron">&rsaquo;</div>
     </div>
