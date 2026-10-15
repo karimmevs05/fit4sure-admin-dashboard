@@ -31,7 +31,7 @@ type ByThePoundRow = { id: number; category: string; price_cents: number }
 
 type AddonRow = { id: number; key: string; label: string; free_count: number; extra_price_cents: number }
 
-type RecipeOption = { recipe_id: number; name: string }
+export type RecipeOption = { recipe_id: number; name: string }
 
 // One row per format for the currently-selected recipe -- `standard` is the
 // shared value (same for every recipe), `override` is this specific
@@ -49,7 +49,11 @@ function centsToDollarsStr(cents: number): string {
   return (cents / 100).toFixed(2)
 }
 
-export default function PortionsPricingPanel() {
+// `recipes` is scoped by the caller to whatever's actually live on the
+// current week's plan (both blocks, checked "on") -- not every recipe ever
+// created -- so the per-recipe override dropdown only ever offers what's
+// really being sold this week.
+export default function PortionsPricingPanel({ recipes }: { recipes: RecipeOption[] }) {
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
 
@@ -78,25 +82,12 @@ export default function PortionsPricingPanel() {
   // Recipe toggle -- no selection (default) edits the shared standard above;
   // selecting a recipe switches the Plate Formats table to that recipe's
   // effective values, each with its own "Custom for this recipe" checkbox.
-  const [recipes, setRecipes] = useState<RecipeOption[]>([])
   const [selectedRecipeId, setSelectedRecipeId] = useState<number | ''>('')
   const [recipeOverrides, setRecipeOverrides] = useState<RecipeOverrideRow[]>([])
   const [recipeOverridePriceInputs, setRecipeOverridePriceInputs] = useState<Record<string, string>>({})
   const [loadingRecipeOverrides, setLoadingRecipeOverrides] = useState(false)
   const [savingRecipeOverrides, setSavingRecipeOverrides] = useState(false)
   const [recipeOverridesError, setRecipeOverridesError] = useState<string | null>(null)
-
-  const fetchRecipes = async () => {
-    try {
-      const res = await axios.get(`${apiUrl}/api/admin/recipes`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      setRecipes((res.data.data || []).map((r: any) => ({ recipe_id: r.recipe_id, name: r.name })).sort((a: RecipeOption, b: RecipeOption) => a.name.localeCompare(b.name)))
-    } catch {
-      // Non-fatal -- the recipe dropdown just stays empty; the shared
-      // standard editor above still works fine without it.
-    }
-  }
 
   const fetchRecipeOverrides = async (recipeId: number) => {
     try {
@@ -151,7 +142,6 @@ export default function PortionsPricingPanel() {
 
   useEffect(() => {
     fetchConfig()
-    fetchRecipes()
   }, [])
 
   useEffect(() => {

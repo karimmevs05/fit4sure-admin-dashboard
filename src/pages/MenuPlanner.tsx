@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
-import { Pencil, Check, X, ExternalLink, Send, UtensilsCrossed, Printer } from 'lucide-react'
+import { Pencil, Check, X, ExternalLink, Send, UtensilsCrossed, Printer, DollarSign } from 'lucide-react'
 import RecipePlanSection, { rowKey } from '../components/RecipePlanSection'
 import type { Block, PlanRecipeRow, PlateOption } from '../components/RecipePlanSection'
 import { PlateCostSimulator } from '../components/PlateCostSimulator'
@@ -9,6 +9,7 @@ import { CATEGORY_GROUP, GROUP_ORDER } from '../utils/categoryGroups'
 import { fetchPlateConfig, plateComponentFor, servingGramsFor } from '../utils/plateStructure'
 import type { PlateFormatConfig } from '../utils/plateStructure'
 import WeeklyPrepPage from './WeeklyPrep'
+import PortionsPricingPanel from '../components/PortionsPricingPanel'
 
 const GRAMS_PER_POUND = 455
 
@@ -84,6 +85,7 @@ export default function MenuPlannerPage() {
   const [weekStart, setWeekStart] = useState<{ sunday?: string; monday?: string; thursday?: string }>({})
   const [currentWeekMenu, setCurrentWeekMenu] = useState<CurrentWeekMenu>({ monday: [], thursday: [] })
   const [showPrepPage, setShowPrepPage] = useState(false)
+  const [activeTab, setActiveTab] = useState<'plan' | 'pricing'>('plan')
   const [editingPlanItemId, setEditingPlanItemId] = useState<number | null>(null)
   const [editVolumeValue, setEditVolumeValue] = useState('')
   const [savingVolume, setSavingVolume] = useState(false)
@@ -106,6 +108,19 @@ export default function MenuPlannerPage() {
   const [rows, setRows] = useState<Record<Block, PlanRecipeRow[]>>({ monday: [], thursday: [] })
   const [dirty, setDirty] = useState<Record<Block, boolean>>({ monday: false, thursday: false })
   const [savingBlock, setSavingBlock] = useState<Block | null>(null)
+
+  // Recipes actually live on this week's plan (either block, checked "on")
+  // -- scopes Portions & Pricing's recipe selector to what's really being
+  // sold this week instead of every recipe ever created.
+  const weekActiveRecipes = useMemo(() => {
+    const byId = new Map<number, string>()
+    for (const block of ['monday', 'thursday'] as Block[]) {
+      for (const r of rows[block]) {
+        if (r.selected && r.recipe_id != null) byId.set(r.recipe_id, r.name)
+      }
+    }
+    return Array.from(byId, ([recipe_id, name]) => ({ recipe_id, name })).sort((a, b) => a.name.localeCompare(b.name))
+  }, [rows])
 
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
@@ -774,6 +789,31 @@ export default function MenuPlannerPage() {
         </div>
       </div>
 
+      <div className="flex items-center gap-2 border-b border-[#D8CDBE] pb-0">
+        <button
+          onClick={() => setActiveTab('plan')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-bold border-b-2 transition ${
+            activeTab === 'plan' ? 'border-[#2E527F] text-[#2E527F]' : 'border-transparent text-[#9A8774] hover:text-[#4B2B1D]'
+          }`}
+        >
+          <UtensilsCrossed className="h-4 w-4" />
+          Plan
+        </button>
+        <button
+          onClick={() => setActiveTab('pricing')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-bold border-b-2 transition ${
+            activeTab === 'pricing' ? 'border-[#2E527F] text-[#2E527F]' : 'border-transparent text-[#9A8774] hover:text-[#4B2B1D]'
+          }`}
+        >
+          <DollarSign className="h-4 w-4" />
+          Portions & Pricing
+        </button>
+      </div>
+
+      {activeTab === 'pricing' && <PortionsPricingPanel recipes={weekActiveRecipes} />}
+
+      <div className={activeTab === 'plan' ? 'space-y-6' : 'hidden'}>
+
       <PlateCostSimulator onAddToBlock={addComboToBlock} />
 
       <RecipePlanSection
@@ -1042,6 +1082,7 @@ export default function MenuPlannerPage() {
           storeAddresses={storeAddresses}
           onSaveStoreAddress={saveStoreAddress}
         />
+      </div>
       </div>
     </main>
 
