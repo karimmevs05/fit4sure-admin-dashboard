@@ -109,6 +109,7 @@
   .protein-status{font-size:11px;color:var(--ink-muted);margin-top:3px;font-weight:500;}
   .protein-status.added{color:var(--green);font-weight:600;}
   .protein-status.added::before{content:'✓ ';}
+  .featured-badge{display:inline-flex;align-items:center;gap:3px;margin-left:7px;font-size:10px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--orange);background:#FCEFD9;border-radius:999px;padding:2px 8px;vertical-align:middle;}
   .protein-chevron{font-size:20px;color:var(--navy);transition:transform .2s ease;flex-shrink:0;}
   .protein-chevron.open{transform:rotate(90deg);}
   .protein-detail{display:none;padding:0 16px 16px;}
@@ -513,11 +514,12 @@ function buildProteinItem(dayKey, recipe, sides, sauces, siblingsContainer){
 
   const cartKey = (name, formatId) => `${dayKey}::${name}::${formatId}`;
 
+  const featured = recipe.featuredPlate;
   item.innerHTML = `
     <div class="protein-row">
       <div>
-        <div class="protein-name">${escapeHtml(recipe.name)}</div>
-        <div class="protein-status">Tap to choose format</div>
+        <div class="protein-name">${escapeHtml(recipe.name)}${featured ? `<span class="featured-badge">&#11088; Staff pick</span>` : ''}</div>
+        <div class="protein-status">${featured ? `Tap for our recommended plate${featured.defaultSideNames && featured.defaultSideNames.length ? ' -- ' + escapeHtml(featured.defaultSideNames.join(', ')) : ''}` : 'Tap to choose format'}</div>
       </div>
       <div class="protein-chevron">&rsaquo;</div>
     </div>
@@ -646,33 +648,57 @@ function buildProteinItem(dayKey, recipe, sides, sauces, siblingsContainer){
     item.classList.toggle('has-open', !isOpen);
   });
 
+  // Shared by both a manual format tap and the staff-pick auto-select
+  // below, so picking "Regular" for you and picking it yourself behave
+  // identically -- same side reset, same re-render.
+  function selectFormat(format, optEl) {
+    formatRow.querySelectorAll('.format-option').forEach((el) => el.classList.remove('active'));
+    optEl.classList.add('active');
+    selectedFormat = format;
+    addBtn.disabled = false;
+    addBtn.textContent = 'Add';
+    addBtn.classList.remove('added');
+    // Switching format changes which sides even apply -- drop whatever
+    // was added under the old format rather than leave a stale, possibly
+    // no-longer-applicable side (and its price) sitting in the cart.
+    // Sauces aren't format-dependent, so they're left alone here.
+    sidesGroup.reset();
+    renderSides();
+    updateOrderBar();
+    renderMacrosBox();
+  }
+
+  const formatOptEls = {};
   recipe.formats.forEach((format) => {
     const opt = document.createElement('div');
     opt.className = 'format-option';
     opt.innerHTML = `<span class="format-name">${escapeHtml(format.label)}</span><span class="format-price">${money(format.price)}</span>`;
-    opt.addEventListener('click', () => {
-      formatRow.querySelectorAll('.format-option').forEach((el) => el.classList.remove('active'));
-      opt.classList.add('active');
-      selectedFormat = format;
-      addBtn.disabled = false;
-      addBtn.textContent = 'Add';
-      addBtn.classList.remove('added');
-      // Switching format changes which sides even apply -- drop whatever
-      // was added under the old format rather than leave a stale, possibly
-      // no-longer-applicable side (and its price) sitting in the cart.
-      // Sauces aren't format-dependent, so they're left alone here.
-      sidesGroup.reset();
-      renderSides();
-      updateOrderBar();
-      renderMacrosBox();
-    });
+    opt.addEventListener('click', () => selectFormat(format, opt));
     formatRow.appendChild(opt);
+    formatOptEls[format.label] = opt;
   });
 
   const qtyValEl = item.querySelector('.qty-val');
   const addBtn = item.querySelector('.add-btn');
   const notesEl = item.querySelector('.notes-input');
   let qty = 1;
+
+  // Staff-picked plate (see "Add plate" in Menu Planner) -- pre-selects
+  // Regular format and its default sides so a customer can open this and
+  // tap Add, while every control here stays exactly as changeable as if
+  // they'd picked it all themselves.
+  if (featured) {
+    const regularFormat = recipe.formats.find((f) => f.label === 'Regular');
+    const regularOpt = formatOptEls['Regular'];
+    if (regularFormat && regularOpt) {
+      selectFormat(regularFormat, regularOpt);
+      (featured.defaultSideNames || []).forEach((sideName) => {
+        const chip = Array.from(sidesGroup.wrap.querySelectorAll('.side-chip'))
+          .find((el) => el.textContent.trim().startsWith(sideName));
+        if (chip && !chip.classList.contains('added')) chip.click();
+      });
+    }
+  }
 
   item.querySelector('.qty-dec').addEventListener('click', () => {
     if (qty > 1) { qty -= 1; qtyValEl.textContent = qty; }
