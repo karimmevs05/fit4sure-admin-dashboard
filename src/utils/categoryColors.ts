@@ -1,9 +1,9 @@
 // Shared recipe-category background colors (brand swatches): proteins red,
-// vegetables green, carbs yellow, sauces blue-grey. Categories with no clear
-// macro bucket (beverage, breakfast) keep the neutral cream background.
-// Used anywhere a recipe is shown as its own card/row/chip -- Recipe Library
-// cards, Weekly Menu Planner rows, and the shared recipe picker's selected
-// chips -- so recolors stay in sync across all of them.
+// vegetables green, carbs yellow, sauces blue-grey, breakfast amber.
+// Categories with no clear macro bucket (beverage) keep the neutral cream
+// background. Used anywhere a recipe is shown as its own card/row/chip --
+// Recipe Library cards, Weekly Menu Planner rows, and the shared recipe
+// picker's selected chips -- so recolors stay in sync across all of them.
 export const DEFAULT_CARD_BG = "bg-[rgba(251,247,240,0.9)]";
 
 export const CATEGORY_CARD_BG: Record<string, string> = {
@@ -15,8 +15,8 @@ export const CATEGORY_CARD_BG: Record<string, string> = {
   pasta: "bg-[#F1E0A5]/85",
   vegetables: "bg-[#A4B89E]/85",
   sauces: "bg-[#ABBCCF]/85",
+  breakfast: "bg-[#E8B673]/85",
   beverage: DEFAULT_CARD_BG,
-  breakfast: DEFAULT_CARD_BG,
 };
 
 export function cardBgForCategory(category?: string | null): string {
@@ -39,8 +39,8 @@ const CATEGORY_ROW_ACCENT: Record<string, string> = {
   pasta: "border-l-4 border-l-[#D9BE5F] bg-[#F1E0A5]/15",
   vegetables: "border-l-4 border-l-[#A4B89E] bg-[#A4B89E]/10",
   sauces: "border-l-4 border-l-[#ABBCCF] bg-[#ABBCCF]/10",
+  breakfast: "border-l-4 border-l-[#D99A4E] bg-[#E8B673]/15",
   beverage: DEFAULT_ROW_ACCENT,
-  breakfast: DEFAULT_ROW_ACCENT,
 };
 
 export function rowAccentForCategory(category?: string | null): string {
