@@ -524,12 +524,38 @@ export default function RecipePlanSection({
                   return combineStats(regularFormatStatsFor(matched), plateExtraStats(plate.extraIngredients))
                 }
 
+                // How many of this exact plate can actually be assembled
+                // this week, bottlenecked by whichever component (protein
+                // or a side) runs out first at its own Regular-serving
+                // size -- not a separately staff-guessed number, so it
+                // can't drift from what's really been prepped/forecasted.
+                // A component recipe no longer live in this block (pulled
+                // out after the plate was saved) hard-zeroes the count
+                // rather than silently being skipped, since that's a real
+                // "this plate can't be made as configured" signal, not a
+                // rounding edge case. Extra ingredients (garnishes from
+                // inventory, not the recipe pool) never bottleneck this --
+                // same "recipes matching the plate" scope as the rest of
+                // this feature.
+                const plateServingsAvailable = (proteinRecipeId: number | null, sideRecipeIds: number[]): number | null => {
+                  if (!proteinRecipeId) return null
+                  const counts: number[] = []
+                  for (const id of [proteinRecipeId, ...sideRecipeIds]) {
+                    const row = selected.find((r) => r.recipe_id === id)
+                    if (!row) { counts.push(0); continue }
+                    const servings = regularServingsFor(row)
+                    if (servings) counts.push(servings.count)
+                  }
+                  return counts.length > 0 ? Math.min(...counts) : null
+                }
+
                 return (
                   <div className="mt-2 border-t border-[#E4D8C9] pt-2">
                     {blockPlates.length > 0 && (
                       <div className="mb-1.5 space-y-1">
                         {blockPlates.map((plate) => {
                           const stats = plateRegularStats(plate)
+                          const servingsAvailable = plateServingsAvailable(plate.proteinRecipeId, plate.sides.map((s) => s.recipeId))
                           return (
                             <div key={plate.id} className="flex items-center gap-2 rounded-lg border border-[#E4D8C9] bg-white px-2.5 py-1.5">
                               <button
@@ -555,6 +581,16 @@ export default function RecipePlanSection({
                                   </p>
                                 )}
                               </div>
+                              {servingsAvailable != null && (
+                                <span
+                                  className={`flex-shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold whitespace-nowrap ${
+                                    servingsAvailable > 0 ? 'bg-[#EAF0F7] text-[#2E527F]' : 'bg-[#FFF4F5] text-[#D62F3D]'
+                                  }`}
+                                  title="How many of this plate can be assembled this week, bottlenecked by whichever protein/side recipe runs out first at Regular serving size"
+                                >
+                                  {servingsAvailable} plate{servingsAvailable === 1 ? '' : 's'} this week
+                                </span>
+                              )}
                               <button
                                 onClick={() => startEditingPlate(block, plate)}
                                 className="flex-shrink-0 text-[#2E527F] hover:text-[#16425F] transition"
@@ -682,6 +718,7 @@ export default function RecipePlanSection({
                               { costCents: 0, calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
                             ))
                             if (!totals) return null
+                            const servingsAvailable = plateServingsAvailable(draft.proteinId, draft.sideIds)
                             return (
                               <div className="rounded-lg bg-[#F1EAE0] px-2.5 py-1.5">
                                 <p className="text-[9px] font-bold uppercase tracking-wide text-[#755B4C]">Plate stats · Regular format</p>
@@ -691,6 +728,22 @@ export default function RecipePlanSection({
                                     {Math.round(totals.calories)} cal · {totals.protein_g.toFixed(0)}g P · {totals.carbs_g.toFixed(0)}g C · {totals.fat_g.toFixed(0)}g F
                                   </p>
                                 </div>
+                                {servingsAvailable != null && (
+                                  <p className={`mt-0.5 text-[10px] font-bold ${servingsAvailable > 0 ? 'text-[#2E527F]' : 'text-[#D62F3D]'}`}>
+                                    {servingsAvailable} plate{servingsAvailable === 1 ? '' : 's'} makeable this week -- bottlenecked by {
+                                      (() => {
+                                        const rowsIn = [draft.proteinId, ...draft.sideIds]
+                                          .map((id) => selected.find((r) => r.recipe_id === id))
+                                          .filter((r): r is PlanRecipeRow => !!r)
+                                        const bottleneck = rowsIn
+                                          .map((r) => ({ r, s: regularServingsFor(r) }))
+                                          .filter((x): x is { r: PlanRecipeRow; s: { count: number; servingG: number } } => !!x.s)
+                                          .sort((a, b) => a.s.count - b.s.count)[0]
+                                        return bottleneck ? bottleneck.r.name : 'a missing ingredient'
+                                      })()
+                                    }
+                                  </p>
+                                )}
                               </div>
                             )
                           })()}
