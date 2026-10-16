@@ -33,6 +33,14 @@ type AddonRow = { id: number; key: string; label: string; free_count: number; ex
 
 export type RecipeOption = { recipe_id: number; name: string }
 
+// A staff-curated plate (protein + sides), as a pricing target -- a plate
+// has no price of its own, it resolves to its protein recipe's own
+// format price/portions (recipeId), same recipe_format_overrides row
+// "Other live proteins" below edits directly. Surfaced here so the
+// sheet is organized around what staff actually think in terms of
+// ("the Chimichurri plate") rather than bare recipe names.
+export type PlateOption = { id: number; recipeId: number; label: string }
+
 // One row per format for the currently-selected recipe -- `standard` is the
 // shared value (same for every recipe), `override` is this specific
 // recipe's custom value if one has ever been saved (active: false means a
@@ -59,7 +67,15 @@ function centsToDollarsStr(cents: number): string {
 // Plan tab next door (Plate Stats, serving sizes) refetch live config and
 // reflect a pricing change immediately, instead of only after a full page
 // reload.
-export default function PortionsPricingPanel({ recipes, onSaved }: { recipes: RecipeOption[]; onSaved?: () => void }) {
+export default function PortionsPricingPanel({
+  recipes,
+  plates,
+  onSaved,
+}: {
+  recipes: RecipeOption[]
+  plates: PlateOption[]
+  onSaved?: () => void
+}) {
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
 
@@ -323,7 +339,7 @@ export default function PortionsPricingPanel({ recipes, onSaved }: { recipes: Re
       const inputs: Record<string, string> = {}
       for (const r of rows) inputs[r.formatKey] = centsToDollarsStr(r.override ? r.override.priceCents : r.standard.priceCents)
       setRecipeOverridePriceInputs(inputs)
-      flashSaved(`${recipes.find((r) => r.recipe_id === selectedRecipeId)?.name || 'Recipe'} overrides saved`)
+      flashSaved(`${selectedLabel} overrides saved`)
       onSaved?.()
     } catch (err: any) {
       setRecipeOverridesError(err.response?.data?.error || 'Failed to save')
@@ -331,6 +347,15 @@ export default function PortionsPricingPanel({ recipes, onSaved }: { recipes: Re
       setSavingRecipeOverrides(false)
     }
   }
+
+  // A protein already covered by a plate stays out of this second list --
+  // it's still reachable (same recipeId, same override row), just via the
+  // plate entry above instead of twice.
+  const platedRecipeIds = new Set(plates.map((p) => p.recipeId))
+  const otherLiveProteins = recipes.filter((r) => !platedRecipeIds.has(r.recipe_id))
+  const selectedPlate = plates.find((p) => p.recipeId === selectedRecipeId)
+  const selectedIsPlate = !!selectedPlate
+  const selectedLabel = selectedPlate?.label || recipes.find((r) => r.recipe_id === selectedRecipeId)?.name || 'Recipe'
 
   if (loading) {
     return (
@@ -368,12 +393,15 @@ export default function PortionsPricingPanel({ recipes, onSaved }: { recipes: Re
         immediately; already-placed orders never change retroactively.
       </div>
 
-      {/* Plate formats: price + portion sizes -- the recipe toggle at top
-          switches this whole card between editing the shared standard
-          (no recipe selected) and one specific recipe's overrides. */}
+      {/* Plate formats: price + portion sizes -- the selector at top
+          switches this whole card between editing the shared standard (no
+          selection), one of this week's constructed plates, or a live
+          protein that hasn't been built into a plate yet. Plates are the
+          main entries since a plate has no price of its own -- selecting
+          one just resolves to its protein recipe's own override row. */}
       <div className="rounded-2xl border border-[#2E527F] bg-[rgba(251,247,240,0.9)] p-6">
         <div className="mb-4">
-          <label className="block text-[11px] font-bold uppercase tracking-wide text-[#755B4C] mb-1.5">Recipe</label>
+          <label className="block text-[11px] font-bold uppercase tracking-wide text-[#755B4C] mb-1.5">Plate / Recipe</label>
           <div className="relative max-w-sm">
             <select
               value={selectedRecipeId}
@@ -381,23 +409,34 @@ export default function PortionsPricingPanel({ recipes, onSaved }: { recipes: Re
               className="w-full appearance-none rounded-lg border border-[#B9A88F] bg-white px-3 py-2 pr-9 text-sm font-semibold text-[#4B2B1D]"
             >
               <option value="">Standard (applies to every recipe)</option>
-              {recipes.map((r) => (
-                <option key={r.recipe_id} value={r.recipe_id}>{r.name}</option>
-              ))}
+              {plates.length > 0 && (
+                <optgroup label="This week's plates">
+                  {plates.map((p) => (
+                    <option key={p.id} value={p.recipeId}>{p.label}</option>
+                  ))}
+                </optgroup>
+              )}
+              {otherLiveProteins.length > 0 && (
+                <optgroup label="Other live proteins (no plate yet)">
+                  {otherLiveProteins.map((r) => (
+                    <option key={r.recipe_id} value={r.recipe_id}>{r.name}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#755B4C]" />
           </div>
           <p className="mt-1.5 text-xs text-[#755B4C]">
             {selectedRecipeId === ''
               ? 'Editing the shared standard every recipe uses by default.'
-              : 'A recipe uses the standard unless "Custom" is checked below for a format.'}
+              : `A ${selectedIsPlate ? 'plate’s protein' : 'recipe'} uses the standard unless "Custom" is checked below for a format.`}
           </p>
         </div>
 
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <div>
             <h3 className="text-base font-extrabold text-[#4B2B1D]">
-              {selectedRecipeId === '' ? 'Plate Formats' : recipes.find((r) => r.recipe_id === selectedRecipeId)?.name || 'Plate Formats'}
+              {selectedRecipeId === '' ? 'Plate Formats' : selectedLabel}
             </h3>
             <p className="text-xs text-[#755B4C] mt-0.5">Price and portion sizes (protein oz / carbs g / veggies g) per format</p>
           </div>
@@ -409,7 +448,7 @@ export default function PortionsPricingPanel({ recipes, onSaved }: { recipes: Re
             <Save className="h-4 w-4" />
             {selectedRecipeId === ''
               ? (savingFormats ? 'Saving...' : 'Save Formats')
-              : (savingRecipeOverrides ? 'Saving...' : 'Save This Recipe')}
+              : (savingRecipeOverrides ? 'Saving...' : selectedIsPlate ? 'Save This Plate' : 'Save This Recipe')}
           </button>
         </div>
 

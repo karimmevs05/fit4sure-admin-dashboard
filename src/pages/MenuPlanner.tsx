@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import axios from 'axios'
 import { Pencil, Check, X, ExternalLink, Send, UtensilsCrossed, Printer, DollarSign } from 'lucide-react'
-import RecipePlanSection, { rowKey } from '../components/RecipePlanSection'
+import RecipePlanSection, { rowKey, BLOCK_CONFIG } from '../components/RecipePlanSection'
 import type { Block, PlanRecipeRow, PlateOption } from '../components/RecipePlanSection'
 import { PlateCostSimulator } from '../components/PlateCostSimulator'
 import { formatIngredientWeight } from '../utils/unitConversion'
@@ -112,12 +112,19 @@ export default function MenuPlannerPage() {
 
   // Recipes actually live on this week's plan (either block, checked "on")
   // -- scopes Portions & Pricing's recipe selector to what's really being
-  // sold this week instead of every recipe ever created.
+  // sold this week instead of every recipe ever created. Sides/carbs/
+  // sauces are excluded: the customer ordering page only ever format-
+  // prices the top-level "protein row" recipe (public/order/index.html's
+  // own `proteins = recipes.filter(r => !SIDE_CATEGORIES.includes(...) &&
+  // r.category !== SAUCE_CATEGORY)`) -- a side's own format price is never
+  // actually charged, it's always either a free or flat-extra add-on, so
+  // overriding it here would silently do nothing.
+  const SIDE_OR_SAUCE_CATEGORIES = new Set(['carbohydrates', 'vegetables', 'sauces'])
   const weekActiveRecipes = useMemo(() => {
     const byId = new Map<number, string>()
     for (const block of ['monday', 'thursday'] as Block[]) {
       for (const r of rows[block]) {
-        if (r.selected && r.recipe_id != null) byId.set(r.recipe_id, r.name)
+        if (r.selected && r.recipe_id != null && !SIDE_OR_SAUCE_CATEGORIES.has(r.category)) byId.set(r.recipe_id, r.name)
       }
     }
     return Array.from(byId, ([recipe_id, name]) => ({ recipe_id, name })).sort((a, b) => a.name.localeCompare(b.name))
@@ -165,6 +172,25 @@ export default function MenuPlannerPage() {
   // name-based matching This Week's Menu already uses for prep completion.
   const [currentWeekOrderedByRecipe, setCurrentWeekOrderedByRecipe] = useState<Record<string, number>>({})
   const [plateOptions, setPlateOptions] = useState<PlateOption[]>([])
+
+  // Plates constructed for this week, as pricing targets -- a plate has
+  // no price of its own, it's just the protein recipe's own format price
+  // (same recipe_format_overrides the "Other live proteins" list below
+  // edits), but staff think in terms of "the Chimichurri plate," not
+  // "recipe #79," so Portions & Pricing surfaces the curated plate name
+  // as the main entry and resolves it to proteinRecipeId under the hood.
+  const weekConstructedPlates = useMemo(
+    () =>
+      plateOptions
+        .map((p) => ({
+          id: p.id,
+          recipeId: p.proteinRecipeId,
+          label: `${p.name || p.proteinName} (${BLOCK_CONFIG[p.block].label})`,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [plateOptions]
+  )
+
   const [storeAddresses, setStoreAddresses] = useState<Record<string, string>>({})
   // Full inventory catalog (not scoped to this week's plan) -- lets the
   // Plate Builder's "Add Ingredient" offer any garnish on file (maple
@@ -881,6 +907,7 @@ export default function MenuPlannerPage() {
       {activeTab === 'pricing' && (
         <PortionsPricingPanel
           recipes={weekActiveRecipes}
+          plates={weekConstructedPlates}
           onSaved={() => fetchPlateConfig(apiUrl, token).then((cfg) => cfg && setPlateFormats(cfg.formats))}
         />
       )}
