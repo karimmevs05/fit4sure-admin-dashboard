@@ -87,6 +87,10 @@ export default function MenuPlannerPage() {
   const [currentWeekMenu, setCurrentWeekMenu] = useState<CurrentWeekMenu>({ monday: [], thursday: [] })
   const [showPrepPage, setShowPrepPage] = useState(false)
   const [activeTab, setActiveTab] = useState<'plan' | 'pricing'>('plan')
+  // Portions & Pricing is mounted on first visit, then kept alive (not
+  // conditionally torn down on every tab switch) -- see where it renders
+  // below for why.
+  const [hasVisitedPricing, setHasVisitedPricing] = useState(false)
   const [editingPlanItemId, setEditingPlanItemId] = useState<number | null>(null)
   const [editVolumeValue, setEditVolumeValue] = useState('')
   const [savingVolume, setSavingVolume] = useState(false)
@@ -894,7 +898,7 @@ export default function MenuPlannerPage() {
           Plan
         </button>
         <button
-          onClick={() => setActiveTab('pricing')}
+          onClick={() => { setActiveTab('pricing'); setHasVisitedPricing(true) }}
           className={`flex items-center gap-1.5 px-4 py-2 text-sm font-bold border-b-2 transition ${
             activeTab === 'pricing' ? 'border-[#2E527F] text-[#2E527F]' : 'border-transparent text-[#9A8774] hover:text-[#4B2B1D]'
           }`}
@@ -904,12 +908,20 @@ export default function MenuPlannerPage() {
         </button>
       </div>
 
-      {activeTab === 'pricing' && (
-        <PortionsPricingPanel
-          recipes={weekActiveRecipes}
-          plates={weekConstructedPlates}
-          onSaved={() => fetchPlateConfig(apiUrl, token).then((cfg) => cfg && setPlateFormats(cfg.formats))}
-        />
+      {/* Mounted once on first visit, then kept alive (CSS hidden, same as
+          the Plan tab's own wrapper below) rather than conditionally
+          rendered -- flipping Plan<->Pricing repeatedly used to fully
+          unmount this panel every time, re-fetching plate-config from
+          scratch and losing whatever plate/recipe was selected. */}
+      {hasVisitedPricing && (
+        <div className={activeTab === 'pricing' ? '' : 'hidden'}>
+          <PortionsPricingPanel
+            recipes={weekActiveRecipes}
+            plates={weekConstructedPlates}
+            resetSignal={targetWeekStart}
+            onSaved={() => fetchPlateConfig(apiUrl, token).then((cfg) => cfg && setPlateFormats(cfg.formats))}
+          />
+        </div>
       )}
 
       <div className={activeTab === 'plan' ? 'space-y-6' : 'hidden'}>

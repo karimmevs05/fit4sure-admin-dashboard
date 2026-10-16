@@ -70,10 +70,17 @@ function centsToDollarsStr(cents: number): string {
 export default function PortionsPricingPanel({
   recipes,
   plates,
+  resetSignal,
   onSaved,
 }: {
   recipes: RecipeOption[]
   plates: PlateOption[]
+  // Changing this value (the caller passes the selected week) drops the
+  // selected plate/recipe back to Standard -- this panel now stays
+  // mounted across tab switches, so without this a plate/recipe selected
+  // on one week would silently keep being edited after jumping to a
+  // different week where it may not even be live anymore.
+  resetSignal?: string
   onSaved?: () => void
 }) {
   const token = localStorage.getItem('token')
@@ -165,6 +172,11 @@ export default function PortionsPricingPanel({
   useEffect(() => {
     fetchConfig()
   }, [])
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setSelectedRecipeId('')
+  }, [resetSignal])
 
   useEffect(() => {
     if (selectedRecipeId === '') {
