@@ -521,7 +521,7 @@ function buildProteinItem(dayKey, recipe, sides, sauces, siblingsContainer){
       <div>
         ${featured ? `<div class="featured-eyebrow">&#11088; Staff pick</div>` : ''}
         <div class="protein-name${featured ? ' protein-name--plate' : ''}">${featured ? escapeHtml(featured.name || recipe.name) : escapeHtml(recipe.name)}</div>
-        <div class="protein-status">${featured ? `${escapeHtml(recipe.name)} &middot; tap to customize` : 'Tap to choose format'}</div>
+        <div class="protein-status">${featured ? `${escapeHtml(recipe.name)}${featured.extraIngredients && featured.extraIngredients.length ? ' + ' + featured.extraIngredients.map((e) => escapeHtml(e.name)).join(', ') : ''} &middot; tap to customize` : 'Tap to choose format'}</div>
       </div>
       <div class="protein-chevron">&rsaquo;</div>
     </div>
@@ -597,6 +597,13 @@ function buildProteinItem(dayKey, recipe, sides, sauces, siblingsContainer){
       const component = sideRecipe.category === 'carbohydrates' ? 'carbs' : 'veggies';
       parts.push(scaleMacros(sideRecipe.perPound, servingGramsForComponent(row, component)));
     });
+    // Staff-curated extras (e.g. maple syrup, parmesan) -- flat amounts
+    // already computed server-side at their saved gram weight, not scaled
+    // by plate format like the protein/sides above, so they just add in
+    // directly regardless of which format is selected.
+    if (featured && featured.extraIngredients) {
+      featured.extraIngredients.forEach((e) => parts.push(e));
+    }
     const total = sumMacros(parts);
 
     macrosSlot.innerHTML = `

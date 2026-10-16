@@ -53,7 +53,13 @@ function centsToDollarsStr(cents: number): string {
 // current week's plan (both blocks, checked "on") -- not every recipe ever
 // created -- so the per-recipe override dropdown only ever offers what's
 // really being sold this week.
-export default function PortionsPricingPanel({ recipes }: { recipes: RecipeOption[] }) {
+//
+// `onSaved`, when passed, fires after any successful save here (standard
+// formats, By The LB, add-on rules, or a per-recipe override) -- lets the
+// Plan tab next door (Plate Stats, serving sizes) refetch live config and
+// reflect a pricing change immediately, instead of only after a full page
+// reload.
+export default function PortionsPricingPanel({ recipes, onSaved }: { recipes: RecipeOption[]; onSaved?: () => void }) {
   const token = localStorage.getItem('token')
   const apiUrl = import.meta.env.VITE_API_BASE_URL
 
@@ -188,6 +194,7 @@ export default function PortionsPricingPanel({ recipes }: { recipes: RecipeOptio
       })
       await fetchConfig()
       flashSaved('Prices & portions saved')
+      onSaved?.()
     } catch (err: any) {
       setFormatsError(err.response?.data?.error || 'Failed to save')
     } finally {
@@ -214,6 +221,7 @@ export default function PortionsPricingPanel({ recipes }: { recipes: RecipeOptio
       })
       await fetchConfig()
       flashSaved('By The LB prices saved')
+      onSaved?.()
     } catch (err: any) {
       setByThePoundError(err.response?.data?.error || 'Failed to save')
     } finally {
@@ -245,6 +253,7 @@ export default function PortionsPricingPanel({ recipes }: { recipes: RecipeOptio
       })
       await fetchConfig()
       flashSaved('Add-on rules saved')
+      onSaved?.()
     } catch (err: any) {
       setAddonsError(err.response?.data?.error || 'Failed to save')
     } finally {
@@ -315,6 +324,7 @@ export default function PortionsPricingPanel({ recipes }: { recipes: RecipeOptio
       for (const r of rows) inputs[r.formatKey] = centsToDollarsStr(r.override ? r.override.priceCents : r.standard.priceCents)
       setRecipeOverridePriceInputs(inputs)
       flashSaved(`${recipes.find((r) => r.recipe_id === selectedRecipeId)?.name || 'Recipe'} overrides saved`)
+      onSaved?.()
     } catch (err: any) {
       setRecipeOverridesError(err.response?.data?.error || 'Failed to save')
     } finally {

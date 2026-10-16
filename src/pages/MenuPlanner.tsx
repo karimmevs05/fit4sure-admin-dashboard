@@ -10,6 +10,7 @@ import { fetchPlateConfig, plateComponentFor, servingGramsFor } from '../utils/p
 import type { PlateFormatConfig } from '../utils/plateStructure'
 import WeeklyPrepPage from './WeeklyPrep'
 import PortionsPricingPanel from '../components/PortionsPricingPanel'
+import type { PlateIngredientOption } from '../components/PlateExtraIngredientPicker'
 
 const GRAMS_PER_POUND = 455
 
@@ -165,13 +166,40 @@ export default function MenuPlannerPage() {
   const [currentWeekOrderedByRecipe, setCurrentWeekOrderedByRecipe] = useState<Record<string, number>>({})
   const [plateOptions, setPlateOptions] = useState<PlateOption[]>([])
   const [storeAddresses, setStoreAddresses] = useState<Record<string, string>>({})
+  // Full inventory catalog (not scoped to this week's plan) -- lets the
+  // Plate Builder's "Add Ingredient" offer any garnish on file (maple
+  // syrup, parmesan, etc.), not just this week's selected recipes.
+  const [inventoryItems, setInventoryItems] = useState<PlateIngredientOption[]>([])
 
   useEffect(() => {
     fetchAll()
     fetchPlateConfig(apiUrl, token).then((cfg) => cfg && setPlateFormats(cfg.formats))
     fetchStoreAddresses()
+    fetchInventoryItems()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const fetchInventoryItems = async () => {
+    try {
+      const res = await axios.get(`${apiUrl}/api/inventory`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      setInventoryItems(
+        (res.data.data || []).map((i: any) => ({
+          id: i.id,
+          name: i.name,
+          category: i.category,
+          unitPriceCents: i.unit_price_cents,
+          caloriesPer100g: i.calories_per_100g,
+          proteinPer100g: i.protein_per_100g,
+          carbsPer100g: i.carbs_per_100g,
+          fatPer100g: i.fat_per_100g,
+        }))
+      )
+    } catch (error) {
+      console.error('Error fetching inventory items:', error)
+    }
+  }
 
   const fetchStoreAddresses = async () => {
     try {
@@ -246,17 +274,57 @@ export default function MenuPlannerPage() {
     }
   }
 
-  const createPlateOption = async (block: Block, proteinRecipeId: number, sideRecipeIds: number[], name: string) => {
+  const createPlateOption = async (
+    block: Block,
+    proteinRecipeId: number,
+    sideRecipeIds: number[],
+    name: string,
+    extraIngredients: { inventoryId: number; grams: number }[]
+  ) => {
     try {
       await axios.post(
         `${apiUrl}/api/admin/menu-planner/plate-options`,
-        { block, protein_recipe_id: proteinRecipeId, side_recipe_ids: sideRecipeIds, name: name || null, week_start: targetWeekStart },
+        {
+          block,
+          protein_recipe_id: proteinRecipeId,
+          side_recipe_ids: sideRecipeIds,
+          extra_ingredients: extraIngredients,
+          name: name || null,
+          week_start: targetWeekStart,
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       )
       fetchPlateOptions(targetWeekStart)
     } catch (error: any) {
       console.error('Error creating plate option:', error)
       alert(error.response?.data?.error || 'Failed to create plate')
+    }
+  }
+
+  const updatePlateOption = async (
+    id: number,
+    block: Block,
+    proteinRecipeId: number,
+    sideRecipeIds: number[],
+    name: string,
+    extraIngredients: { inventoryId: number; grams: number }[]
+  ) => {
+    try {
+      await axios.put(
+        `${apiUrl}/api/admin/menu-planner/plate-options/${id}`,
+        {
+          block,
+          protein_recipe_id: proteinRecipeId,
+          side_recipe_ids: sideRecipeIds,
+          extra_ingredients: extraIngredients,
+          name: name || null,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      fetchPlateOptions(targetWeekStart)
+    } catch (error: any) {
+      console.error('Error updating plate option:', error)
+      alert(error.response?.data?.error || 'Failed to update plate')
     }
   }
 
@@ -810,7 +878,12 @@ export default function MenuPlannerPage() {
         </button>
       </div>
 
-      {activeTab === 'pricing' && <PortionsPricingPanel recipes={weekActiveRecipes} />}
+      {activeTab === 'pricing' && (
+        <PortionsPricingPanel
+          recipes={weekActiveRecipes}
+          onSaved={() => fetchPlateConfig(apiUrl, token).then((cfg) => cfg && setPlateFormats(cfg.formats))}
+        />
+      )}
 
       <div className={activeTab === 'plan' ? 'space-y-6' : 'hidden'}>
 
@@ -831,7 +904,9 @@ export default function MenuPlannerPage() {
         onMoveBlock={moveBlockToWeek}
         plateOptions={plateOptions}
         onCreatePlate={createPlateOption}
+        onUpdatePlate={updatePlateOption}
         onDeletePlate={deletePlateOption}
+        inventoryItems={inventoryItems}
       />
 
       <div className="grid gap-6 lg:grid-cols-3">

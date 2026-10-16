@@ -1,7 +1,9 @@
 import React, { useState } from 'react'
-import { AlertCircle, Plus, X } from 'lucide-react'
+import { AlertCircle, Pencil, Plus, X } from 'lucide-react'
 import { RecipePicker } from './RecipePicker'
 import type { PickerRecipe } from './RecipePicker'
+import { PlateExtraIngredientPicker, PlateExtraIngredientChip, extraIngredientStats } from './PlateExtraIngredientPicker'
+import type { PlateIngredientOption } from './PlateExtraIngredientPicker'
 import { rowAccentForCategory } from '../utils/categoryColors'
 import { plateComponentFor, servingGramsFor } from '../utils/plateStructure'
 import type { PlateFormatConfig } from '../utils/plateStructure'
@@ -29,6 +31,19 @@ export type Block = 'monday' | 'thursday'
 // A staff-curated protein + default-sides combo for a block, surfaced on
 // the ordering page as a featured, still-customizable recommendation --
 // see POST /api/admin/menu-planner/plate-options.
+// A flat extra, already resolved against live inventory (name/macros/cost
+// at its saved gram amount) -- see plateExtraIngredients.js on the backend.
+export type PlateExtraIngredient = {
+  inventoryId: number
+  name: string
+  grams: number
+  costCents: number | null
+  calories: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+}
+
 export type PlateOption = {
   id: number
   block: Block
@@ -36,6 +51,7 @@ export type PlateOption = {
   proteinRecipeId: number
   proteinName: string
   sides: { recipeId: number; name: string }[]
+  extraIngredients: PlateExtraIngredient[]
 }
 
 export const BLOCK_CONFIG: Record<Block, { label: string; sub: string; color: string }> = {
@@ -67,7 +83,9 @@ export default function RecipePlanSection({
   onMoveBlock,
   plateOptions,
   onCreatePlate,
+  onUpdatePlate,
   onDeletePlate,
+  inventoryItems,
 }: {
   rows: Record<Block, PlanRecipeRow[]>
   weekStart?: string
@@ -88,8 +106,27 @@ export default function RecipePlanSection({
   // instead of having to tear it down and rebuild it at the new week.
   onMoveBlock: (block: Block, newWeekStart: string) => void
   plateOptions: PlateOption[]
-  onCreatePlate: (block: Block, proteinRecipeId: number, sideRecipeIds: number[], name: string) => void
+  onCreatePlate: (
+    block: Block,
+    proteinRecipeId: number,
+    sideRecipeIds: number[],
+    name: string,
+    extraIngredients: { inventoryId: number; grams: number }[]
+  ) => void
+  onUpdatePlate: (
+    id: number,
+    block: Block,
+    proteinRecipeId: number,
+    sideRecipeIds: number[],
+    name: string,
+    extraIngredients: { inventoryId: number; grams: number }[]
+  ) => void
   onDeletePlate: (id: number) => void
+  // The full ingredient catalog (not scoped to this week's plan, unlike
+  // the recipe pool above) -- a garnish like maple syrup or parmesan isn't
+  // something the chef "plans" onto the week, it's just always available
+  // stock, same as everything else in Inventory.
+  inventoryItems: PlateIngredientOption[]
 }) {
   const [addOpen, setAddOpen] = useState<Record<Block, boolean>>({ monday: false, thursday: false })
   const [movingOpen, setMovingOpen] = useState<Block | null>(null)
@@ -98,11 +135,27 @@ export default function RecipePlanSection({
   // above straight onto this block's drop zone -- a protein becomes the
   // plate's main, anything else becomes a side. No separate picker UI, so
   // building a plate reuses the exact same rows already on screen.
-  const [plateDraft, setPlateDraft] = useState<Record<Block, { proteinId: number | null; sideIds: number[]; name: string; nameEdited: boolean }>>({
-    monday: { proteinId: null, sideIds: [], name: '', nameEdited: false },
-    thursday: { proteinId: null, sideIds: [], name: '', nameEdited: false },
+  // Extra ingredients (garnishes pulled from inventory, not the week's
+  // recipe pool) are added separately via the Add Ingredient button/picker
+  // below, since they're not draggable rows on this page.
+  // editingId tracks whether this draft is building a brand-new plate
+  // (null) or editing an already-saved one in place (that plate's id) --
+  // same draft shape either way, "Create Plate" becomes "Save Changes".
+  type PlateDraft = {
+    proteinId: number | null
+    sideIds: number[]
+    extraIngredients: { inventoryId: number; grams: number }[]
+    name: string
+    nameEdited: boolean
+    editingId: number | null
+  }
+  const emptyDraft = (): PlateDraft => ({ proteinId: null, sideIds: [], extraIngredients: [], name: '', nameEdited: false, editingId: null })
+  const [plateDraft, setPlateDraft] = useState<Record<Block, PlateDraft>>({
+    monday: emptyDraft(),
+    thursday: emptyDraft(),
   })
   const [plateDropActive, setPlateDropActive] = useState<Block | null>(null)
+  const [ingredientPickerOpen, setIngredientPickerOpen] = useState<Record<Block, boolean>>({ monday: false, thursday: false })
 
   // "{Protein} with {side, side}" -- a reasonable starting point, not a
   // final answer. Only applied while the name field hasn't been hand-
@@ -161,7 +214,7 @@ export default function RecipePlanSection({
   const nameFor = (block: Block, recipeId: number | null) =>
     recipeId == null ? null : rows[block].find((r) => r.recipe_id === recipeId)?.name ?? null
 
-  const withSuggestedName = (block: Block, draft: { proteinId: number | null; sideIds: number[]; name: string; nameEdited: boolean }) => {
+  const withSuggestedName = (block: Block, draft: PlateDraft): PlateDraft => {
     if (draft.nameEdited) return draft
     const proteinName = nameFor(block, draft.proteinId)
     if (!proteinName) return { ...draft, name: '' }
@@ -197,11 +250,62 @@ export default function RecipePlanSection({
     setPlateDraft((current) => ({ ...current, [block]: { ...current[block], name, nameEdited: true } }))
   }
 
+  // Extra ingredients don't factor into the auto-suggested name (that's
+  // protein + sides only, same as before) -- just appended to/removed
+  // from the draft's own list.
+  const addExtraIngredientToDraft = (block: Block, ingredient: PlateIngredientOption, grams: number) => {
+    setPlateDraft((current) => {
+      const draft = current[block]
+      if (draft.extraIngredients.some((e) => e.inventoryId === ingredient.id)) return current
+      return { ...current, [block]: { ...draft, extraIngredients: [...draft.extraIngredients, { inventoryId: ingredient.id, grams }] } }
+    })
+  }
+
+  const updateExtraIngredientGrams = (block: Block, inventoryId: number, grams: number) => {
+    setPlateDraft((current) => {
+      const draft = current[block]
+      return {
+        ...current,
+        [block]: { ...draft, extraIngredients: draft.extraIngredients.map((e) => (e.inventoryId === inventoryId ? { ...e, grams } : e)) },
+      }
+    })
+  }
+
+  const removeExtraIngredientFromDraft = (block: Block, inventoryId: number) => {
+    setPlateDraft((current) => {
+      const draft = current[block]
+      return { ...current, [block]: { ...draft, extraIngredients: draft.extraIngredients.filter((e) => e.inventoryId !== inventoryId) } }
+    })
+  }
+
+  // Loads an already-saved plate into the same draft editor used for
+  // creating one -- same fields, same controls, just pre-filled and
+  // routed to onUpdatePlate on submit instead of onCreatePlate.
+  const startEditingPlate = (block: Block, plate: PlateOption) => {
+    setPlateDraft((current) => ({
+      ...current,
+      [block]: {
+        proteinId: plate.proteinRecipeId,
+        sideIds: plate.sides.map((s) => s.recipeId),
+        extraIngredients: plate.extraIngredients.map((e) => ({ inventoryId: e.inventoryId, grams: e.grams })),
+        name: plate.name || plate.proteinName,
+        nameEdited: true, // don't clobber a staff-chosen name with the auto-suggestion while editing
+        editingId: plate.id,
+      },
+    }))
+  }
+
+  const cancelPlateDraft = (block: Block) => setPlateDraft((current) => ({ ...current, [block]: emptyDraft() }))
+
   const submitPlate = (block: Block) => {
     const draft = plateDraft[block]
     if (!draft.proteinId) return
-    onCreatePlate(block, draft.proteinId, draft.sideIds, draft.name.trim())
-    setPlateDraft((current) => ({ ...current, [block]: { proteinId: null, sideIds: [], name: '', nameEdited: false } }))
+    if (draft.editingId != null) {
+      onUpdatePlate(draft.editingId, block, draft.proteinId, draft.sideIds, draft.name.trim(), draft.extraIngredients)
+    } else {
+      onCreatePlate(block, draft.proteinId, draft.sideIds, draft.name.trim(), draft.extraIngredients)
+    }
+    setPlateDraft((current) => ({ ...current, [block]: emptyDraft() }))
   }
 
   return (
@@ -382,6 +486,7 @@ export default function RecipePlanSection({
                 const draft = plateDraft[block]
                 const draftProtein = draft.proteinId ? selected.find((r) => r.recipe_id === draft.proteinId) : null
                 const draftSides = draft.sideIds.map((id) => selected.find((r) => r.recipe_id === id)).filter((r): r is PlanRecipeRow => !!r)
+                const draftIngredientById = new Map(inventoryItems.map((i) => [i.id, i]))
                 const isDropActive = plateDropActive === block
                 const rowById = (id: number) => selected.find((r) => r.recipe_id === id)
                 const macroLine = (r: PlanRecipeRow) =>
@@ -389,11 +494,34 @@ export default function RecipePlanSection({
                 // Same Regular-format stats as the draft above, resolved
                 // from whatever ingredients are still live in this block --
                 // a side pulled out of the block after the plate was saved
-                // just drops out of the total rather than erroring.
+                // just drops out of the total rather than erroring. Extra
+                // ingredients are flat (their grams are explicit, not
+                // format-scaled), so they're added on top of the recipe
+                // total rather than run through regularFormatStatsFor.
+                const plateExtraStats = (extras: PlateExtraIngredient[]) =>
+                  extras.reduce(
+                    (acc, e) => ({
+                      costCents: acc.costCents + (e.costCents || 0),
+                      calories: acc.calories + e.calories,
+                      protein_g: acc.protein_g + e.protein_g,
+                      carbs_g: acc.carbs_g + e.carbs_g,
+                      fat_g: acc.fat_g + e.fat_g,
+                    }),
+                    { costCents: 0, calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+                  )
+                const combineStats = (
+                  a: { costCents: number; calories: number; protein_g: number; carbs_g: number; fat_g: number } | null,
+                  b: { costCents: number; calories: number; protein_g: number; carbs_g: number; fat_g: number }
+                ) =>
+                  a
+                    ? { costCents: a.costCents + b.costCents, calories: a.calories + b.calories, protein_g: a.protein_g + b.protein_g, carbs_g: a.carbs_g + b.carbs_g, fat_g: a.fat_g + b.fat_g }
+                    : b.costCents || b.calories || b.protein_g || b.carbs_g || b.fat_g
+                    ? b
+                    : null
                 const plateRegularStats = (plate: PlateOption) => {
                   const ids = [plate.proteinRecipeId, ...plate.sides.map((s) => s.recipeId)]
                   const matched = ids.map((id) => selected.find((r) => r.recipe_id === id)).filter((r): r is PlanRecipeRow => !!r)
-                  return regularFormatStatsFor(matched)
+                  return combineStats(regularFormatStatsFor(matched), plateExtraStats(plate.extraIngredients))
                 }
 
                 return (
@@ -417,6 +545,9 @@ export default function RecipePlanSection({
                                   {plate.sides.length > 0 && (
                                     <span className="text-[#755B4C]"> · {plate.sides.map((s) => s.name).join(', ')}</span>
                                   )}
+                                  {plate.extraIngredients.length > 0 && (
+                                    <span className="text-[#9A5B06]"> · + {plate.extraIngredients.map((e) => `${e.name} (${e.grams}g)`).join(', ')}</span>
+                                  )}
                                 </p>
                                 {stats && (
                                   <p className="truncate text-[10px] text-[#2E527F]">
@@ -424,10 +555,26 @@ export default function RecipePlanSection({
                                   </p>
                                 )}
                               </div>
+                              <button
+                                onClick={() => startEditingPlate(block, plate)}
+                                className="flex-shrink-0 text-[#2E527F] hover:text-[#16425F] transition"
+                                aria-label={`Edit plate ${plate.name || plate.proteinName}`}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
                               <span className="flex-shrink-0 rounded-full bg-[#F1EAE0] px-1.5 py-[1px] text-[9px] font-bold text-[#755B4C]">plate</span>
                             </div>
                           )
                         })}
+                      </div>
+                    )}
+
+                    {draft.editingId != null && (
+                      <div className="mb-1.5 flex items-center justify-between rounded-lg border border-dashed border-[#2E527F] bg-[#EAF0F7] px-2.5 py-1.5">
+                        <p className="text-[10.5px] font-bold text-[#2E527F]">Editing: {draft.name || 'this plate'}</p>
+                        <button onClick={() => cancelPlateDraft(block)} className="text-[10.5px] font-bold text-[#2E527F] hover:underline">
+                          Cancel
+                        </button>
                       </div>
                     )}
 
@@ -444,15 +591,18 @@ export default function RecipePlanSection({
                       className="rounded-lg border border-dashed p-2.5 transition"
                       style={{ borderColor: isDropActive ? cfg.color : '#9A7E6F', backgroundColor: isDropActive ? '#F1EAE0' : 'transparent' }}
                     >
-                      {!draftProtein && draftSides.length === 0 ? (
+                      {!draftProtein && draftSides.length === 0 && draft.extraIngredients.length === 0 ? (
                         <p className="text-center text-[10.5px] font-bold text-[#755B4C]">
                           Drag a protein + sides from above to build a plate
                         </p>
                       ) : (
                         <div className="space-y-2">
-                          {/* All dragged items in one wrapping row -- still
-                              category-colored, still showing per-lb macros,
-                              just not a full-width stack. */}
+                          {/* All dragged items plus any extra ingredients in
+                              one wrapping row -- recipes stay category-
+                              colored, extras get their own dashed/amber
+                              "garnish" style so it's clear at a glance which
+                              items are swappable plate structure vs. always-
+                              included flat add-ons. */}
                           <div className="flex flex-wrap gap-1.5">
                             {draftProtein && (
                               <div className={`flex items-center gap-1.5 rounded-lg ${rowAccentForCategory(draftProtein.category)} border border-[#E4D8C9] px-2 py-1`}>
@@ -476,9 +626,37 @@ export default function RecipePlanSection({
                                 </button>
                               </div>
                             ))}
+                            {draft.extraIngredients.map((extra) => {
+                              const ing = draftIngredientById.get(extra.inventoryId)
+                              if (!ing) return null
+                              return (
+                                <PlateExtraIngredientChip
+                                  key={extra.inventoryId}
+                                  ingredient={ing}
+                                  grams={extra.grams}
+                                  onUpdateGrams={(grams) => updateExtraIngredientGrams(block, extra.inventoryId, grams)}
+                                  onRemove={() => removeExtraIngredientFromDraft(block, extra.inventoryId)}
+                                />
+                              )
+                            })}
                           </div>
                           {!draftProtein && (
                             <p className="text-[10px] font-bold text-[#D97706]">Drag a protein in too -- a plate needs one</p>
+                          )}
+
+                          <button
+                            onClick={() => setIngredientPickerOpen((m) => ({ ...m, [block]: !m[block] }))}
+                            className="w-full flex items-center justify-center gap-1 rounded-lg border border-dashed border-[#D97706] py-1.5 text-[10.5px] font-bold text-[#D97706] hover:bg-[#FDF3E3] transition"
+                          >
+                            <Plus className="h-3 w-3" /> Add Ingredient
+                          </button>
+
+                          {ingredientPickerOpen[block] && (
+                            <PlateExtraIngredientPicker
+                              ingredients={inventoryItems}
+                              excludeIds={new Set(draft.extraIngredients.map((e) => e.inventoryId))}
+                              onAdd={(ing, grams) => addExtraIngredientToDraft(block, ing, grams)}
+                            />
                           )}
 
                           {/* What a customer actually gets at the Regular
@@ -487,10 +665,22 @@ export default function RecipePlanSection({
                               above. Items with no Regular-format mapping
                               (sauces) show on the chips but don't count here,
                               matching how sauces price as separate add-ons
-                              everywhere else in the app. */}
+                              everywhere else in the app. Extra ingredients
+                              are flat -- added on top regardless of format. */}
                           {(() => {
                             const items = [draftProtein, ...draftSides].filter((r): r is PlanRecipeRow => !!r)
-                            const totals = regularFormatStatsFor(items)
+                            const extras = draft.extraIngredients
+                              .map((e) => {
+                                const ing = draftIngredientById.get(e.inventoryId)
+                                if (!ing) return null
+                                const s = extraIngredientStats(ing, e.grams)
+                                return { costCents: s.costCents || 0, calories: s.calories, protein_g: s.protein_g, carbs_g: s.carbs_g, fat_g: s.fat_g }
+                              })
+                              .filter((x): x is { costCents: number; calories: number; protein_g: number; carbs_g: number; fat_g: number } => !!x)
+                            const totals = combineStats(regularFormatStatsFor(items), extras.reduce(
+                              (acc, e) => ({ costCents: acc.costCents + e.costCents, calories: acc.calories + e.calories, protein_g: acc.protein_g + e.protein_g, carbs_g: acc.carbs_g + e.carbs_g, fat_g: acc.fat_g + e.fat_g }),
+                              { costCents: 0, calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
+                            ))
                             if (!totals) return null
                             return (
                               <div className="rounded-lg bg-[#F1EAE0] px-2.5 py-1.5">
@@ -518,13 +708,13 @@ export default function RecipePlanSection({
                               className="h-7 flex-1 rounded-lg text-white px-3 text-xs font-bold transition disabled:opacity-40"
                               style={{ backgroundColor: cfg.color }}
                             >
-                              Create Plate
+                              {draft.editingId != null ? 'Save Changes' : 'Create Plate'}
                             </button>
                             <button
-                              onClick={() => setPlateDraft((c) => ({ ...c, [block]: { proteinId: null, sideIds: [], name: '', nameEdited: false } }))}
+                              onClick={() => cancelPlateDraft(block)}
                               className="text-xs font-bold text-[#755B4C] hover:underline"
                             >
-                              Clear
+                              {draft.editingId != null ? 'Cancel' : 'Clear'}
                             </button>
                           </div>
                         </div>
