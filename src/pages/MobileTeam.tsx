@@ -455,9 +455,42 @@ function TimelineView({ active, goals, tasks, onOpenAddGoal, onRefreshGoals }: {
 // ============================================================================
 // TASKS (grouped by tag, matches the backend's Launch Tasks list view)
 // ============================================================================
+function TaskRow2({ t, onToggleTask }: { t: Task; onToggleTask: (t: Task) => void }) {
+  const dl = dueLabel(t.due_date?.slice(0, 10) || todayISO(), t.status === 'done')
+  return (
+    <div className="mt-task-row2">
+      <div className={`mt-check${t.status === 'done' ? ' done' : ''}`} onClick={() => onToggleTask(t)}>{t.status === 'done' ? '✓' : ''}</div>
+      <div className="mt-task-row2-main">
+        <div className={`mt-task-row2-title${t.status === 'done' ? ' done' : ''}`}>
+          {t.name}
+          {t.needs_decision && <span className="mt-badge">Needs decision</span>}
+        </div>
+        <div className="mt-task-row2-meta">
+          <span>{t.owner_name}</span>
+          <span className={dl.cls}>{dl.text}</span>
+          {t.paid_cents > 0 && <span className="mt-pill paid">💵 ${(t.paid_cents / 100).toFixed(0)} paid</span>}
+          {t.paid_cents === 0 && t.budget_cents > 0 && <span className="mt-pill pending">💵 ${(t.budget_cents / 100).toFixed(0)} budgeted</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function TasksView({ active, tasks, onToggleTask }: { active: boolean; tasks: Task[]; onToggleTask: (t: Task) => void }) {
   const byTag: Record<string, Task[]> = {}
   tasks.forEach((t) => { (byTag[t.tag] = byTag[t.tag] || []).push(t) })
+
+  // Sections collapse independently, and each section hides its own done
+  // items behind a count toggle by default -- a tag with 60 tasks reads as
+  // "what's actually left," not a wall of struck-through history.
+  const [collapsedTags, setCollapsedTags] = useState<Set<string>>(new Set())
+  const [openCompleted, setOpenCompleted] = useState<Set<string>>(new Set())
+  const toggleTag = (tag: string) => setCollapsedTags((cur) => {
+    const next = new Set(cur); next.has(tag) ? next.delete(tag) : next.add(tag); return next
+  })
+  const toggleCompleted = (tag: string) => setOpenCompleted((cur) => {
+    const next = new Set(cur); next.has(tag) ? next.delete(tag) : next.add(tag); return next
+  })
 
   return (
     <div className={`mt-view${active ? ' active' : ''}`}>
@@ -465,37 +498,45 @@ function TasksView({ active, tasks, onToggleTask }: { active: boolean; tasks: Ta
       <div className="mt-section-pad" style={{ paddingTop: 4 }}>
         {TAGS.filter((tag) => byTag[tag]?.length).map((tag) => {
           const group = byTag[tag]
-          const done = group.filter((t) => t.status === 'done').length
-          const pct = group.length ? Math.round((done / group.length) * 100) : 0
+          const activeItems = group.filter((t) => t.status !== 'done')
+          const doneItems = group.filter((t) => t.status === 'done')
+          const pct = group.length ? Math.round((doneItems.length / group.length) * 100) : 0
+          const isCollapsed = collapsedTags.has(tag)
+          const isCompletedOpen = openCompleted.has(tag)
           return (
             <div className="mt-tag-group" key={tag}>
-              <div className="mt-tag-head">
+              <div className="mt-tag-head" style={{ cursor: 'pointer' }} onClick={() => toggleTag(tag)}>
                 <div className="mt-tag-label">{tag}</div>
-                <div className="mt-tag-progress-text">{done} of {group.length} done</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className="mt-tag-progress-text">{doneItems.length} of {group.length} done</div>
+                  <div className={`mt-completed-toggle-chev${isCollapsed ? '' : ' open'}`} style={{ color: 'var(--muted)' }}>▾</div>
+                </div>
               </div>
-              <div className="mt-tag-bar-track"><div className="mt-tag-bar-fill" style={{ width: `${pct}%` }} /></div>
-              <div className="mt-tag-card">
-                {group.map((t) => {
-                  const dl = dueLabel(t.due_date?.slice(0, 10) || todayISO(), t.status === 'done')
-                  return (
-                    <div className="mt-task-row2" key={t.id}>
-                      <div className={`mt-check${t.status === 'done' ? ' done' : ''}`} onClick={() => onToggleTask(t)}>{t.status === 'done' ? '✓' : ''}</div>
-                      <div className="mt-task-row2-main">
-                        <div className={`mt-task-row2-title${t.status === 'done' ? ' done' : ''}`}>
-                          {t.name}
-                          {t.needs_decision && <span className="mt-badge">Needs decision</span>}
-                        </div>
-                        <div className="mt-task-row2-meta">
-                          <span>{t.owner_name}</span>
-                          <span className={dl.cls}>{dl.text}</span>
-                          {t.paid_cents > 0 && <span className="mt-pill paid">💵 ${(t.paid_cents / 100).toFixed(0)} paid</span>}
-                          {t.paid_cents === 0 && t.budget_cents > 0 && <span className="mt-pill pending">💵 ${(t.budget_cents / 100).toFixed(0)} budgeted</span>}
+              {!isCollapsed && (
+                <>
+                  <div className="mt-tag-bar-track"><div className="mt-tag-bar-fill" style={{ width: `${pct}%` }} /></div>
+                  {activeItems.length > 0 ? (
+                    <div className="mt-tag-card">
+                      {activeItems.map((t) => <TaskRow2 key={t.id} t={t} onToggleTask={onToggleTask} />)}
+                    </div>
+                  ) : (
+                    <div className="mt-empty">Nothing left to do here.</div>
+                  )}
+                  {doneItems.length > 0 && (
+                    <>
+                      <div className={`mt-completed-toggle${isCompletedOpen ? ' open' : ''}`} style={{ marginTop: 8 }} onClick={() => toggleCompleted(tag)}>
+                        <div style={{ fontSize: 11.5, fontWeight: 800 }}>{doneItems.length} completed</div>
+                        <div className="mt-completed-toggle-chev">▾</div>
+                      </div>
+                      <div className={`mt-completed-list${isCompletedOpen ? ' open' : ''}`}>
+                        <div className="mt-tag-card">
+                          {doneItems.map((t) => <TaskRow2 key={t.id} t={t} onToggleTask={onToggleTask} />)}
                         </div>
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
+                    </>
+                  )}
+                </>
+              )}
             </div>
           )
         })}
