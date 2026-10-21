@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { Navigate } from 'react-router-dom'
 import './MobileTeam.css'
 import {
-  fetchTasks, fetchUsers, fetchCurrentUser, createTask, updateTask, addExpense,
+  fetchTasks, fetchCurrentUser, createTask, updateTask, addExpense,
 } from '../lib/launchTasks/api'
-import type { Task, Tag, StaffUser } from '../lib/launchTasks/types'
+import type { Task, Tag } from '../lib/launchTasks/types'
 import {
-  fetchPinMembers, pinLogin, fetchOverview, fetchGoals, createGoal, setGoalStatus,
-  toggleGoalStep, addGoalStep, fetchDayNote, saveDayNote,
+  fetchPinMembers, fetchOverview, fetchGoals, createGoal, setGoalStatus,
+  toggleGoalStep, fetchDayNote, saveDayNote,
 } from '../lib/mobileTeam/api'
 import type { Goal, MobileOverview, PinMember } from '../lib/mobileTeam/types'
 
@@ -68,138 +69,34 @@ const IconCheck = () => (
 )
 
 export default function MobileTeamPage() {
-  const [authed, setAuthed] = useState(false)
   const [authChecked, setAuthChecked] = useState(false)
   const [currentUser, setCurrentUser] = useState<{ user_id: number; display_name: string } | null>(null)
+  const token = localStorage.getItem('token')
 
-  // ---- initial auth check: a token from either the desktop password
-  // login or a previous PIN login both work here, since pin-login issues
-  // the exact same JWT shape -- "signed in once, stays signed in" means
-  // just checking whether a usable token is already sitting in
-  // localStorage, not gating every visit behind the PIN screen again.
+  // Just whoever's already signed in -- no separate PIN/member picker.
+  // Same token the rest of the admin dashboard uses, so being logged in
+  // on desktop (or having logged in here before) is enough; an invalid/
+  // expired token sends you to the real login page, same as every other
+  // route in this app.
   useEffect(() => {
-    const token = localStorage.getItem('token')
     if (!token) { setAuthChecked(true); return }
     fetchCurrentUser()
-      .then((u) => { setCurrentUser(u); setAuthed(true) })
-      .catch(() => { localStorage.removeItem('token') })
+      .then((u) => setCurrentUser(u))
+      .catch(() => localStorage.removeItem('token'))
       .finally(() => setAuthChecked(true))
-  }, [])
+  }, [token])
 
+  if (!token) return <Navigate to="/login" replace />
   if (!authChecked) return <div className="mt-login"><div className="mt-spinner">Loading...</div></div>
-  if (!authed || !currentUser) {
-    return <PinLoginScreen onSuccess={(u) => { setCurrentUser(u); setAuthed(true) }} />
-  }
-  return <MobileApp currentUser={currentUser} onSwitchUser={(u) => setCurrentUser(u)} />
-}
-
-// ============================================================================
-// PIN login -- full-screen only the first time a device has never signed
-// in. Switching people later reuses the same member-grid + keypad inside a
-// sheet (see SwitchUserSheet below), never this full gate again.
-// ============================================================================
-function PinPad({ members, selected, onSelect, pin, onKey }: {
-  members: PinMember[]; selected: PinMember | null; onSelect: (m: PinMember) => void
-  pin: string; onKey: (k: string) => void
-}) {
-  return (
-    <>
-      <div className="mt-member-grid">
-        {members.map((m) => (
-          <button key={m.user_id} className={`mt-member-btn${selected?.user_id === m.user_id ? ' sel' : ''}`} onClick={() => onSelect(m)}>
-            <div className="mt-avatar" style={{ background: colorFor(m.user_id) }}>{initialFor(m.display_name)}</div>
-            <span>{m.display_name.split(' ')[0]}</span>
-          </button>
-        ))}
-      </div>
-      <div className="mt-pin-dots">
-        {[0, 1, 2, 3].map((i) => <div key={i} className={`mt-pin-dot${i < pin.length ? ' filled' : ''}`} />)}
-      </div>
-      <div className="mt-keypad">
-        {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => (
-          <button key={i} className={`mt-key${k === '' ? ' ghost' : ''}`} onClick={() => k !== '' && onKey(k)} disabled={k === ''}>{k}</button>
-        ))}
-      </div>
-    </>
-  )
-}
-
-function PinLoginScreen({ onSuccess }: { onSuccess: (u: { user_id: number; display_name: string }) => void }) {
-  const [members, setMembers] = useState<PinMember[]>([])
-  const [selected, setSelected] = useState<PinMember | null>(null)
-  const [pin, setPin] = useState('')
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => { fetchPinMembers().then(setMembers).catch(() => setError('Could not load team members')) }, [])
-
-  const handleKey = (k: string) => {
-    if (!selected) { setError('Pick who you are first'); return }
-    setError(null)
-    if (k === '⌫') { setPin((p) => p.slice(0, -1)); return }
-    const next = (pin + k).slice(0, 4)
-    setPin(next)
-    if (next.length === 4) {
-      pinLogin(selected.user_id, next)
-        .then((res) => {
-          localStorage.setItem('token', res.token)
-          onSuccess(res.user)
-        })
-        .catch(() => { setError('Wrong PIN'); setPin('') })
-    }
-  }
-
-  return (
-    <div className="mt-login">
-      <img className="mt-login-logo" src="/preview/new-logo.png" alt="Fit For Sure" />
-      <div className="mt-login-title">{selected ? `Enter ${selected.display_name.split(' ')[0]}'s PIN` : 'Who are you?'}</div>
-      <PinPad members={members} selected={selected} onSelect={(m) => { setSelected(m); setPin(''); setError(null) }} pin={pin} onKey={handleKey} />
-      {error && <div className="mt-login-error">{error}</div>}
-    </div>
-  )
-}
-
-function SwitchUserSheet({ open, onClose, onSwitched }: { open: boolean; onClose: () => void; onSwitched: (u: { user_id: number; display_name: string }) => void }) {
-  const [members, setMembers] = useState<PinMember[]>([])
-  const [selected, setSelected] = useState<PinMember | null>(null)
-  const [pin, setPin] = useState('')
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => { if (open) { fetchPinMembers().then(setMembers); setSelected(null); setPin(''); setError(null) } }, [open])
-
-  const handleKey = (k: string) => {
-    if (!selected) return
-    if (k === '⌫') { setPin((p) => p.slice(0, -1)); return }
-    const next = (pin + k).slice(0, 4)
-    setPin(next)
-    if (next.length === 4) {
-      pinLogin(selected.user_id, next)
-        .then((res) => { localStorage.setItem('token', res.token); onSwitched(res.user); onClose() })
-        .catch(() => { setError('Wrong PIN'); setPin('') })
-    }
-  }
-
-  return (
-    <>
-      <div className={`mt-sheet-backdrop${open ? ' open' : ''}`} onClick={onClose} />
-      <div className={`mt-sheet${open ? ' open' : ''}`}>
-        <div className="mt-sheet-handle" />
-        <div className="mt-sheet-title">Switch person</div>
-        <PinPad members={members} selected={selected} onSelect={(m) => { setSelected(m); setPin(''); setError(null) }} pin={pin} onKey={handleKey} />
-        {error && <div className="mt-login-error" style={{ textAlign: 'center', marginTop: 10 }}>{error}</div>}
-      </div>
-    </>
-  )
+  if (!currentUser) return <Navigate to="/login" replace />
+  return <MobileApp currentUser={currentUser} />
 }
 
 // ============================================================================
 // Main app shell
 // ============================================================================
-function MobileApp({ currentUser, onSwitchUser }: {
-  currentUser: { user_id: number; display_name: string }
-  onSwitchUser: (u: { user_id: number; display_name: string }) => void
-}) {
+function MobileApp({ currentUser }: { currentUser: { user_id: number; display_name: string } }) {
   const [tab, setTab] = useState<'home' | 'timeline' | 'tasks'>('home')
-  const [switchOpen, setSwitchOpen] = useState(false)
   const [addTaskOpen, setAddTaskOpen] = useState(false)
   const [addGoalOpen, setAddGoalOpen] = useState(false)
 
@@ -230,11 +127,10 @@ function MobileApp({ currentUser, onSwitchUser }: {
     <div className="mt-root">
       <div className="mt-topbar">
         <img className="mt-brand-logo" src="/preview/new-logo.png" alt="Fit For Sure" />
-        <button className="mt-profile-chip" onClick={() => setSwitchOpen(true)}>
+        <div className="mt-profile-chip" style={{ cursor: 'default' }}>
           <div className="mt-avatar" style={{ background: colorFor(currentUser.user_id) }}>{initialFor(currentUser.display_name)}</div>
           <span>{currentUser.display_name.split(' ')[0]}</span>
-          <span className="mt-chev">▾</span>
-        </button>
+        </div>
       </div>
 
       {loading ? (
@@ -257,7 +153,6 @@ function MobileApp({ currentUser, onSwitchUser }: {
         <button className={`mt-nav-btn${tab === 'tasks' ? ' active' : ''}`} onClick={() => setTab('tasks')}><span className="ic"><IconCheck /></span><span className="lb">Tasks</span></button>
       </div>
 
-      <SwitchUserSheet open={switchOpen} onClose={() => setSwitchOpen(false)} onSwitched={onSwitchUser} />
       <AddTaskSheet open={addTaskOpen} onClose={() => setAddTaskOpen(false)} staff={staff}
         onCreated={() => { refreshTasks(); refreshOverview() }} />
       <AddGoalSheet open={addGoalOpen} onClose={() => setAddGoalOpen(false)} onCreated={refreshGoals} />

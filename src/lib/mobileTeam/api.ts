@@ -10,16 +10,12 @@ function authConfig() {
   return { headers: { Authorization: `Bearer ${token}` } }
 }
 
-// Unauthenticated -- this is how the PIN-login screen knows who to show
-// before anyone's actually signed in yet.
+// Unauthenticated -- used only to populate the "assign to" picker with the
+// real team roster, not for login (the mobile page just uses whoever's
+// already signed in; see MobileTeam.tsx).
 export async function fetchPinMembers(): Promise<PinMember[]> {
   const res = await axios.get(`${apiUrl()}/api/auth/pin-members`)
   return res.data.data
-}
-
-export async function pinLogin(userId: number, pin: string): Promise<{ token: string; user: { user_id: number; display_name: string } }> {
-  const res = await axios.post(`${apiUrl()}/api/auth/pin-login`, { user_id: userId, pin })
-  return res.data
 }
 
 export async function fetchOverview(): Promise<MobileOverview> {
