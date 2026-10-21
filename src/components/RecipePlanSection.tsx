@@ -181,6 +181,20 @@ export default function RecipePlanSection({
     return { count: Math.floor(availableG / servingG), servingG }
   }
 
+  // The Regular serving size (in grams) a recipe's category maps to, or
+  // null when there's no mapping (sauces, beverages, custom combos) --
+  // those keep the old direct-lb entry since there's nothing to convert
+  // servings against. This is what lets the row input below be "servings
+  // to cook" instead of lb: the chef enters a plate count, and the lb
+  // figure that actually drives prep tasks/procurement/cost downstream
+  // is calculated from it automatically, not typed by hand.
+  const regularServingSizeFor = (row: PlanRecipeRow): number | null => {
+    if (!regularFormat || row.isCustom) return null
+    const component = plateComponentFor(row.category)
+    if (!component) return null
+    return servingGramsFor(regularFormat, component) || null
+  }
+
   // Real per-plate cost/macros at the Regular serving size -- what a
   // customer actually gets, not the per-lb forecast figures the rest of
   // the block shows. Items with no Regular-format mapping (sauces) are
@@ -315,7 +329,9 @@ export default function RecipePlanSection({
           <h2 className="text-2xl font-extrabold text-[#4B2B1D]">Weekly Menu Planner</h2>
           <p className="mt-1 text-sm text-[#755B4C]">
             What's live for {weekStart ? new Date(weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'next week'} --
-            feeds both delivery orders and counter sales. Forecasts are in lb; macros/cost are per lb (455g).
+            feeds both delivery orders and counter sales. Enter servings to cook; lb, cost, and ingredient
+            quantities are calculated automatically from the Regular serving size. Items with no standard
+            serving size (sauces, custom combos) are entered directly in lb.
           </p>
         </div>
         <div className="flex gap-1.5 flex-shrink-0">
@@ -439,25 +455,53 @@ export default function RecipePlanSection({
                       <p className="text-[11px] text-[#2E527F] flex-1 truncate">
                         {r.calories} cal · {r.protein_g.toFixed(0)}g P · {r.carbs_g.toFixed(0)}g C · {r.fat_g.toFixed(0)}g F · ${(r.costPerPoundCents / 100).toFixed(2)}/lb
                       </p>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={r.expected_volume}
-                        onChange={(e) => onUpdateVolume(block, r, parseFloat(e.target.value) || 0)}
-                        placeholder="lb"
-                        className="w-14 h-7 rounded border border-[#B9A88F] bg-white px-1 text-xs text-center outline-none flex-shrink-0"
-                      />
                       {(() => {
-                        const servings = regularServingsFor(r)
-                        if (servings == null) return null
+                        const servingG = regularServingSizeFor(r)
+                        if (servingG) {
+                          // Primary entry is servings to cook -- lb (what
+                          // actually gets saved to expected_volume, and from
+                          // there drives ingredient scaling, prep tasks,
+                          // procurement, and cost) is calculated from it, not
+                          // typed by hand.
+                          const servings = Math.round(((r.expected_volume || 0) * 453.592) / servingG)
+                          return (
+                            <>
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={servings}
+                                onChange={(e) => {
+                                  const newServings = parseFloat(e.target.value) || 0
+                                  onUpdateVolume(block, r, (newServings * servingG) / 453.592)
+                                }}
+                                placeholder="servings"
+                                title="Servings to cook -- lb is calculated automatically from the Regular serving size"
+                                className="w-16 h-7 rounded border border-[#B9A88F] bg-white px-1 text-xs text-center outline-none flex-shrink-0"
+                              />
+                              <span
+                                className="flex-shrink-0 rounded-full bg-[#EAF0F7] px-1.5 py-[1px] text-[9px] font-bold text-[#2E527F] whitespace-nowrap"
+                                title={`${servings} servings x ${Math.round(servingG)}g (Regular) = ${(r.expected_volume || 0).toFixed(1)} lb forecasted`}
+                              >
+                                ≈ {(r.expected_volume || 0).toFixed(1)} lb
+                              </span>
+                            </>
+                          )
+                        }
+                        // No Regular-format mapping for this category (sauces,
+                        // beverages, custom combos) -- nothing to convert
+                        // servings against, so this one row keeps direct lb entry.
                         return (
-                          <span
-                            className="flex-shrink-0 rounded-full bg-[#EAF0F7] px-1.5 py-[1px] text-[9px] font-bold text-[#2E527F] whitespace-nowrap"
-                            title="Regular-size servings this lb amount covers, and the Regular serving size itself"
-                          >
-                            {servings.count}({Math.round(servings.servingG)}g)
-                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            value={r.expected_volume}
+                            onChange={(e) => onUpdateVolume(block, r, parseFloat(e.target.value) || 0)}
+                            placeholder="lb"
+                            title="No standard serving size for this category -- enter lb directly"
+                            className="w-14 h-7 rounded border border-[#B9A88F] bg-white px-1 text-xs text-center outline-none flex-shrink-0"
+                          />
                         )
                       })()}
                     </div>
@@ -780,7 +824,7 @@ export default function RecipePlanSection({
               {/* Stats footer -- summarizes what's actually been chosen above */}
               <div className="mt-3 pt-3 border-t border-[#E4D8C9] flex items-center justify-between">
                 <p className="text-xs text-[#2E527F]">
-                  {selected.length} item{selected.length === 1 ? '' : 's'} live · {totalLb} lb forecasted
+                  {selected.length} item{selected.length === 1 ? '' : 's'} live · {totalLb.toFixed(2)} lb forecasted
                 </p>
                 <p className="text-xs font-bold" style={{ color: cfg.color }}>${(totalCostCents / 100).toFixed(2)}</p>
               </div>
