@@ -14,6 +14,7 @@ import MarketingPage from './pages/Marketing.tsx'
 import ReportsPage from './pages/Reports.tsx'
 import SettingsPage from './pages/Settings.tsx'
 import TestPage from './pages/Test.tsx'
+import MobileTeamPage from './pages/MobileTeam.tsx'
 import { Navigation } from './components/Navigation'
 import { KitchenConverter } from './components/KitchenConverter'
 
@@ -26,10 +27,11 @@ function App() {
   const location = useLocation()
   const isLoginPage = location.pathname === '/login'
   const isSOPPage = location.pathname.startsWith('/operational-optimization/sop/')
+  const isMobilePage = location.pathname === '/mobile'
   const [converterCollapsed, setConverterCollapsed] = React.useState(
     () => localStorage.getItem('kitchenConverterCollapsed') === 'true'
   )
-  const showChrome = token && !isLoginPage && !isSOPPage
+  const showChrome = token && !isLoginPage && !isSOPPage && !isMobilePage
   const contentMarginLeft = showChrome ? 256 + (converterCollapsed ? 0 : 288) : 0
 
   return (
@@ -39,6 +41,7 @@ function App() {
       <div style={showChrome ? { marginLeft: `${contentMarginLeft}px`, transition: 'margin-left 0.15s ease' } : {}}>
         <Routes>
           <Route path="/test" element={<TestPage />} />
+          <Route path="/mobile" element={<MobileTeamPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={token ? <Navigate to="/dashboard" /> : <Navigate to="/login" />} />
           <Route path="/operational-optimization" element={token ? <OperationsHubPage /> : <Navigate to="/login" />} />
