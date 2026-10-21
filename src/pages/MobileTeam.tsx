@@ -106,6 +106,16 @@ function MobileApp({ currentUser }: { currentUser: { user_id: number; display_na
   const [goals, setGoals] = useState<Goal[]>([])
   const [loading, setLoading] = useState(true)
 
+  // A tap on Home's calendar preview or Next milestone card should land on
+  // that exact day/goal in Timeline, not just the tab's own default state
+  // -- these carry that target across the tab switch, consumed once by
+  // TimelineView then cleared so re-opening the tab normally doesn't
+  // re-trigger the jump.
+  const [jumpDate, setJumpDate] = useState<string | null>(null)
+  const [jumpGoalId, setJumpGoalId] = useState<number | null>(null)
+  const goToCalendarDate = (iso: string) => { setJumpDate(iso); setTab('timeline') }
+  const goToGoal = (goalId: number) => { setJumpGoalId(goalId); setTab('timeline') }
+
   const loadAll = () => {
     Promise.all([fetchTasks(), fetchPinMembers(), fetchOverview(), fetchGoals()])
       .then(([t, s, o, g]) => { setTasks(t); setStaff(s); setOverview(o); setGoals(g) })
@@ -138,9 +148,12 @@ function MobileApp({ currentUser }: { currentUser: { user_id: number; display_na
       ) : (
         <>
           <HomeView active={tab === 'home'} overview={overview} tasks={tasks} goals={goals}
-            onToggleTask={toggleTask} onGoToTimeline={() => setTab('timeline')} onRefresh={() => { refreshOverview(); refreshTasks() }} />
+            onToggleTask={toggleTask} onGoToCalendar={goToCalendarDate} onGoToGoal={goToGoal}
+            onRefresh={() => { refreshOverview(); refreshTasks() }} />
           <TimelineView active={tab === 'timeline'} goals={goals} tasks={tasks}
-            onOpenAddGoal={() => setAddGoalOpen(true)} onRefreshGoals={refreshGoals} />
+            onOpenAddGoal={() => setAddGoalOpen(true)} onRefreshGoals={refreshGoals}
+            jumpDate={jumpDate} jumpGoalId={jumpGoalId}
+            onJumpConsumed={() => { setJumpDate(null); setJumpGoalId(null) }} />
           <TasksView active={tab === 'tasks'} tasks={tasks} onToggleTask={toggleTask} />
         </>
       )}
@@ -163,9 +176,9 @@ function MobileApp({ currentUser }: { currentUser: { user_id: number; display_na
 // ============================================================================
 // HOME
 // ============================================================================
-function HomeView({ active, overview, tasks, goals, onToggleTask, onGoToTimeline, onRefresh }: {
+function HomeView({ active, overview, tasks, goals, onToggleTask, onGoToCalendar, onGoToGoal, onRefresh }: {
   active: boolean; overview: MobileOverview | null; tasks: Task[]; goals: Goal[]
-  onToggleTask: (t: Task) => void; onGoToTimeline: () => void; onRefresh: () => void
+  onToggleTask: (t: Task) => void; onGoToCalendar: (iso: string) => void; onGoToGoal: (goalId: number) => void; onRefresh: () => void
 }) {
   const [expandedDay, setExpandedDay] = useState<string>(todayISO())
   const [completedOpen, setCompletedOpen] = useState(false)
@@ -227,7 +240,10 @@ function HomeView({ active, overview, tasks, goals, onToggleTask, onGoToTimeline
           })
         )}
 
-        <div className="mt-section-title">Daily schedule</div>
+        <div className="mt-section-title-row">
+          <div className="mt-section-title" style={{ margin: 0 }}>Daily schedule</div>
+          <div className="mt-section-link" onClick={() => onGoToCalendar(expandedDay || todayISO())}>Full calendar →</div>
+        </div>
         <div className="mt-week-row">
           {weekDays.map((d) => {
             const dayTasks = tasksByDay(d.iso)
@@ -257,7 +273,7 @@ function HomeView({ active, overview, tasks, goals, onToggleTask, onGoToTimeline
         {nextGoal && (
           <>
             <div className="mt-section-title">Next milestone</div>
-            <div className="mt-nm-card" onClick={onGoToTimeline}>
+            <div className="mt-nm-card" onClick={() => onGoToGoal(nextGoal.id)}>
               <div className="mt-hz-ring" style={{ width: 40, height: 40, background: `conic-gradient(var(--amber) ${nextGoal.progressPct}%, var(--border2) 0)` }}>
                 <div className="mt-hz-ring-inner" style={{ fontSize: 9 }}>{nextGoal.progressPct}%</div>
               </div>
@@ -312,12 +328,46 @@ function HomeView({ active, overview, tasks, goals, onToggleTask, onGoToTimeline
 // ============================================================================
 // TIMELINE (growth timeline + goals + calendar)
 // ============================================================================
-function TimelineView({ active, goals, tasks, onOpenAddGoal, onRefreshGoals }: {
+function TimelineView({ active, goals, tasks, onOpenAddGoal, onRefreshGoals, jumpDate, jumpGoalId, onJumpConsumed }: {
   active: boolean; goals: Goal[]; tasks: Task[]; onOpenAddGoal: () => void; onRefreshGoals: () => void
+  jumpDate: string | null; jumpGoalId: number | null; onJumpConsumed: () => void
 }) {
   const [expandedGoalId, setExpandedGoalId] = useState<number | null>(goals[0]?.id ?? null)
   const [calDate, setCalDate] = useState(() => new Date())
   const [selectedDate, setSelectedDate] = useState(todayISO())
+  const viewRef = React.useRef<HTMLDivElement>(null)
+  const calendarRef = React.useRef<HTMLDivElement>(null)
+  const goalRefs = React.useRef<Record<number, HTMLDivElement | null>>({})
+
+  // Landing here from Home's "Full calendar" link or "Next milestone" card
+  // -- jump straight to that day or that goal (expanded), not just
+  // whatever scroll position this tab happened to be left at on a
+  // previous visit. Sets scrollTop directly rather than el.scrollIntoView
+  // (animated scrollIntoView calls were getting interrupted by the
+  // tab-switch re-render and silently landing nowhere).
+  const scrollToEl = (getEl: () => HTMLElement | null) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const container = viewRef.current
+      const el = getEl()
+      if (!container || !el) return
+      container.scrollTop = el.offsetTop - container.offsetTop
+    }))
+  }
+
+  useEffect(() => {
+    if (!active) return
+    if (jumpDate) {
+      const d = new Date(jumpDate + 'T00:00:00')
+      setCalDate(new Date(d.getFullYear(), d.getMonth(), 1))
+      setSelectedDate(jumpDate)
+      scrollToEl(() => calendarRef.current)
+      onJumpConsumed()
+    } else if (jumpGoalId != null) {
+      setExpandedGoalId(jumpGoalId)
+      scrollToEl(() => goalRefs.current[jumpGoalId])
+      onJumpConsumed()
+    }
+  }, [active, jumpDate, jumpGoalId, onJumpConsumed])
 
   const firstActiveIndex = goals.findIndex((g) => g.status !== 'done')
 
@@ -339,7 +389,7 @@ function TimelineView({ active, goals, tasks, onOpenAddGoal, onRefreshGoals }: {
   const tasksByDay = (iso: string) => tasks.filter((t) => t.due_date?.slice(0, 10) === iso)
 
   return (
-    <div className={`mt-view${active ? ' active' : ''}`}>
+    <div ref={viewRef} className={`mt-view${active ? ' active' : ''}`}>
       <div className="mt-page-title">Timeline</div>
       <div className="mt-section-pad" style={{ paddingTop: 4 }}>
         <div className="mt-section-title" style={{ marginTop: 0 }}>Growth timeline</div>
@@ -368,7 +418,8 @@ function TimelineView({ active, goals, tasks, onOpenAddGoal, onRefreshGoals }: {
           const expanded = expandedGoalId === goal.id
           const isDone = goal.status === 'done'
           return (
-            <div key={goal.id} className={`mt-goal-card${expanded ? ' expanded' : ''}`} onClick={() => setExpandedGoalId(expanded ? null : goal.id)}>
+            <div key={goal.id} ref={(el) => { goalRefs.current[goal.id] = el }}
+              className={`mt-goal-card${expanded ? ' expanded' : ''}`} onClick={() => setExpandedGoalId(expanded ? null : goal.id)}>
               <div className="mt-goal-top">
                 <div className="mt-goal-name">{goal.name}</div>
                 <div className={`mt-goal-date${isDone ? ' done' : ''}`}>
@@ -407,7 +458,7 @@ function TimelineView({ active, goals, tasks, onOpenAddGoal, onRefreshGoals }: {
         })}
         <div className="mt-add-goal-row" onClick={onOpenAddGoal}>+ Add goal</div>
 
-        <div className="mt-section-title">Calendar</div>
+        <div className="mt-section-title" ref={calendarRef}>Calendar</div>
         <div className="mt-cal-head">
           <div className="mt-cal-month">{calDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</div>
           <div className="mt-cal-nav"><span onClick={() => shiftMonth(-1)}>‹</span><span onClick={() => shiftMonth(1)}>›</span></div>

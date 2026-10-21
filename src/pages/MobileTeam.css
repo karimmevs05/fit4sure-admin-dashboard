@@ -38,6 +38,8 @@
 .mt-view.active{display:flex;}
 .mt-section-pad{padding:10px 16px calc(96px + env(safe-area-inset-bottom));}
 .mt-section-title{font-size:10px; font-weight:800; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); margin:16px 0 8px;}
+.mt-section-title-row{display:flex; align-items:center; justify-content:space-between; margin:16px 0 8px;}
+.mt-section-link{font-size:11px; font-weight:800; color:var(--navy); cursor:pointer;}
 
 .mt-stat-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:8px;}
 .mt-stat-card{background:#fff; border:1px solid var(--border); border-radius:13px; padding:13px 14px;}
