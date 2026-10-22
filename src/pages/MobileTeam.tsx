@@ -319,7 +319,12 @@ function HomeView({ active, overview, tasks, goals, onToggleTask, onGoToCalendar
           )}
         </div>
 
-        <a className="mt-full-dash-link" href="/dashboard">Open full dashboard →</a>
+        {/* New tab, not an in-app navigation -- this link shouldn't replace
+            the mobile tool with the desktop app in the same tab. Someone
+            tapping it from the phone they opened the WhatsApp link on keeps
+            the mobile view alive and just opens the full dashboard
+            alongside it, the same way the two are meant to coexist. */}
+        <a className="mt-full-dash-link" href="/dashboard" target="_blank" rel="noopener noreferrer">Open full dashboard ↗</a>
       </div>
     </div>
   )
